@@ -52,6 +52,10 @@
             }
         }
     }
+
+    .github-button {
+        display: block;
+    }
 }
 
 .requests-box {
@@ -111,5 +115,9 @@
 
     .body-overflow-hidden {
         overflow: hidden;
+    }
+
+    .github-button {
+        display: none;
     }
 }

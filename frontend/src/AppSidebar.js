@@ -174,10 +174,6 @@ export class AppSidebar extends Component {
         return false;
     }
 
-    isDesktop() {
-        return window.innerWidth > 1024;
-    }
-
     render() {
         let requests = this.getRequests();
         let hasValue = this.hasValue;
@@ -228,11 +224,9 @@ export class AppSidebar extends Component {
                          ref={(el) => { this.messagesEnd = el; }}>
                     </div>
                 </div>
-                {this.isDesktop() &&
-                    <div style={{position:"absolute", bottom:"0", height:"100px", textAlign:"center", width:"100%"}}>
+                <div className='github-button' style={{position:"absolute", bottom:"0", height:"100px", textAlign:"center", width:"100%"}}>
                     <Button style={{margin:"0 auto", display:"block"}} label="See on GitHub" icon="pi pi-github" className="p-button-plain p-button-text" onClick={() => {window.open("https://github.com/adrgs/requestrepo")}} />
-                    </div>
-                }
+                </div>
             </div>
         );
     }
