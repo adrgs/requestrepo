@@ -1,0 +1,113 @@
+.layout-profile {
+    text-align: center;
+    padding: 20px 0;
+
+    img {
+        width: 56px;
+        margin: 10px;
+    }
+
+    .layout-profile-link {
+        cursor: pointer;
+        display: inline-block;
+        margin-bottom: .75em;
+        @include transition(color $transitionDuration);
+
+        i {
+            display: inline-block;
+            font-size: 16px;
+            vertical-align: middle;
+        }
+    }
+
+    ul {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+        max-height: 0;
+        overflow: hidden;
+        @include transition-property(max-height);
+        @include transition-duration(0.4s);
+        @include transition-timing-function(cubic-bezier(0.86, 0, 0.07, 1));
+       
+        &.layout-profile-expanded {
+            max-height: 500px;
+        }
+
+        li {
+            button {
+                width: 100%;
+                padding: 1em;
+                border: 0 none;
+                border-radius: 0;
+                cursor: pointer;
+                @include transition(color $transitionDuration);
+
+                &:hover {
+                    color: $menuitemHoverColor;
+                }
+
+                span {
+                    margin-left: .25em;
+                    vertical-align: middle;
+                }
+
+                i {
+                    vertical-align: middle;
+                }
+            }
+        }
+    }
+}
+
+.layout-sidebar-light {
+    .layout-profile {
+        .layout-profile-link {
+            color: $menuitemColor;
+    
+            &:hover {
+                color: $menuitemHoverColor;
+            }
+        }
+
+        ul {
+            background-color: $menuitemActiveBgColor;
+
+            li {
+                button {
+                    color: $menuitemColor;
+
+                    &:hover {
+                        color: $menuitemHoverColor;
+                    }
+                }
+            }
+        }
+    }
+}
+
+.layout-sidebar-dark {
+    .layout-profile {
+        .layout-profile-link {
+            color: $menuitemDarkColor;
+    
+            &:hover {
+                color: $menuitemDarkHoverColor;
+            }
+        }
+
+        ul {
+            background-color: $menuitemDarkActiveBgColor;
+
+            li {
+                button {
+                    color: $menuitemDarkColor;
+
+                    &:hover {
+                        color: $menuitemDarkHoverColor;
+                    }
+                }
+            }
+        }
+    }
+}

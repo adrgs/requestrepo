@@ -1,0 +1,192 @@
+/* Typography */
+h1 {
+    font-weight: normal;
+    margin: 0;
+    font-size: 24px;
+}
+
+h2 {
+    font-size: 20px;
+    font-weight: normal;
+    margin: 0;
+}
+
+.card {
+    background-color: #ffffff;
+    padding: 1em;
+    @include border-radius($borderRadius);
+
+    &.card-w-title {
+        padding-bottom: 2em;
+    }
+
+    &.request {
+        border-radius:0px;
+        background-color: #fefefe;
+        border-bottom:1px solid #ccc;
+        &:hover {
+            background-color: #f0f0f0;
+            cursor:pointer;
+        }
+    }
+
+    &.active {
+        background-color: #007ad9!important;
+        color:#ffffff!important;
+        border-bottom:1px solid #005ab9!important;
+    }
+
+    &.visited {
+        background-color: #f5f5f5;
+    }
+
+    h1 {
+        margin: .2em 0 .5em 0;
+        padding: .1em;
+        font-size: 24px;
+        font-weight: 400;
+    }
+}
+
+.title {
+    text-overflow: ellipsis;
+    font-size: 14px;
+    width:75%;
+    white-space: nowrap;
+    overflow: hidden;
+    display:inline-block;
+}
+
+.detail {
+    display: block;
+    margin-top: 10px;
+    font-size:10px;
+}
+
+.count {
+    color: #ffffff;
+    font-size: 8px;
+    top:-3px;
+    padding: 2px 4px;
+    margin-right:5px;
+    display:inline-block;
+    top:-6px;
+    position:relative;
+    background-color: #666666;
+
+    @include border-radius($borderRadius);
+
+    &.get {
+        background-color: #20d077;
+    }
+
+    &.post {
+        background-color: #FFAE00;
+    }
+
+    &.delete {
+            background-color: #FF0000;
+    }
+
+    &.put {
+            background-color: #0036FF;
+    }
+
+    &.dns {
+            background-color: #33DAFF;
+    }
+
+    &.bigx {
+        visibility: hidden;
+        margin-top: 5px;
+        float: right;
+        margin-right: 0px;
+        font-size: 10px;
+        font-weight: bold;
+        padding: 2px 6px;
+        background-color: #FF0000;
+        border: 1px solid #aa0000;
+    }
+}
+
+.card {
+    &:hover {
+        .bigx {
+            visibility: visible!important;
+        }
+    }
+}
+
+.p-g {
+    -ms-flex-wrap: wrap;
+}
+
+pre,p,code {
+    white-space: pre-line;
+    overflow-wrap: break-word;
+}
+
+.hexEditorHeader {
+    height: 30px!important;
+}
+
+.byteValue {
+    padding: 3px;
+}
+
+.byteHeader {
+    padding: 3px;
+}
+
+.asciiValues {
+    padding-left: 10px;
+}
+
+.editAscii, .editHex {
+    width:100%!important;;
+}
+
+.hexEditorBody {
+    overflow-x:hidden!important;
+}
+
+.raw-req > div:nth-last-child(2) {
+    height: 420px;
+    overflow-x: auto!important;
+}
+
+.req-table {
+    width: 100%;
+    tr:nth-child(even) {background: #f6f8fa}
+}
+
+td {
+    max-width: 0;
+    overflow-wrap: break-word;
+}
+
+.req-table-a {
+    width: 30%;
+}
+
+.req-table-b {
+    width: 70%;
+}
+
+pre {
+    background-color: #f6f8fa;
+}
+
+.delete-all {
+    color: #e90000;
+    cursor: pointer;
+
+    &:hover {
+        color:red;
+    }
+}
+
+.p-autocomplete .p-autocomplete-input {
+    max-width: 250px;
+    width: 100%!important;
+}

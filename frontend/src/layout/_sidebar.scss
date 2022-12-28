@@ -1,0 +1,38 @@
+.layout-sidebar {
+    position: fixed;
+    width: 300px;
+    height: 100%;
+    z-index: 999;
+    overflow-y: auto;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    @include transition(left $transitionDuration);
+    border-right: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+
+    .layout-logo {
+        text-align: center;
+        margin-top: 24px;
+    }
+
+    .menuitem-badge {
+        display: inline-block;
+        margin-left: 4px;
+        font-size: 10px;
+        width: 16px;
+        height: 16px;
+        line-height: 16px;
+        text-align: center;
+        color: $menuitemBadgeColor;
+        background-color: $menuitemBadgeBgColor;
+        @include border-radius(50%);
+    }
+}
+
+.layout-sidebar-header {
+    border-bottom:1px solid #ccc;
+    background-color: #f8f9fa;
+    color:#000;
+    font-size:14px;
+}
