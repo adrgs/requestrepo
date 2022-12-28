@@ -21,19 +21,20 @@ h2 {
     }
 
     &.request {
-        border-radius:0px;
+        border-radius: 0px;
         background-color: #fefefe;
-        border-bottom:1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+
         &:hover {
             background-color: #f0f0f0;
-            cursor:pointer;
+            cursor: pointer;
         }
     }
 
     &.active {
-        background-color: #007ad9!important;
-        color:#ffffff!important;
-        border-bottom:1px solid #005ab9!important;
+        background-color: #007ad9 !important;
+        color: #ffffff !important;
+        border-bottom: 1px solid #005ab9 !important;
     }
 
     &.visited {
@@ -51,27 +52,27 @@ h2 {
 .title {
     text-overflow: ellipsis;
     font-size: 14px;
-    width:75%;
+    width: 75%;
     white-space: nowrap;
     overflow: hidden;
-    display:inline-block;
+    display: inline-block;
 }
 
 .detail {
     display: block;
     margin-top: 10px;
-    font-size:10px;
+    font-size: 10px;
 }
 
 .count {
     color: #ffffff;
     font-size: 8px;
-    top:-3px;
+    top: -3px;
     padding: 2px 4px;
-    margin-right:5px;
-    display:inline-block;
-    top:-6px;
-    position:relative;
+    margin-right: 5px;
+    display: inline-block;
+    top: -6px;
+    position: relative;
     background-color: #666666;
 
     @include border-radius($borderRadius);
@@ -85,15 +86,15 @@ h2 {
     }
 
     &.delete {
-            background-color: #FF0000;
+        background-color: #FF0000;
     }
 
     &.put {
-            background-color: #0036FF;
+        background-color: #0036FF;
     }
 
     &.dns {
-            background-color: #33DAFF;
+        background-color: #33DAFF;
     }
 
     &.bigx {
@@ -112,7 +113,7 @@ h2 {
 .card {
     &:hover {
         .bigx {
-            visibility: visible!important;
+            visibility: visible !important;
         }
     }
 }
@@ -121,13 +122,15 @@ h2 {
     -ms-flex-wrap: wrap;
 }
 
-pre,p,code {
+pre,
+p,
+code {
     white-space: pre-line;
     overflow-wrap: break-word;
 }
 
 .hexEditorHeader {
-    height: 30px!important;
+    height: 30px !important;
 }
 
 .byteValue {
@@ -142,22 +145,27 @@ pre,p,code {
     padding-left: 10px;
 }
 
-.editAscii, .editHex {
-    width:100%!important;;
+.editAscii,
+.editHex {
+    width: 100% !important;
+    ;
 }
 
 .hexEditorBody {
-    overflow-x:hidden!important;
+    overflow-x: hidden !important;
 }
 
-.raw-req > div:nth-last-child(2) {
+.raw-req>div:nth-last-child(2) {
     height: 420px;
-    overflow-x: auto!important;
+    overflow-x: auto !important;
 }
 
 .req-table {
     width: 100%;
-    tr:nth-child(even) {background: #f6f8fa}
+
+    tr:nth-child(even) {
+        background: #f6f8fa
+    }
 }
 
 td {
@@ -182,11 +190,11 @@ pre {
     cursor: pointer;
 
     &:hover {
-        color:red;
+        color: red;
     }
 }
 
 .p-autocomplete .p-autocomplete-input {
     max-width: 250px;
-    width: 100%!important;
+    width: 100% !important;
 }
