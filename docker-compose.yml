@@ -1,0 +1,46 @@
+version: "3"
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: requestrepouser
+      MONGO_INITDB_ROOT_PASSWORD: changethis
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data:/data/db
+  dns:
+    build:
+      context: ./dns
+    container_name: dns
+    restart: always
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    environment:
+      MONGODB_DATABASE: requestrepo
+      MONGODB_USERNAME: requestrepouser
+      MONGODB_PASSWORD: changethis
+      MONGODB_HOSTNAME: mongodb
+      SERVER_IP: 159.89.104.197
+  flaskapp:
+    build:
+      context: ./app
+      dockerfile: Dockerfile-prod
+    command: gunicorn -c conf.py --bind 0.0.0.0:21337 app:app
+    container_name: flaskapp
+    restart: always
+    ports:
+      - 21337:21337
+    environment:
+      MONGODB_DATABASE: requestrepo
+      MONGODB_USERNAME: requestrepouser
+      MONGODB_PASSWORD: changethis
+      MONGODB_HOSTNAME: mongodb
+    depends_on:
+      - mongodb
+volumes:
+  mongodb_data:
+    driver: local
