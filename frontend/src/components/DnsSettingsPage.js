@@ -1,7 +1,7 @@
-import React, {Component} from 'react';
-import {Button} from "primereact/button";
-import {RecordInput} from "./RecordInput";
-import {Utils} from "../Utils";
+import React, { Component } from 'react';
+import { Button } from "primereact/button";
+import { RecordInput } from "./RecordInput";
+import { Utils } from "../Utils";
 
 export class DnsSettingsPage extends Component {
 
@@ -14,7 +14,7 @@ export class DnsSettingsPage extends Component {
 
         if (this.props.fetched == false) {
             Utils.getDNSRecords().then(res => {
-                this.setState({dnsRecords:res});
+                this.setState({ dnsRecords: res });
             });
         }
 
@@ -28,25 +28,25 @@ export class DnsSettingsPage extends Component {
         if (typeof value !== 'string') value = '';
         if (typeof type !== 'number') type = 0;
         const { dnsRecords } = this.state;
-        dnsRecords.push({ 'domain': domain, 'type':type, 'value': value, 'subdomain':this.props.user.subdomain });
+        dnsRecords.push({ 'domain': domain, 'type': type, 'value': value, 'subdomain': this.props.user.subdomain });
         this.setState({ dnsRecords: dnsRecords });
     }
 
     handleRecordInputChange(index, domain, type, value, toDelete) {
         const dnsRecords = this.state.dnsRecords;
-        if (toDelete===false) {
-            dnsRecords[index] = {domain:domain, type:type, value: value};
+        if (toDelete === false) {
+            dnsRecords[index] = { domain: domain, type: type, value: value };
         } else {
             dnsRecords.splice(index, 1);
         }
-        this.setState({ dnsRecords: dnsRecords});
+        this.setState({ dnsRecords: dnsRecords });
         this.setState(this.state);
     }
 
     saveChanges() {
         let obj = {};
-        obj['records'] = this.state.dnsRecords.filter(function(value) {
-            return value.domain.length>0 && value.value.length > 0;
+        obj['records'] = this.state.dnsRecords.filter(function (value) {
+            return value.domain.length > 0 && value.value.length > 0;
         });
         Utils.updateDNSRecords(obj).then(res => {
             if (res.error) {
@@ -68,7 +68,7 @@ export class DnsSettingsPage extends Component {
                     draggable: true
                 });
                 Utils.getDNSRecords().then(res => {
-                    this.setState({dnsRecords:res});
+                    this.setState({ dnsRecords: res });
                 });
             }
         });
@@ -82,12 +82,12 @@ export class DnsSettingsPage extends Component {
                 if (typeof element.type === 'string') {
                     element.type = ['A', 'AAAA', 'CNAME', 'TXT'].indexOf(element.type);
                 }
-                if (element.domain.lastIndexOf(this.props.user.subdomain+'.'+'requestrepo.com') >= 0) {
-                    element.domain = element.domain.substr(0, element.domain.lastIndexOf(this.props.user.subdomain+'.'+'requestrepo.com')-1);
+                if (element.domain.lastIndexOf(this.props.user.subdomain + '.' + 'requestrepo.com') >= 0) {
+                    element.domain = element.domain.substr(0, element.domain.lastIndexOf(this.props.user.subdomain + '.' + 'requestrepo.com') - 1);
                 }
             }
-            catch {}
-           return element;
+            catch { }
+            return element;
         });
 
         dnsRecords = this.state.dnsRecords.map((element, index) => {
@@ -104,30 +104,36 @@ export class DnsSettingsPage extends Component {
             );
         });
         return (
-            <div className="card card-w-title" style={{"border":"1px solid #cccccc","border-top":"0px","border-radius":"0px 0px 5px 5px"}}>
-                <div className="p-grid">
-                    <div className="p-col-12">
-                        <h1>DNS Records
-                            <Button
-                                label="Add record"
-                                onClick={this.add}
-                                icon="pi pi-plus"
-                                style={{ float: 'right', top: '-3px' }}
-                            />
-                        </h1>
-                        <p>You can use / to cycle through the IPs or % to select a random IP (e.g. 127.0.0.1/8.8.8.8 or 127.0.0.1%8.8.8.8)</p>
+            <div className="card card-w-title" style={{ "border": "1px solid #cccccc", "border-top": "0px", "border-radius": "0px 0px 5px 5px" }}>
+                <div className="grid">
+                    <div className="col-6">
+                        <h1>DNS Records</h1>
                     </div>
-                    {dnsRecords}
-                    <div style={{ width: '100%' }}>
+                    <div className="col-6">
                         <Button
                             label="Save changes"
-                            icon="pi pi-pencil"
-                            className="p-button-success"
-                            style={{ 'margin-right': '20px', 'margin-top': '50px', float: 'right' }}
+                            icon="pi pi-save"
+                            className="p-button-success p-button-text"
+                            style={{float: 'right' }}
                             onClick={this.saveChanges}
                         />
                     </div>
                 </div>
+                <div className="grid">
+                    <p>You can use / to cycle through the IPs or % to select a random IP (e.g. 127.0.0.1/8.8.8.8 or 127.0.0.1%8.8.8.8)</p>
+                </div>
+                <div className="grid">
+                    <div className="col-12">
+                        <Button
+                            label="Add record"
+                            onClick={this.add}
+                            icon="pi pi-plus"
+                            className="p-button-text"
+                            style={{ float: 'right' }}
+                        />
+                    </div>
+                </div>
+                {dnsRecords}
             </div>
         );
     }

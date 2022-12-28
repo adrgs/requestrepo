@@ -53,27 +53,25 @@ export class RecordInput extends Component {
         ];
 
         return (
-            <React.Fragment>
-                <div className="p-col-4">
+            <div className="grid">
+                <div className="col">
                     <label>Record type: </label>
                     <Dropdown value={this.state.type} options={DNSRecordTypes} onChange={(e) => {this.changeEvent(e, 'type')}} placeholder="Select a record type"/>
                 </div>
-                <div className="p-col-4">
+                <div className="col">
                     <label>URL: </label>
                     <InputText value={this.state.domain||''} onChange={(e) => {if (e.target.value.length<64) this.changeEvent(e, 'domain')}} />.{this.props.subdomain}.requestrepo.com
                 </div>
-                <div className="p-col-4">
+                <div className="col">
                     <label>Value: </label>
-                    <InputText value={this.state.value||''} onChange={(e) => {if (e.target.value.length<256 && /^[ -~]+$/.test(e.target.value)) this.changeEvent(e, 'value')}} />
+                    <InputText style={{maxWidth:"50%"}} value={this.state.value||''} onChange={(e) => {if (e.target.value.length<256 && /^[ -~]+$/.test(e.target.value)) this.changeEvent(e, 'value')}} />
                     <Button
-                        label=""
-                        style={{"float":"right"}}
                         icon="pi pi-times"
-                        className="p-button-danger"
+                        className="p-button-danger p-button-rounded p-button-text p-button-icon"
                         onClick={event => this.changeEvent(event, 'delete')}
                     />
                 </div>
-            </React.Fragment>
+            </div>
         );
     }
 
