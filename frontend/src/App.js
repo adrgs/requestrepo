@@ -276,13 +276,13 @@ class App extends Component {
                     <div className="p-grid">
                         <div className="p-col-12">
                             <Toolbar style={{lineHeight:"3",borderColor:"#cccccc",borderRadius:"5px 5px 0px 0px"}} left={
-                                <div>
+                                <div style={{textAlign:"center"}}>
                                     <a href="#/requests"><Button  label="Requests" icon="pi pi-arrow-down" className="p-button-text p-button-secondary" style={{marginRight:'.25em'}} /></a>
                                     <a href="#/edit-response"><Button href="#/edit-response" label="Response" icon="pi pi-pencil" className="p-button-text p-button-secondary" style={{marginRight:'.25em'}} /></a>
                                     <a href="#/dns-settings"><Button href="#/dns-settings" label="DNS" icon="pi pi-home" className="p-button-text p-button-secondary" /></a>
                                 </div>
                             } right={
-                                <div className="grid">
+                                <div style={{textAlign:"center"}}>
                                     <InputText type="text" placeholder="Your URL" value={this.state.user.url} style={{"width":"300px", marginRight:"1em"}} ref={(urlArea) => this.urlArea = urlArea} />
                                     <Button label="Copy URL" icon="pi pi-copy" className="p-button-success" style={{marginRight:'.25em'}} onClick={this.copyUrl} />
                                     <Button label="New URL" icon="pi pi-refresh" onClick={this.newUrl} />
