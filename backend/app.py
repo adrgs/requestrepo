@@ -121,9 +121,6 @@ def index():
 
 @app.endpoint('catch_all')
 def catch_all(path):
-    if request.host == DOMAIN:
-        return send_from_directory('public', path)
-
     subdomain = get_subdomain_from_hostname(request.host)
     if subdomain:
         return subdomain_response(request, subdomain)
@@ -133,10 +130,8 @@ def catch_all(path):
         return subdomain_response(request, subdomain)
 
     response = send_from_directory('public', path)
-    if response.status_code != 404:
-        return response
 
-    return redirect("//requestrepo.com/", code=302)
+    return response
 
 
 @app.route('/api/get_dns_requests')
