@@ -126,6 +126,7 @@ export class EditResponsePage extends Component {
 		headers = this.state.headers.map((element, index) => {
 			return (
 				<HeaderInput
+					key={index}
 					index={index}
 					header={element['header']}
 					value={element['value']}

@@ -98,7 +98,7 @@ export class RequestInfo extends Component {
                         <tbody>
                         {
                             headerKeys.map( (item, index) => {
-                                return (<tr>
+                                return (<tr key={index}>
                                     <td className="req-table-a">{item}</td>
                                     <td className="req-table-b">{request.headers[item]}</td>
                                 </tr>);
@@ -114,7 +114,7 @@ export class RequestInfo extends Component {
                             {
                                 request.query.substring(1).split('&').map( (dict, index) => {
                                     let q = dict.split('=');
-                                    return (<tr>
+                                    return (<tr key={index}>
                                         <td className="req-table-a">{q[0]}</td>
                                         <td className="req-table-b">{q[1]}</td>
                                     </tr>);
