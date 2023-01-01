@@ -127,14 +127,8 @@ def catch_all(path):
     subdomain = get_subdomain_from_hostname(request.host)
     if subdomain:
         return subdomain_response(request, subdomain)
-    else:
-        rindex = request.host.rfind(':')
-        port = ':80'
-        nr = request.host[rindex + 1:]
-        if nr.isdigit():
-            if int(nr) <= 20000:
-                port = ':' + nr
-        return redirect("//requestrepo.com" + port + "/", code=302)
+        
+    return redirect("//requestrepo.com/", code=302)
 
 
 @app.route('/api/get_dns_requests')
