@@ -61,13 +61,17 @@
 .requests-box {
     overflow-y:auto;
     overflow-x:hidden;
-    max-height:calc(100% - 110px);
+    max-height:calc(100% - 210px);
     max-width:100%;
 }
 
 @media (max-width: 1024px) {
     .layout-main {
         padding: 16px 16px 16px 16px;
+    }
+
+    .requests-box {
+        max-height:350px!important;
     }
 
     .requests-box {
