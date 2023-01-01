@@ -1,3 +1,6 @@
+# page
+backend/pages/*
+
 # Logs
 logs
 *.log
