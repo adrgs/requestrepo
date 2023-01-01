@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, jsonify, request, make_response, redirect, send_from_directory
 from werkzeug.routing import Rule
 from mongolog import *
@@ -12,11 +11,6 @@ import json
 import os
 import sys
 from pprint import pprint
-
-#
-#   TODO: fix X-Real-IP nginx https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/
-#
-#
 
 class CustomServerHeaderFlask(Flask):
     def process_response(self, response):
@@ -106,9 +100,6 @@ def index():
     else:
         subdomain = verify_jwt(request.cookies.get('token'))
         return send_from_directory('public', 'index.html')
-        #if subdomain:
-        #    return "your url is " + subdomain + ".requestrepo.com"
-        #return "You don't have an URL"
 
 @app.endpoint('catch_all')
 def catch_all(path):
@@ -119,9 +110,6 @@ def catch_all(path):
     if subdomain:
         return subdomain_response(request, subdomain)
     else:
-        #if path=='':
-        #    path = 'index.html'
-        #return send_from_directory('public', path)
         rindex = request.host.rfind(':')
         port = ':80'
         nr = request.host[rindex+1:]
@@ -154,7 +142,6 @@ def get_http_requests():
         time = request.args.get('t')
         if subdomain:
             return jsonify(http_get_subdomain(subdomain, time))
-            #return jsonify(dns_get_subdomain(subdomain, time))
         else:
             return jsonify({'err':'Unauthorized'}), 401
 
@@ -274,8 +261,6 @@ def update_file():
             if len(headers) <= 30:
                 for header in content['headers']:
                     if 'header' in header and 'value' in header:
-                        #if 'content-length' in header['header'].lower():
-                        #    continue
                         headers.append({'header': header['header'], 'value':header['value']})
             else:
                 return '{"error":"maximum of 30 headers"}'
