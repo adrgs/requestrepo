@@ -1,5 +1,6 @@
 # page
 backend/pages/*
+backend/public/*
 
 # Logs
 logs
