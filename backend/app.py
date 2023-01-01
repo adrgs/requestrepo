@@ -51,11 +51,7 @@ def log_request(request, subdomain):
 
     dic['raw']       = request.stream.read()
     dic['uid']       = subdomain
-    if 'Requestrepo-X-Forwarded-For' in headers:
-        dic['ip']    = headers['Requestrepo-X-Forwarded-For']
-        del headers['Requestrepo-X-Forwarded-For']
-    else:
-        dic['ip']    = request.remote_addr
+    dic['ip']        = request.remote_addr
     dic['headers']   = headers
     dic['method']    = request.method
     dic['protocol']  = request.environ.get('SERVER_PROTOCOL')
