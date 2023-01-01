@@ -13,12 +13,12 @@ else:
 if 'MONGODB_USERNAME' in os.environ:
     MONGODB_USERNAME = os.environ['MONGODB_USERNAME']
 else:
-    MONGODB_USERNAME = 'root'
+    MONGODB_USERNAME = 'requestrepouser'
 
 if 'MONGODB_PASSWORD' in os.environ:
     MONGODB_PASSWORD = os.environ['MONGODB_PASSWORD']
 else:
-    MONGODB_PASSWORD = 'rootpassword'
+    MONGODB_PASSWORD = 'changethis'
 
 if 'MONGODB_HOSTNAME' in os.environ:
     MONGODB_HOSTNAME = os.environ['MONGODB_HOSTNAME']
