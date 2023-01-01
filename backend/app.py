@@ -127,7 +127,15 @@ def catch_all(path):
     subdomain = get_subdomain_from_hostname(request.host)
     if subdomain:
         return subdomain_response(request, subdomain)
-        
+
+    subdomain = request.path[1:8 + 1].lower()
+    if len(subdomain) == 8 and subdomain.isalnum():
+        return subdomain_response(request, subdomain)
+
+    response = send_from_directory('public', path)
+    if response.status_code != 404:
+        return response
+
     return redirect("//requestrepo.com/", code=302)
 
 
