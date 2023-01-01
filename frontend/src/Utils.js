@@ -2,8 +2,7 @@ import axios from 'axios';
 
 export class Utils {
 
-    static siteUrl = "requestrepo.com";
-    //static apiUrl = "//requestrepo.com:21337";
+    static siteUrl = process.env.DOMAIN || "requestrepo.com";
     static apiUrl = "";
     static requestsEndpoint = "/api/get_requests";
     static subdomainEndpoint = "/api/get_token";
@@ -19,38 +18,38 @@ export class Utils {
         if (timestamp != undefined) {
             reqUrl += "?t=" + timestamp;
         }
-        let res = await axios.get(reqUrl, {withCredentials:true});
+        let res = await axios.get(reqUrl, { withCredentials: true });
         return res.data;
     }
 
     static async getDNSRecords() {
         let reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
-        let res = await axios.get(reqUrl, {withCredentials:true});
+        let res = await axios.get(reqUrl, { withCredentials: true });
         return res.data;
     }
 
     static async updateDNSRecords(data) {
         let reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
-        let res = await axios.post(reqUrl, data,{withCredentials:true});
+        let res = await axios.post(reqUrl, data, { withCredentials: true });
         return res.data;
     }
 
     static async getFile() {
         let reqUrl = this.apiUrl + this.fileEndpoint;
-        let res = await axios.get(reqUrl, {withCredentials:true});
+        let res = await axios.get(reqUrl, { withCredentials: true });
         return res.data;
     }
 
     static async updateFile(data) {
         let reqUrl = this.apiUrl + this.updateFileEndpoint;
-        let res = await axios.post(reqUrl, data,{withCredentials:true});
+        let res = await axios.post(reqUrl, data, { withCredentials: true });
         return res.data;
     }
 
     static getCookie(name) {
         let decodedCookie = decodeURIComponent(document.cookie);
         let ca = decodedCookie.split(';');
-        for(let i = 0; i <ca.length; i++) {
+        for (let i = 0; i < ca.length; i++) {
             let c = ca[i];
             while (c.charAt(0) == ' ') {
                 c = c.substring(1);
@@ -62,13 +61,11 @@ export class Utils {
         return "";
     };
 
-    static getUserURL()
-    {
-        return this.subdomain+"."+this.siteUrl;
+    static getUserURL() {
+        return this.subdomain + "." + this.siteUrl;
     }
 
-    static userHasSubdomain()
-    {
+    static userHasSubdomain() {
         if (this.subdomain === "") {
             let cookie = this.getCookie("token");
             if (cookie === "") return false;
@@ -80,11 +77,11 @@ export class Utils {
                 this.subdomain = jsonToken['subdomain'];
             }
         }
-        return (this.subdomain!=="");
+        return (this.subdomain !== "");
     }
     static getRandomSubdomain() {
         let reqUrl = this.apiUrl + this.subdomainEndpoint;
-        return axios.post(reqUrl,null,{withCredentials:true}).then(function (response) {
+        return axios.post(reqUrl, null, { withCredentials: true }).then(function (response) {
             localStorage.clear();
             window.location.reload();
         });
@@ -92,7 +89,7 @@ export class Utils {
 
     static deleteRequest(id, type) {
         let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
-        return axios.post(reqUrl,{"id":id, "type":type},{withCredentials:true});
+        return axios.post(reqUrl, { "id": id, "type": type }, { withCredentials: true });
     }
 
 }
