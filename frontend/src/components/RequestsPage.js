@@ -24,6 +24,8 @@ export class RequestsPage extends Component {
                                 <p>How to make a request:</p>
                                 <code>curl http://{this.props.user.url}</code>
                                 <br /><br/>
+                                <code>curl http://{this.props.user.domain}/{this.props.user.subdomain}/</code>
+                                <br /><br/>
                                 <code>curl -X POST --data hello http://{this.props.user.url}</code>
                                 <br /><br/>
                                 <code>nslookup your.data.here.{this.props.user.url}</code>

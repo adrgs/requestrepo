@@ -30,6 +30,7 @@ class App extends Component {
 
         this.user = {
             url: Utils.getUserURL(),
+            domain: Utils.siteUrl,
             subdomain: Utils.subdomain,
             httpRequests: [],
             dnsRequests: [],
