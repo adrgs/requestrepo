@@ -5,7 +5,7 @@ import base64
 import random
 import datetime
 import jwt
-from util import get_random_string
+from util import get_random_subdomain
 import re
 import json
 import os
@@ -174,9 +174,9 @@ def get_token():
         if request.method == 'OPTIONS':
             return 'POST'
 
-        subdomain = get_random_string(8)
+        subdomain = get_random_subdomain()
         while users_get_subdomain(subdomain) != None:
-            subdomain = get_random_string(8)
+            subdomain = get_random_subdomain()
         dns_delete_records(subdomain)
 
         write_basic_file(subdomain)
