@@ -137,7 +137,7 @@ export class EditResponsePage extends Component {
 		return (
 			<div
 				className="card card-w-title"
-				style={{ border: '1px solid #cccccc', 'border-top': '0px', 'border-radius': '0px 0px 5px 5px' }}
+				style={{ border: '1px solid #cccccc', borderTop: '0px', borderRadius: '0px 0px 5px 5px' }}
 			>
 				<div className="grid">
 					<div className="col-12">
