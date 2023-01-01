@@ -29,7 +29,7 @@ app.url_map.add(Rule('/', endpoint='index'))
 app.url_map.add(Rule('/<path:path>', endpoint='catch_all'))
 
 JWT_SECRET = 'changethis'
-REGXPRESSION = '(\\.|^)[0-9a-z]{8}\\.requestrepo\\.com(:[0-9]+)?$'
+DOMAIN = os.getenv('DOMAIN', 'requestrepo.com')
 
 def verify_jwt(token):
     try:
@@ -69,16 +69,11 @@ def log_request(request, subdomain):
     http_insert_into_db(dic)
 
 def get_subdomain_from_hostname(host):
-    subdomain = re.search(REGXPRESSION, host)
-    if subdomain == None:
-        return ""
-    else:
-        subdomain = subdomain.group(0)
-        if subdomain[0] == '.':
-            subdomain = subdomain[1:9]
-        else:
-            subdomain = subdomain[:8]
-    return subdomain
+    subdomain = host[:-len(DOMAIN)-1][-8:]
+    if not subdomain or not subdomain.isalnum():
+        return None
+    
+    return subdomain.lower()
 
 def subdomain_response(request, subdomain):
     log_request(request, subdomain)
@@ -106,7 +101,7 @@ def subdomain_response(request, subdomain):
 def index():
     subdomain = get_subdomain_from_hostname(request.host)
 
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         subdomain = verify_jwt(request.cookies.get('token'))
@@ -117,11 +112,11 @@ def index():
 
 @app.endpoint('catch_all')
 def catch_all(path):
-    if request.host.count('.') == 1:
+    if request.host == DOMAIN:
         return send_from_directory('public', path)
 
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         #if path=='':
@@ -139,7 +134,7 @@ def catch_all(path):
 @app.route('/api/get_dns_requests')
 def get_dns_requests():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         subdomain = verify_jwt(request.cookies.get('token'))
@@ -152,7 +147,7 @@ def get_dns_requests():
 @app.route('/api/get_http_requests')
 def get_http_requests():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         subdomain = verify_jwt(request.cookies.get('token'))
@@ -166,7 +161,7 @@ def get_http_requests():
 @app.route('/api/get_requests')
 def get_requests():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         subdomain = verify_jwt(request.cookies.get('token'))
@@ -186,7 +181,7 @@ def get_requests():
 @app.route('/api/get_token', methods=['POST','OPTIONS'])
 def get_token():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         if request.method == 'OPTIONS':
@@ -212,7 +207,7 @@ def get_token():
 @app.route('/api/get_server_time')
 def get_server_time():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         return jsonify({'date':datetime.datetime.utcnow().strftime('%s')})
@@ -220,7 +215,7 @@ def get_server_time():
 @app.route('/api/delete_request', methods=['POST'])
 def delete_request():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     else:
         subdomain = verify_jwt(request.cookies.get('token'))
@@ -236,7 +231,7 @@ def delete_request():
 @app.route('/api/get_file', methods=['GET'])
 def get_file():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
@@ -248,7 +243,7 @@ def get_file():
 @app.route('/api/update_file', methods=['POST'])
 def update_file():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
@@ -292,7 +287,7 @@ def update_file():
 @app.route('/api/get_dns_records', methods=['GET'])
 def get_dns_records():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
@@ -304,7 +299,7 @@ DNS_RECORDS = ['A', 'AAAA', 'CNAME', 'TXT']
 @app.route('/api/update_dns_records', methods=['POST'])
 def update_dns_records():
     subdomain = get_subdomain_from_hostname(request.host)
-    if request.host.count('.') != 1 and len(subdomain) == 8:
+    if subdomain:
         return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
