@@ -28,7 +28,7 @@ export class AppTopbar extends Component {
             <div className="layout-topbar clearfix">
                 <a href={"#"}>
                 <div style={{"float":"left"}}>
-                    <h2 style={{"color":"black"}}><span style={{"color":"#007ad9"}}>request</span>repo.com</h2>
+                    <h2 style={{"color":"black"}}><span style={{"color":"#007ad9"}}>request</span>repo</h2>
                 </div>
                 </a>
                 <div className="layout-topbar-icons" style={{maxWidth:"40%"}}>
