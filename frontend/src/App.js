@@ -223,9 +223,9 @@ class App extends Component {
 
     copyUrl(e)
     {
-        this.urlArea.element.select();
+        this.urlArea.select();
         document.execCommand('copy');
-        toast.info('âœ… URL copied to clipboard!', {
+        toast.info('URL copied to clipboard!', {
             position: "bottom-center",
             autoClose: 2500,
             hideProgressBar: false,
