@@ -22,7 +22,6 @@ export class HeaderInput extends Component {
             }).map(function (header) {
                 return header.name;
             });
-            console.log(results);
             this.setState({ filteredHeaders: results });
         }
     };

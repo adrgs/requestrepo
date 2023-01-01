@@ -16,7 +16,6 @@ export class AppSidebar extends Component {
         this.lastNumberOfReqs = 0;
         this.numberOfReqs = 0;
 
-        console.log(this.props);
         this.onCheckboxChange = this.onCheckboxChange.bind(this);
         this.hasValue = this.hasValue.bind(this);
         this.deleteAllRequests = this.deleteAllRequests.bind(this);
@@ -152,7 +151,6 @@ export class AppSidebar extends Component {
             }
             if (property == 'date') {
                 val = this.convertUTCDateToLocalDate(new Date(parseInt(val)*1000)).toLocaleString().toLowerCase();
-                console.log(val);
                 if (val.indexOf(needle) >= 0) return true;
                 continue;
             }
