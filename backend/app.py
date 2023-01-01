@@ -2,15 +2,12 @@ from flask import Flask, jsonify, request, make_response, redirect, send_from_di
 from werkzeug.routing import Rule
 from mongolog import *
 import base64
-import random
 import datetime
 import jwt
 from util import get_random_subdomain
 import re
 import json
 import os
-import sys
-from pprint import pprint
 
 
 class CustomServerHeaderFlask(Flask):
