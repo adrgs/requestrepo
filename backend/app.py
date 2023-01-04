@@ -154,18 +154,18 @@ def get_http_requests():
 @check_subdomain
 def get_requests():
     subdomain = verify_jwt(request.cookies.get('token'))
-    time = request.args.get('t')
-    if subdomain:
-        http_requests = http_get_subdomain(subdomain, time)
-        dns_requests = dns_get_subdomain(subdomain, time)
-        server_time = datetime.datetime.utcnow().strftime('%s')
-        return jsonify({
-            'http': http_requests,
-            'dns': dns_requests,
-            'date': server_time
-        })
-    else:
+    if not subdomain:
         return jsonify({'error': 'Unauthorized'}), 401
+
+    time = request.args.get('t')
+    http_requests = http_get_subdomain(subdomain, time)
+    dns_requests = dns_get_subdomain(subdomain, time)
+    server_time = datetime.datetime.utcnow().strftime('%s')
+    return jsonify({
+        'http': http_requests,
+        'dns': dns_requests,
+        'date': server_time
+    })
 
 
 @app.route('/api/get_token', methods=['POST', 'OPTIONS'])
