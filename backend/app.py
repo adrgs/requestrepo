@@ -32,12 +32,9 @@ def check_subdomain(f):
 
 def verify_jwt(token):
     try:
-        if token:
-            return jwt.decode(token, JWT_SECRET,
-                              algorithms=['HS256'])['subdomain']
-    except:
+        return jwt.decode(token, JWT_SECRET, algorithms=['HS256'])['subdomain']
+    except Exception:
         return None
-    return None
 
 
 def write_basic_file(subdomain):
