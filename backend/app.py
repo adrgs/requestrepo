@@ -202,14 +202,15 @@ def get_server_time():
 @check_subdomain
 def delete_request():
     subdomain = verify_jwt(request.cookies.get('token'))
-    if subdomain:
-        content = request.json
-        if content:
-            _id = content.get('id')
-            rtype = content.get('type')
-            delete_request_from_db(_id, subdomain, rtype)
-            return jsonify({"rtype": rtype, "_id": _id})
-    return jsonify({"error": "Unauthorized"}), 401
+    if not subdomain:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    content = request.json
+    if content:
+        _id = content.get('id')
+        rtype = content.get('type')
+        delete_request_from_db(_id, subdomain, rtype)
+        return jsonify({"rtype": rtype, "_id": _id})
 
 
 @app.route('/api/get_file', methods=['GET'])
@@ -218,10 +219,9 @@ def get_file():
     subdomain = verify_jwt(request.cookies.get('token'))
     if not subdomain:
         return jsonify({"raw": "", "headers": [], "status_code": 200})
-    
+
     with open('pages/' + subdomain, 'r') as outfile:
         return outfile.read()
-        
 
 
 @app.route('/api/update_file', methods=['POST'])
