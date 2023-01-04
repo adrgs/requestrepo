@@ -289,53 +289,59 @@ DNS_RECORDS = ['A', 'AAAA', 'CNAME', 'TXT']
 @check_subdomain
 def update_dns_records():
     subdomain = verify_jwt(request.cookies.get('token'))
-    if subdomain:
-        dns_delete_records(subdomain)
-        content = request.json
-        if 'records' in content:
-            for record in content['records']:
-                if type(record) is not dict:
-                    continue
-                domain = record.get('domain')
-                dtype = record.get('type')
-                value = record.get('value')
-                if domain is None or dtype is None or value is None:
-                    continue
-                if domain == "" or value == "":
-                    continue
+    if not subdomain:
+        return jsonify({"error": "unauthenticated"}), 401
 
-                domain = domain.lower()
-                try:
-                    if len(domain) > 63:
-                        return jsonify({"error": "Domain too big"}), 401
+    dns_delete_records(subdomain)
+    content = request.json
 
-                    if len(value) > 255:
-                        return jsonify({"error": "Value too big"}), 401
-
-                    if type(dtype) is not int:
-                        return jsonify({"error": "Invalid type"}), 401
-
-                    if dtype < 0 or dtype >= len(DNS_RECORDS):
-                        return jsonify({"error": "Invalid type range"}), 401
-
-                    if not re.search("^[ -~]+$", value):
-                        return jsonify({"error": "Invailid regex1"}), 401
-
-                    if not re.match(
-                            "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$",
-                            domain):
-                        return jsonify({"error": "invalid regex2"}), 401
-
-                    domain = domain + '.' + subdomain + '.requestrepo.com.'
-                    dtype = DNS_RECORDS[dtype]
-                    dns_insert_record(subdomain, domain, dtype, value)
-                except Exception as e:
-                    return jsonify({"error": "' + str(e) + '"}), 401
-
-            return jsonify({"msg": "Updated records"})
+    if 'records' not in content:
         return jsonify({"error": "Invalid records"}), 401
 
-    return jsonify({"error": "unauthenticated"}), 401
+    for record in content['records']:
+        if type(record) is not dict:
+            continue
+
+        domain = record.get('domain')
+        dtype = record.get('type')
+        value = record.get('value')
+
+        if domain is None or dtype is None or value is None:
+            continue
+        if domain == "" or value == "":
+            continue
+
+        domain = domain.lower()
+
+        if len(domain) > 63:
+            return jsonify({"error": "Domain too big"}), 401
+
+        if len(value) > 255:
+            return jsonify({"error": "Value too big"}), 401
+
+        if type(dtype) is not int:
+            return jsonify({"error": "Invalid type"}), 401
+
+        if dtype < 0 or dtype >= len(DNS_RECORDS):
+            return jsonify({"error": "Invalid type range"}), 401
+
+        if not re.search("^[ -~]+$", value):
+            return jsonify({"error": "Invailid regex"}), 401
+
+        if not re.match(
+                "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$",
+                domain):
+            return jsonify({"error": "invalid regex"}), 401
+
+        domain = f'{domain}.{subdomain}.{DOMAIN}.'
+
+        try:
+            dtype = DNS_RECORDS[dtype]
+            dns_insert_record(subdomain, domain, dtype, value)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 401
+
+    return jsonify({"msg": "Updated records"})
 
 
 if __name__ == '__main__':
