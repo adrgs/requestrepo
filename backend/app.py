@@ -9,15 +9,7 @@ import re
 import json
 import os
 
-
-class CustomServerHeaderFlask(Flask):
-    def process_response(self, response):
-        response.headers['Server'] = 'requestrepo.com'
-        super(CustomServerHeaderFlask, self).process_response(response)
-        return (response)
-
-
-app = CustomServerHeaderFlask(__name__, static_url_path='/public/static')
+app = Flask(__name__, static_url_path='/public/static')
 app.url_map.add(Rule('/', endpoint='index'))
 app.url_map.add(Rule('/<path:path>', endpoint='catch_all'))
 
