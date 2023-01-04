@@ -18,8 +18,8 @@ export class RequestsPage extends Component {
         return (
                 <div className="card card-w-title" style={{"border":"1px solid #cccccc",borderTop:"0px",borderRadius:"0px 0px 5px 5px"}}>
                     {(this.props.user!==null && this.props.user!==undefined) && this.props.user.requests[this.props.user.selectedRequest] === undefined &&
-                        <div className="p-grid">
-                            <div className="p-col-12">
+                        <div className="grid">
+                            <div className="col-12">
                                 <h1>Awaiting requests</h1>
                                 <p>How to make a request:</p>
                                 <code>curl http://{this.props.user.url}</code>

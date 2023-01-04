@@ -57,8 +57,8 @@ export class RequestInfo extends Component {
 
         if (request.name===undefined)
         {
-            out =  <div className="p-grid">
-                <div className={"p-col-" + (this.isDesktop() ? "6":"12")}>
+            out =  <div className="grid">
+                <div className="col-12">
                     <h1>Request Details</h1>
                     <table className="req-table">
                         <tbody>
@@ -92,7 +92,7 @@ export class RequestInfo extends Component {
                         </tbody>
                     </table>
                 </div>
-                <div className={"p-col-" + (this.isDesktop() ? "6":"12")}>
+                <div className="col-12">
                     <h1>Headers</h1>
                     <table className="req-table">
                         <tbody>
@@ -107,7 +107,7 @@ export class RequestInfo extends Component {
                         </tbody>
                     </table>
                 </div>
-                <div className={"p-col-" + (this.isDesktop() ? "6":"12")}>
+                <div className="col-12">
                     <h1>Query Parameters</h1>
                     {request.query
                         ?   <table className="req-table">
@@ -124,7 +124,7 @@ export class RequestInfo extends Component {
                         : <p>(empty)</p>
                     }
                 </div>
-                <div className={"p-col-" + (this.isDesktop() ? "6":"12")}>
+                <div className="col-12">
                     <h1>Form Data</h1>
                     {request.raw
                         ? <div>
@@ -135,7 +135,7 @@ export class RequestInfo extends Component {
                         : <p>(empty)</p>
                     }
                 </div>
-                <div className="p-col-12 raw-req">
+                <div className="col-12 raw-req">
                     <h1>Raw request</h1>
                     <InputText type="text" style={{"width":"100%"}} value={btoa(data)}/>
                     <br />
@@ -143,8 +143,8 @@ export class RequestInfo extends Component {
                 </div>
             </div>
         } else {
-            out =  <div className="p-grid">
-                <div className={"p-col-" + (this.isDesktop() ? "6":"12")}>
+            out =  <div className="grid">
+                <div className="col-12">
                     <h1>Request Details</h1>
                     <table className="req-table">
                         <tbody>
@@ -171,11 +171,11 @@ export class RequestInfo extends Component {
                         </tbody>
                     </table>
                 </div>
-                <div className={"p-col-" + (this.isDesktop() ? "6":"12")}>
+                <div className="col-12">
                     <h1>Reply</h1>
                     <pre style={{"overflowWrap":"break-word"}}>{request.reply}</pre>
                 </div>
-                <div className="p-col-12 raw-req">
+                <div className="col-12 raw-req">
                     <h1>Raw request</h1>
                     <InputText type="text" style={{"width":"100%"}} value={request.raw}/>
                     <br />

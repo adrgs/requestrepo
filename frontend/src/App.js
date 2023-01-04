@@ -274,8 +274,8 @@ class App extends Component {
                 <AppSidebar user={this.state.user} searchValue={this.state.searchValue} clickRequestAction={this.clickRequestAction}/>
 
                 <div className="layout-main">
-                    <div className="p-grid">
-                        <div className="p-col-12">
+                    <div className="grid">
+                        <div className="col-12">
                             <Toolbar style={{lineHeight:"3",borderColor:"#cccccc",borderRadius:"5px 5px 0px 0px"}} left={
                                 <div style={{textAlign:"center"}}>
                                     <a href="#/requests"><Button  label="Requests" icon="pi pi-arrow-down" className="p-button-text p-button-secondary" style={{marginRight:'.25em'}} /></a>
