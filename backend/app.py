@@ -9,12 +9,13 @@ import re
 import json
 import os
 
+
+JWT_SECRET = os.getenv('JWT_SECRET', os.urandom(32))
+DOMAIN = os.getenv('DOMAIN', 'requestrepo.com')
+
 app = Flask(__name__, static_url_path='/public/static')
 app.url_map.add(Rule('/', endpoint='index'))
 app.url_map.add(Rule('/<path:path>', endpoint='catch_all'))
-
-JWT_SECRET = 'changethis'
-DOMAIN = os.getenv('DOMAIN', 'requestrepo.com')
 
 
 def verify_jwt(token):
