@@ -96,6 +96,10 @@ class App extends Component {
             this.user['timestamp'] = res['date'];
             this.updateTitle();
             this.setState({ state: this.state });
+        }, err => {
+            if (err.response.status === 401 && err.response.data.error === "Unauthorized") {
+                Utils.getRandomSubdomain();
+            }
         });
 
         this.onWrapperClick = this.onWrapperClick.bind(this);
