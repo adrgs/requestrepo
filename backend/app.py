@@ -144,10 +144,10 @@ def get_dns_requests():
 def get_http_requests():
     subdomain = verify_jwt(request.cookies.get('token'))
     time = request.args.get('t')
-    if subdomain:
-        return jsonify(http_get_subdomain(subdomain, time))
-    else:
+    if not subdomain:
         return jsonify({'error': 'Unauthorized'}), 401
+    
+    return jsonify(http_get_subdomain(subdomain, time))
 
 
 @app.route('/api/get_requests')
