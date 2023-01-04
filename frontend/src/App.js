@@ -228,8 +228,12 @@ class App extends Component {
 
     copyUrl(e)
     {
-        this.urlArea.select();
-        document.execCommand('copy');
+        if (!navigator.clipboard) {
+            this.urlArea.select();
+            document.execCommand('copy');
+        } else {
+            navigator.clipboard.writeText(this.urlArea.value);
+        }
         toast.info('URL copied to clipboard!', {
             position: "bottom-center",
             autoClose: 2500,
