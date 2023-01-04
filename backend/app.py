@@ -137,7 +137,7 @@ def get_dns_requests():
         if subdomain:
             return jsonify(dns_get_subdomain(subdomain, time))
         else:
-            return jsonify({'err': 'Unauthorized'}), 401
+            return jsonify({'error': 'Unauthorized'}), 401
 
 
 @app.route('/api/get_http_requests')
@@ -151,7 +151,7 @@ def get_http_requests():
         if subdomain:
             return jsonify(http_get_subdomain(subdomain, time))
         else:
-            return jsonify({'err': 'Unauthorized'}), 401
+            return jsonify({'error': 'Unauthorized'}), 401
 
 
 @app.route('/api/get_requests')
@@ -172,7 +172,7 @@ def get_requests():
                 'date': server_time
             })
         else:
-            return jsonify({'err': 'Unauthorized'}), 401
+            return jsonify({'error': 'Unauthorized'}), 401
 
 
 @app.route('/api/get_token', methods=['POST', 'OPTIONS'])
@@ -225,7 +225,7 @@ def delete_request():
                 rtype = content.get('type')
                 delete_request_from_db(_id, subdomain, rtype)
                 return jsonify({"rtype": rtype, "_id": _id})
-        return jsonify("error")
+        return jsonify("error"), 401
 
 
 @app.route('/api/get_file', methods=['GET'])
@@ -238,7 +238,7 @@ def get_file():
         with open('pages/' + subdomain, 'r') as outfile:
             return outfile.read()
     else:
-        return jsonify({"raw":"", "headers":[], "status_code":200})
+        return jsonify({"raw": "", "headers": [], "status_code": 200})
 
 
 @app.route('/api/update_file', methods=['POST'])
@@ -254,12 +254,12 @@ def update_file():
             try:
                 try:
                     if len(content['status_code']) > 9:
-                        return jsonify({"error":"invalid status_code"})
+                        return jsonify({"error": "invalid status_code"}), 401
                     status_code = int(content['status_code'])
                 except:
                     pass
             except:
-                return jsonify({"error":"invalid status_code"})
+                return jsonify({"error": "invalid status_code"}), 401
         raw = ""
         if 'raw' in content:
             if len(content['raw']) <= 2000000:
@@ -267,9 +267,10 @@ def update_file():
                     base64.b64decode(content['raw'])
                     raw = content['raw']
                 except:
-                    return jsonify({"error":"invalid response"})
+                    return jsonify({"error": "invalid response"}), 401
             else:
-                return jsonify({"error":"response should be smaller than 2MB"})
+                return jsonify(
+                    {"error": "response should be smaller than 2MB"}), 401
         headers = []
         if 'headers' in content:
             if len(headers) <= 30:
@@ -280,7 +281,7 @@ def update_file():
                             'value': header['value']
                         })
             else:
-                return jsonify({"error":"maximum of 30 headers"})
+                return jsonify({"error": "maximum of 30 headers"}), 401
             with open('pages/' + subdomain, 'w') as outfile:
                 json.dump(
                     {
@@ -288,8 +289,8 @@ def update_file():
                         'raw': raw,
                         'status_code': status_code
                     }, outfile)
-        return jsonify({"msg":"Updated response"})
-    return jsonify({"error":"unauthenticated"})
+        return jsonify({"msg": "Updated response"})
+    return jsonify({"error": "Unauthorized"}), 401
 
 
 @app.route('/api/get_dns_records', methods=['GET'])
@@ -300,7 +301,7 @@ def get_dns_records():
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
         return jsonify(dns_get_records(subdomain))
-    return jsonify({"error":"unauthenticated"})
+    return jsonify({"error": "Unauthorized"}), 401
 
 
 DNS_RECORDS = ['A', 'AAAA', 'CNAME', 'TXT']
@@ -326,38 +327,39 @@ def update_dns_records():
                     continue
                 if domain == "" or value == "":
                     continue
+
                 domain = domain.lower()
                 try:
                     if len(domain) > 63:
-                        return jsonify({"error":"Domain too big"})
-                        continue
+                        return jsonify({"error": "Domain too big"}), 401
+                        
                     if len(value) > 255:
-                        return jsonify({"error":"Value too big"})
-                        continue
+                        return jsonify({"error": "Value too big"}), 401
+                        
                     if type(dtype) is not int:
-                        return jsonify({"error":"Invalid type"})
-                        continue
+                        return jsonify({"error": "Invalid type"}), 401
+                        
                     if dtype < 0 or dtype >= len(DNS_RECORDS):
-                        return jsonify({"error":"Invalid type range"})
-                        continue
+                        return jsonify({"error": "Invalid type range"}), 401
+                        
                     if not re.search("^[ -~]+$", value):
-                        return jsonify({"error":"Invailid regex1"})
-                        continue
+                        return jsonify({"error": "Invailid regex1"}), 401
+                        
                     if not re.match(
                             "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$",
                             domain):
-                        return jsonify({"error":"invalid regex2"})
-                        continue
+                        return jsonify({"error": "invalid regex2"}), 401
+                        
                     domain = domain + '.' + subdomain + '.requestrepo.com.'
                     dtype = DNS_RECORDS[dtype]
                     dns_insert_record(subdomain, domain, dtype, value)
                 except Exception as e:
-                    return jsonify({"error":"' + str(e) + '"})
-                    continue
-            return jsonify({"msg":"Updated records"})
-        return jsonify({"error":"Invalid records"})
+                    return jsonify({"error": "' + str(e) + '"}), 401
+                    
+            return jsonify({"msg": "Updated records"})
+        return jsonify({"error": "Invalid records"}), 401
 
-    return jsonify({"error":"unauthenticated"})
+    return jsonify({"error": "unauthenticated"}), 401
 
 
 if __name__ == '__main__':
