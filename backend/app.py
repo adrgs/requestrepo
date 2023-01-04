@@ -17,6 +17,17 @@ app.url_map.add(Rule('/', endpoint='index'))
 app.url_map.add(Rule('/<path:path>', endpoint='catch_all'))
 
 
+def check_subdomain(f):
+    def decorated_function(*args, **kwargs):
+        subdomain = get_subdomain_from_hostname(request.host)
+        if subdomain:
+            return subdomain_response(request, subdomain)
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 def verify_jwt(token):
     try:
         if token:
@@ -101,22 +112,14 @@ def subdomain_response(request, subdomain):
 
 
 @app.endpoint('index')
+@subdomain_response
 def index():
-    subdomain = get_subdomain_from_hostname(request.host)
-
-    if subdomain:
-        return subdomain_response(request, subdomain)
-    else:
-        subdomain = verify_jwt(request.cookies.get('token'))
-        return send_from_directory('public', 'index.html')
+    return send_from_directory('public', 'index.html')
 
 
 @app.endpoint('catch_all')
+@subdomain_response
 def catch_all(path):
-    subdomain = get_subdomain_from_hostname(request.host)
-    if subdomain:
-        return subdomain_response(request, subdomain)
-
     subdomain = request.path[1:8 + 1].lower()
     if len(subdomain) == 8 and subdomain.isalnum():
         return subdomain_response(request, subdomain)
@@ -127,112 +130,92 @@ def catch_all(path):
 
 
 @app.route('/api/get_dns_requests')
+@subdomain_response
 def get_dns_requests():
-    subdomain = get_subdomain_from_hostname(request.host)
+    subdomain = verify_jwt(request.cookies.get('token'))
+    time = request.args.get('t')
     if subdomain:
-        return subdomain_response(request, subdomain)
+        return jsonify(dns_get_subdomain(subdomain, time))
     else:
-        subdomain = verify_jwt(request.cookies.get('token'))
-        time = request.args.get('t')
-        if subdomain:
-            return jsonify(dns_get_subdomain(subdomain, time))
-        else:
-            return jsonify({'error': 'Unauthorized'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
 
 
 @app.route('/api/get_http_requests')
+@subdomain_response
 def get_http_requests():
-    subdomain = get_subdomain_from_hostname(request.host)
+    subdomain = verify_jwt(request.cookies.get('token'))
+    time = request.args.get('t')
     if subdomain:
-        return subdomain_response(request, subdomain)
+        return jsonify(http_get_subdomain(subdomain, time))
     else:
-        subdomain = verify_jwt(request.cookies.get('token'))
-        time = request.args.get('t')
-        if subdomain:
-            return jsonify(http_get_subdomain(subdomain, time))
-        else:
-            return jsonify({'error': 'Unauthorized'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
 
 
 @app.route('/api/get_requests')
+@subdomain_response
 def get_requests():
-    subdomain = get_subdomain_from_hostname(request.host)
+    subdomain = verify_jwt(request.cookies.get('token'))
+    time = request.args.get('t')
     if subdomain:
-        return subdomain_response(request, subdomain)
+        http_requests = http_get_subdomain(subdomain, time)
+        dns_requests = dns_get_subdomain(subdomain, time)
+        server_time = datetime.datetime.utcnow().strftime('%s')
+        return jsonify({
+            'http': http_requests,
+            'dns': dns_requests,
+            'date': server_time
+        })
     else:
-        subdomain = verify_jwt(request.cookies.get('token'))
-        time = request.args.get('t')
-        if subdomain:
-            http_requests = http_get_subdomain(subdomain, time)
-            dns_requests = dns_get_subdomain(subdomain, time)
-            server_time = datetime.datetime.utcnow().strftime('%s')
-            return jsonify({
-                'http': http_requests,
-                'dns': dns_requests,
-                'date': server_time
-            })
-        else:
-            return jsonify({'error': 'Unauthorized'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
 
 
 @app.route('/api/get_token', methods=['POST', 'OPTIONS'])
+@subdomain_response
 def get_token():
-    subdomain = get_subdomain_from_hostname(request.host)
-    if subdomain:
-        return subdomain_response(request, subdomain)
-    else:
-        if request.method == 'OPTIONS':
-            return 'POST'
+    if request.method == 'OPTIONS':
+        return 'POST'
 
+    subdomain = get_random_subdomain()
+    while users_get_subdomain(subdomain) != None:
         subdomain = get_random_subdomain()
-        while users_get_subdomain(subdomain) != None:
-            subdomain = get_random_subdomain()
-        dns_delete_records(subdomain)
+    dns_delete_records(subdomain)
 
-        write_basic_file(subdomain)
+    write_basic_file(subdomain)
 
-        payload = {
-            'iat': datetime.datetime.utcnow(),
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=31),
-            'subdomain': subdomain
-        }
-        token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
-        resp = make_response(token)
-        resp.set_cookie('token', token)
-        return resp
+    payload = {
+        'iat': datetime.datetime.utcnow(),
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=31),
+        'subdomain': subdomain
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+    resp = make_response(token)
+    resp.set_cookie('token', token)
+    return resp
 
 
 @app.route('/api/get_server_time')
+@subdomain_response
 def get_server_time():
-    subdomain = get_subdomain_from_hostname(request.host)
-    if subdomain:
-        return subdomain_response(request, subdomain)
-    else:
-        return jsonify({'date': datetime.datetime.utcnow().strftime('%s')})
+    return jsonify({'date': datetime.datetime.utcnow().strftime('%s')})
 
 
 @app.route('/api/delete_request', methods=['POST'])
+@subdomain_response
 def delete_request():
-    subdomain = get_subdomain_from_hostname(request.host)
+    subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
-        return subdomain_response(request, subdomain)
-    else:
-        subdomain = verify_jwt(request.cookies.get('token'))
-        if subdomain:
-            content = request.json
-            if content:
-                _id = content.get('id')
-                rtype = content.get('type')
-                delete_request_from_db(_id, subdomain, rtype)
-                return jsonify({"rtype": rtype, "_id": _id})
-        return jsonify({"error": "Unauthorized"}), 401
+        content = request.json
+        if content:
+            _id = content.get('id')
+            rtype = content.get('type')
+            delete_request_from_db(_id, subdomain, rtype)
+            return jsonify({"rtype": rtype, "_id": _id})
+    return jsonify({"error": "Unauthorized"}), 401
 
 
 @app.route('/api/get_file', methods=['GET'])
+@subdomain_response
 def get_file():
-    subdomain = get_subdomain_from_hostname(request.host)
-    if subdomain:
-        return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
         with open('pages/' + subdomain, 'r') as outfile:
@@ -242,10 +225,8 @@ def get_file():
 
 
 @app.route('/api/update_file', methods=['POST'])
+@subdomain_response
 def update_file():
-    subdomain = get_subdomain_from_hostname(request.host)
-    if subdomain:
-        return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
         content = request.json
@@ -294,10 +275,8 @@ def update_file():
 
 
 @app.route('/api/get_dns_records', methods=['GET'])
+@subdomain_response
 def get_dns_records():
-    subdomain = get_subdomain_from_hostname(request.host)
-    if subdomain:
-        return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
         return jsonify(dns_get_records(subdomain))
@@ -308,10 +287,8 @@ DNS_RECORDS = ['A', 'AAAA', 'CNAME', 'TXT']
 
 
 @app.route('/api/update_dns_records', methods=['POST'])
+@subdomain_response
 def update_dns_records():
-    subdomain = get_subdomain_from_hostname(request.host)
-    if subdomain:
-        return subdomain_response(request, subdomain)
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
         dns_delete_records(subdomain)
@@ -332,30 +309,30 @@ def update_dns_records():
                 try:
                     if len(domain) > 63:
                         return jsonify({"error": "Domain too big"}), 401
-                        
+
                     if len(value) > 255:
                         return jsonify({"error": "Value too big"}), 401
-                        
+
                     if type(dtype) is not int:
                         return jsonify({"error": "Invalid type"}), 401
-                        
+
                     if dtype < 0 or dtype >= len(DNS_RECORDS):
                         return jsonify({"error": "Invalid type range"}), 401
-                        
+
                     if not re.search("^[ -~]+$", value):
                         return jsonify({"error": "Invailid regex1"}), 401
-                        
+
                     if not re.match(
                             "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$",
                             domain):
                         return jsonify({"error": "invalid regex2"}), 401
-                        
+
                     domain = domain + '.' + subdomain + '.requestrepo.com.'
                     dtype = DNS_RECORDS[dtype]
                     dns_insert_record(subdomain, domain, dtype, value)
                 except Exception as e:
                     return jsonify({"error": "' + str(e) + '"}), 401
-                    
+
             return jsonify({"msg": "Updated records"})
         return jsonify({"error": "Invalid records"}), 401
 
