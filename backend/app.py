@@ -1,3 +1,4 @@
+from functools import wraps
 from flask import Flask, jsonify, request, make_response, send_from_directory
 from werkzeug.routing import Rule
 from mongolog import *
@@ -18,6 +19,7 @@ app.url_map.add(Rule('/<path:path>', endpoint='catch_all'))
 
 
 def check_subdomain(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
         subdomain = get_subdomain_from_hostname(request.host)
         if subdomain:
@@ -112,13 +114,13 @@ def subdomain_response(request, subdomain):
 
 
 @app.endpoint('index')
-@subdomain_response
+@check_subdomain
 def index():
     return send_from_directory('public', 'index.html')
 
 
 @app.endpoint('catch_all')
-@subdomain_response
+@check_subdomain
 def catch_all(path):
     subdomain = request.path[1:8 + 1].lower()
     if len(subdomain) == 8 and subdomain.isalnum():
@@ -130,7 +132,7 @@ def catch_all(path):
 
 
 @app.route('/api/get_dns_requests')
-@subdomain_response
+@check_subdomain
 def get_dns_requests():
     subdomain = verify_jwt(request.cookies.get('token'))
     time = request.args.get('t')
@@ -141,7 +143,7 @@ def get_dns_requests():
 
 
 @app.route('/api/get_http_requests')
-@subdomain_response
+@check_subdomain
 def get_http_requests():
     subdomain = verify_jwt(request.cookies.get('token'))
     time = request.args.get('t')
@@ -152,7 +154,7 @@ def get_http_requests():
 
 
 @app.route('/api/get_requests')
-@subdomain_response
+@check_subdomain
 def get_requests():
     subdomain = verify_jwt(request.cookies.get('token'))
     time = request.args.get('t')
@@ -170,7 +172,7 @@ def get_requests():
 
 
 @app.route('/api/get_token', methods=['POST', 'OPTIONS'])
-@subdomain_response
+@check_subdomain
 def get_token():
     if request.method == 'OPTIONS':
         return 'POST'
@@ -194,13 +196,13 @@ def get_token():
 
 
 @app.route('/api/get_server_time')
-@subdomain_response
+@check_subdomain
 def get_server_time():
     return jsonify({'date': datetime.datetime.utcnow().strftime('%s')})
 
 
 @app.route('/api/delete_request', methods=['POST'])
-@subdomain_response
+@check_subdomain
 def delete_request():
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
@@ -214,7 +216,7 @@ def delete_request():
 
 
 @app.route('/api/get_file', methods=['GET'])
-@subdomain_response
+@check_subdomain
 def get_file():
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
@@ -225,7 +227,7 @@ def get_file():
 
 
 @app.route('/api/update_file', methods=['POST'])
-@subdomain_response
+@check_subdomain
 def update_file():
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
@@ -275,7 +277,7 @@ def update_file():
 
 
 @app.route('/api/get_dns_records', methods=['GET'])
-@subdomain_response
+@check_subdomain
 def get_dns_records():
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
@@ -287,7 +289,7 @@ DNS_RECORDS = ['A', 'AAAA', 'CNAME', 'TXT']
 
 
 @app.route('/api/update_dns_records', methods=['POST'])
-@subdomain_response
+@check_subdomain
 def update_dns_records():
     subdomain = verify_jwt(request.cookies.get('token'))
     if subdomain:
