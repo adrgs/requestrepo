@@ -177,8 +177,8 @@ def get_token():
     subdomain = get_random_subdomain()
     while users_get_subdomain(subdomain) != None:
         subdomain = get_random_subdomain()
-    dns_delete_records(subdomain)
 
+    dns_delete_records(subdomain)
     write_basic_file(subdomain)
 
     payload = {
