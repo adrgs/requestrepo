@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, make_response, redirect, send_from_directory
+from flask import Flask, jsonify, request, make_response, send_from_directory
 from werkzeug.routing import Rule
 from mongolog import *
 import base64
@@ -8,7 +8,6 @@ from util import get_random_subdomain
 import re
 import json
 import os
-
 
 JWT_SECRET = os.getenv('JWT_SECRET', os.urandom(32))
 DOMAIN = os.getenv('DOMAIN', 'requestrepo.com')
