@@ -225,7 +225,7 @@ def delete_request():
                 rtype = content.get('type')
                 delete_request_from_db(_id, subdomain, rtype)
                 return jsonify({"rtype": rtype, "_id": _id})
-        return jsonify("error"), 401
+        return jsonify({"error": "Unauthorized"}), 401
 
 
 @app.route('/api/get_file', methods=['GET'])
