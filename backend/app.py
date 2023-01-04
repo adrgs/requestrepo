@@ -216,11 +216,12 @@ def delete_request():
 @check_subdomain
 def get_file():
     subdomain = verify_jwt(request.cookies.get('token'))
-    if subdomain:
-        with open('pages/' + subdomain, 'r') as outfile:
-            return outfile.read()
-    else:
+    if not subdomain:
         return jsonify({"raw": "", "headers": [], "status_code": 200})
+    
+    with open('pages/' + subdomain, 'r') as outfile:
+        return outfile.read()
+        
 
 
 @app.route('/api/update_file', methods=['POST'])
