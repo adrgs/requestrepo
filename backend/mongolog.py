@@ -37,7 +37,7 @@ collection = db['dns_requests']
 ddns = db['ddns']
 
 # create indexes
-collection.create_index([('uid', 1), ('_deleted', 1), ('date', 1)])
+collection.create_index([('uid', 1), ('_deleted', 1), ('date', 1)], background=True)
 
 
 
@@ -104,7 +104,7 @@ def dns_delete_request(_id, subdomain):
 # HTTP database
 
 http = db['http']
-http.create_index([('uid', 1), ('_deleted', 1), ('date', 1)])
+http.create_index([('uid', 1), ('_deleted', 1), ('date', 1)], background=True)
 
 
 def http_insert_into_db(dic):
