@@ -41,6 +41,17 @@ services:
       JWT_SECRET: changethis
     depends_on:
       - mongodb
+  nginx:
+    image: nginx
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/fullchain.pem:/etc/nginx/fullchain.pem
+      - ./nginx/privkey.pem:/etc/nginx/privkey.pem
 volumes:
   mongodb_data:
     driver: local
