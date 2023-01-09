@@ -1,5 +1,5 @@
 import os
-from pymongo import MongoClient
+import pymongo
 from bson.objectid import ObjectId
 import urllib.parse
 import base64
@@ -28,13 +28,17 @@ else:
 username = urllib.parse.quote_plus(MONGODB_USERNAME)
 password = urllib.parse.quote_plus(MONGODB_PASSWORD)
 
-client = MongoClient(
+client = pymongo.MongoClient(
     'mongodb://%s:%s@%s' % (username, password, MONGODB_HOSTNAME), 27017)
 db = client[MONGODB_DATABASE]
 
 # DNS Database
 collection = db['dns_requests']
 ddns = db['ddns']
+
+# create indexes
+collection.create_index([('uid', 1), ('_deleted', 1), ('date', 1)])
+
 
 
 def dns_insert_into_db(value):
@@ -100,6 +104,7 @@ def dns_delete_request(_id, subdomain):
 # HTTP database
 
 http = db['http']
+http.create_index([('uid', 1), ('_deleted', 1), ('date', 1)])
 
 
 def http_insert_into_db(dic):
