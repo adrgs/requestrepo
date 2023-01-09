@@ -1,4 +1,4 @@
-FROM python:3.6
+FROM python:3
 
 COPY ./requirements.txt /app/requirements.txt
 COPY ./ns.py /app/ns.py
@@ -7,4 +7,7 @@ WORKDIR /app
 
 RUN pip install -r requirements.txt
 
-CMD ["./ns.py"]
+RUN useradd -ms /bin/bash app
+USER app
+
+CMD ["python3", "./ns.py"]
