@@ -54,7 +54,7 @@ export class RecordInput extends Component {
 
         return (
             <div className="grid">
-                <div className="col">
+                <div className="col-3">
                     <label>Record type: </label>
                     <Dropdown value={this.state.type} options={DNSRecordTypes} onChange={(e) => {this.changeEvent(e, 'type')}} placeholder="Select a record type"/>
                 </div>
