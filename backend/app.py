@@ -62,7 +62,11 @@ def log_request(request, subdomain):
 
     dic['raw'] = request.stream.read()
     dic['uid'] = subdomain
-    dic['ip'] = request.remote_addr
+    if 'Requestrepo-X-Forwarded-For' in headers:
+        dic['ip'] = headers['Requestrepo-X-Forwarded-For']
+        del headers['Requestrepo-X-Forwarded-For']
+    else:
+        dic['ip'] = request.remote_addr
     dic['headers'] = headers
     dic['method'] = request.method
     dic['protocol'] = request.environ.get('SERVER_PROTOCOL')
@@ -202,7 +206,10 @@ def get_token():
 @app.route('/api/get_server_time')
 @check_subdomain
 def get_server_time():
-    return jsonify({'date': int(datetime.datetime.now(datetime.timezone.utc).timestamp())})
+    return jsonify({
+        'date':
+        int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    })
 
 
 @app.route('/api/delete_request', methods=['POST'])
