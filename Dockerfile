@@ -12,6 +12,7 @@ RUN npm install npm@latest -g && \
 COPY ./frontend /tmp/frontend
 WORKDIR /tmp/frontend
 
+RUN npm install
 RUN npm run build
 
 COPY ./backend /app
