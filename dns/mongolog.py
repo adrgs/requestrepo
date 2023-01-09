@@ -1,6 +1,7 @@
 import os
 from pymongo import MongoClient
 import urllib.parse
+import re
 
 if 'MONGODB_DATABASE' in os.environ:
     MONGODB_DATABASE = os.environ['MONGODB_DATABASE']
@@ -10,12 +11,12 @@ else:
 if 'MONGODB_USERNAME' in os.environ:
     MONGODB_USERNAME = os.environ['MONGODB_USERNAME']
 else:
-    MONGODB_USERNAME = 'root'
+    MONGODB_USERNAME = 'requestrepouser'
 
 if 'MONGODB_PASSWORD' in os.environ:
     MONGODB_PASSWORD = os.environ['MONGODB_PASSWORD']
 else:
-    MONGODB_PASSWORD = 'rootpassword'
+    MONGODB_PASSWORD = 'changethis'
 
 if 'MONGODB_HOSTNAME' in os.environ:
     MONGODB_HOSTNAME = os.environ['MONGODB_HOSTNAME']
@@ -47,7 +48,7 @@ def get_dns_record(domain, dtype):
 REGXPRESSION = '^(.*)(\\.?[0-9a-z]{8}\\.requestrepo\\.com\\.?)$'
 def update_dns_record(subdomain, domain, dtype, newval):
     if subdomain == None:
-        uid = re.search(REGXPRESSION, name)
+        uid = re.search(REGXPRESSION, domain)
         if uid == None:
             uid = "Bad"
         else:

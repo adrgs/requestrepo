@@ -75,7 +75,7 @@ def log_request(request, subdomain):
     else:
         dic['query'] = ''
     dic['url'] = request.url
-    dic['date'] = datetime.datetime.utcnow()
+    dic['date'] = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
     http_insert_into_db(dic)
 
@@ -133,6 +133,8 @@ def catch_all(path):
 def get_dns_requests():
     subdomain = verify_jwt(request.cookies.get('token'))
     time = request.args.get('t')
+    if type(time) == str and time.isdigit():
+        time = int(time)
     if not subdomain:
         return jsonify({'error': 'Unauthorized'}), 401
 
@@ -144,6 +146,8 @@ def get_dns_requests():
 def get_http_requests():
     subdomain = verify_jwt(request.cookies.get('token'))
     time = request.args.get('t')
+    if type(time) == str and time.isdigit():
+        time = int(time)
     if not subdomain:
         return jsonify({'error': 'Unauthorized'}), 401
 
@@ -158,9 +162,11 @@ def get_requests():
         return jsonify({'error': 'Unauthorized'}), 401
 
     time = request.args.get('t')
+    if type(time) == str and time.isdigit():
+        time = int(time)
     http_requests = http_get_subdomain(subdomain, time)
     dns_requests = dns_get_subdomain(subdomain, time)
-    server_time = datetime.datetime.utcnow().strftime('%s')
+    server_time = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
     return jsonify({
         'http': http_requests,
         'dns': dns_requests,
@@ -192,13 +198,15 @@ def get_token():
         resp.set_cookie('token', token)
     else:
         resp.set_cookie('token', token, httponly=True)
+
+    resp.set_cookie('token', token)
     return resp
 
 
 @app.route('/api/get_server_time')
 @check_subdomain
 def get_server_time():
-    return jsonify({'date': datetime.datetime.utcnow().strftime('%s')})
+    return jsonify({'date': int(datetime.datetime.now(datetime.timezone.utc).timestamp())})
 
 
 @app.route('/api/delete_request', methods=['POST'])

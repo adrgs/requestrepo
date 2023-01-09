@@ -26,6 +26,7 @@ class App extends Component {
 
         if (!Utils.userHasSubdomain()) {
             Utils.getRandomSubdomain();
+            return;
         }
 
         this.user = {
@@ -213,7 +214,7 @@ class App extends Component {
             if (newRequests > 0)
             {
                 this.setState({user});
-                toast('ðŸš€ ' + newRequests + ' new requests!', {
+                toast('🚀 ' + newRequests + ` new request${newRequests > 1 ? 's' : ''}!`, {
                     position: "bottom-center",
                     autoClose: 4000,
                     hideProgressBar: false,

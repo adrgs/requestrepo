@@ -20,11 +20,10 @@ export class RequestInfo extends Component {
     }
 
     convertUTCDateToLocalDate(date) {
-        var newDate = new Date(date.getTime()+date.getTimezoneOffset()*60*1000);
-        var offset = date.getTimezoneOffset() / 60;
-        var hours = date.getHours();
-        newDate.setHours(hours - offset);
-        return newDate;
+        var utcSeconds = date;
+        var d = new Date(0);
+        d.setUTCSeconds(utcSeconds);
+        return d;
     }
 
     isDesktop() {
@@ -78,7 +77,7 @@ export class RequestInfo extends Component {
                         </tr>
                         <tr>
                             <td className="req-table-a">Date</td>
-                            <td className="req-table-b">{this.convertUTCDateToLocalDate(new Date(parseInt(request.date)*1000)).toLocaleString()}</td>
+                            <td className="req-table-b">{this.convertUTCDateToLocalDate(request.date).toLocaleString()}</td>
                         </tr>
                         <tr>
                             <td className="req-table-a">Path</td>
@@ -161,7 +160,7 @@ export class RequestInfo extends Component {
                         </tr>
                         <tr>
                             <td className="req-table-a">Date</td>
-                            <td className="req-table-b">{this.convertUTCDateToLocalDate(new Date(parseInt(request.date)*1000)).toLocaleString()}</td>
+                            <td className="req-table-b">{this.convertUTCDateToLocalDate(request.date).toLocaleString()}</td>
                         </tr>
                         <tr>
                             <td className="req-table-a">Type</td>

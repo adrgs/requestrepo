@@ -53,11 +53,11 @@ export class AppSidebar extends Component {
     }
 
     convertUTCDateToLocalDate(date) {
-        var newDate = new Date(date.getTime()+date.getTimezoneOffset()*60*1000);
-        var offset = date.getTimezoneOffset() / 60;
-        var hours = date.getHours();
-        newDate.setHours(hours - offset);
-        return newDate;
+        console.log(date);
+        var utcSeconds = date;
+        var d = new Date(0);
+        d.setUTCSeconds(utcSeconds);
+        return d;
     }
 
     getRequests() {
@@ -90,8 +90,7 @@ export class AppSidebar extends Component {
                     let req = user.requests[user.httpRequests[i]['_id']];
                     obj['title'] = req['path'];
                     obj['method'] = req['method'];
-                    obj['time'] = this.convertUTCDateToLocalDate(new Date(dateA*1000));
-                    obj['time'] = obj['time'].toLocaleString();
+                    obj['time'] = this.convertUTCDateToLocalDate(dateA).toLocaleString();
                     obj['detail'] = req['ip'];
                     obj['id'] = req['_id'];
                     obj['key'] = obj['id'];
@@ -104,8 +103,7 @@ export class AppSidebar extends Component {
                     let req = user.requests[user.dnsRequests[j]['_id']];
                     obj['title'] = req['name'];
                     obj['method'] = 'DNS';
-                    obj['time'] = this.convertUTCDateToLocalDate(new Date(dateB*1000));
-                    obj['time'] = obj['time'].toLocaleString();
+                    obj['time'] = this.convertUTCDateToLocalDate(dateB).toLocaleString();
                     obj['detail'] = req['ip'];
                     obj['id'] = req['_id'];
                     obj['key'] = obj['id'];
@@ -150,7 +148,7 @@ export class AppSidebar extends Component {
                 continue;
             }
             if (property == 'date') {
-                val = this.convertUTCDateToLocalDate(new Date(parseInt(val)*1000)).toLocaleString().toLowerCase();
+                val = this.convertUTCDateToLocalDate(parseInt(val)).toLocaleString().toLowerCase();
                 if (val.indexOf(needle) >= 0) return true;
                 continue;
             }

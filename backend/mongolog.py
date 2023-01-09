@@ -73,14 +73,13 @@ def dns_get_subdomain(subdomain, time):
     find = {'uid': subdomain, '_deleted': False}
     try:
         if time != None:
-            find['date'] = {'$gte': datetime.datetime.fromtimestamp(int(time))}
+            find['date'] = {'$gte': time}
     except:
         pass
 
     for x in collection.find(find, {'_deleted': False}):
         x['_id'] = str(x['_id'])
         x['raw'] = str(base64.b64encode(x['raw']), 'utf-8')
-        x['date'] = x['date'].strftime('%s')
         l.append(x)
     return l
 
@@ -113,7 +112,6 @@ def http_get_from_db():
     for x in http.find({'_deleted': False}):
         x['_id'] = str(x['_id'])
         x['raw'] = str(base64.b64encode(x['raw']), 'utf-8')
-        x['date'] = x['date'].strftime('%s')
         l.append(x)
     return l
 
@@ -124,7 +122,7 @@ def http_get_subdomain(subdomain, time):
     find = {'uid': subdomain, '_deleted': False}
     try:
         if time != None:
-            find['date'] = {'$gte': datetime.datetime.fromtimestamp(int(time))}
+            find['date'] = {'$gte': time}
     except:
         pass
 
@@ -132,7 +130,6 @@ def http_get_subdomain(subdomain, time):
     for x in http.find(find, {'_deleted': False}):
         x['_id'] = str(x['_id'])
         x['raw'] = str(base64.b64encode(x['raw']), 'utf-8')
-        x['date'] = x['date'].strftime('%s')
         l.append(x)
     return l
 
