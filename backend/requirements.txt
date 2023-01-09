@@ -1,5 +1,4 @@
 Flask
-uwsgi
 pymongo
 pyjwt
 gunicorn

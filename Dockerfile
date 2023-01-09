@@ -26,4 +26,4 @@ RUN chmod 703 /app/pages
 RUN useradd -ms /bin/bash app
 USER app
 
-CMD ["uwsgi", "--socket", "0.0.0.0:21337", "--protocol=http", "-w", "wsgi:app"]
+CMD ["gunicorn", "-w", "4", "--bind", "0.0.0.0:21337", "wsgi:app"]
