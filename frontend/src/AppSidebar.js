@@ -53,7 +53,6 @@ export class AppSidebar extends Component {
     }
 
     convertUTCDateToLocalDate(date) {
-        console.log(date);
         var utcSeconds = date;
         var d = new Date(0);
         d.setUTCSeconds(utcSeconds);
