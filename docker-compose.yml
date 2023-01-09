@@ -25,7 +25,7 @@ services:
       MONGODB_PASSWORD: changethis
       MONGODB_HOSTNAME: mongodb
       DOMAIN: requestrepo.com
-      SERVER_IP: 159.89.104.197
+      SERVER_IP: 130.61.138.67
   flaskapp:
     build: .
     container_name: flaskapp
