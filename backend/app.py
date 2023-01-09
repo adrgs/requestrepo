@@ -188,7 +188,10 @@ def get_token():
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
     resp = make_response(token)
-    resp.set_cookie('token', token, httponly=True)
+    if app.debug:
+        resp.set_cookie('token', token)
+    else:
+        resp.set_cookie('token', token, httponly=True)
     return resp
 
 
@@ -349,4 +352,4 @@ def update_dns_records():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=21337)
+    app.run(host='0.0.0.0', port=21337, debug=True)
