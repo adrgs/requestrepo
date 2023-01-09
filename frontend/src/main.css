@@ -726,7 +726,7 @@ h2 {
 .title {
     text-overflow: ellipsis;
     font-size: 14px;
-    width: 75%;
+    max-width: 75%;
     white-space: nowrap;
     overflow: hidden;
     display: inline-block
