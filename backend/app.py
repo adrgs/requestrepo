@@ -113,7 +113,7 @@ def subdomain_response(request, subdomain):
 @app.endpoint('index')
 @check_subdomain
 def index():
-    return send_from_directory('public', 'index.html')
+    return send_from_directory('public', 'index.html', as_attachment=False)
 
 
 @app.endpoint('catch_all')
@@ -123,7 +123,7 @@ def catch_all(path):
     if len(subdomain) == 8 and subdomain.isalnum():
         return subdomain_response(request, subdomain)
 
-    response = send_from_directory('public', path)
+    response = send_from_directory('public', path, as_attachment=False)
 
     return response
 
@@ -135,7 +135,7 @@ def get_dns_requests():
     time = request.args.get('t')
     if not subdomain:
         return jsonify({'error': 'Unauthorized'}), 401
-    
+
     return jsonify(dns_get_subdomain(subdomain, time))
 
 
@@ -146,7 +146,7 @@ def get_http_requests():
     time = request.args.get('t')
     if not subdomain:
         return jsonify({'error': 'Unauthorized'}), 401
-    
+
     return jsonify(http_get_subdomain(subdomain, time))
 
 
@@ -219,6 +219,9 @@ def get_file():
     subdomain = verify_jwt(request.cookies.get('token'))
     if not subdomain:
         return jsonify({"raw": "", "headers": [], "status_code": 200})
+
+    if not os.path.exists('pages/' + subdomain):
+        write_basic_file(subdomain)
 
     with open('pages/' + subdomain, 'r') as outfile:
         return outfile.read()
