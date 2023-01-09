@@ -194,12 +194,8 @@ def get_token():
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
     resp = make_response(token)
-    if app.debug:
-        resp.set_cookie('token', token)
-    else:
-        resp.set_cookie('token', token, httponly=True)
-
     resp.set_cookie('token', token)
+
     return resp
 
 
