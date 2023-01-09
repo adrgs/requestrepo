@@ -26,27 +26,34 @@ else:
 username = urllib.parse.quote_plus(MONGODB_USERNAME)
 password = urllib.parse.quote_plus(MONGODB_PASSWORD)
 
-client = MongoClient('mongodb://%s:%s@%s' % (username, password, MONGODB_HOSTNAME), 27017)
-db = client[MONGODB_DATABASE]
-
-collection = db['dns_requests']
-ddns = db['ddns']
-
 def insert_into_db(value):
+    client = MongoClient('mongodb://%s:%s@%s' % (username, password, MONGODB_HOSTNAME), 27017)
+    db = client[MONGODB_DATABASE]
+
+    collection = db['dns_requests']
     value['_deleted'] = False
     collection.insert_one(value)
+    client.close()
 
-def get_from_db():
-    return collection.find({'_deleted':False}, {'_deleted':False})
 
 def get_dns_record(domain, dtype):
-    return ddns.find_one({'domain':domain, 'type':dtype})
+    client = MongoClient('mongodb://%s:%s@%s' % (username, password, MONGODB_HOSTNAME), 27017)
+    db = client[MONGODB_DATABASE]
+
+    ddns = db['ddns']
+    result = ddns.find_one({'domain':domain, 'type':dtype})
+    client.close()
+    return result
 
 
 
 #REGXPRESSION = '^\\.?[0-9a-z]{8}\\.requestrepo\\.com\\.?$'
 REGXPRESSION = '^(.*)(\\.?[0-9a-z]{8}\\.requestrepo\\.com\\.?)$'
 def update_dns_record(subdomain, domain, dtype, newval):
+    client = MongoClient('mongodb://%s:%s@%s' % (username, password, MONGODB_HOSTNAME), 27017)
+    db = client[MONGODB_DATABASE]
+
+    ddns = db['ddns']
     if subdomain == None:
         uid = re.search(REGXPRESSION, domain)
         if uid == None:
@@ -58,6 +65,7 @@ def update_dns_record(subdomain, domain, dtype, newval):
             else:
                 subdomain = uid[:8]
     ddns.update_one({'subdomain':subdomain, 'domain':domain, 'type':dtype}, {'$set':{'value':newval}})
+    client.close()
 
-def insert_dns_record(subdomain, domain, dtype, val):
-    ddns.insert_one({'subdomain':subdomain, 'domain':domain, 'type':dtype, 'value':val})
+#def insert_dns_record(subdomain, domain, dtype, val):
+#    ddns.insert_one({'subdomain':subdomain, 'domain':domain, 'type':dtype, 'value':val})
