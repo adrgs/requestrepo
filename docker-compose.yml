@@ -24,12 +24,10 @@ services:
       MONGODB_USERNAME: requestrepouser
       MONGODB_PASSWORD: changethis
       MONGODB_HOSTNAME: mongodb
+      DOMAIN: requestrepo.com
       SERVER_IP: 159.89.104.197
   flaskapp:
-    build:
-      context: ./app
-      dockerfile: Dockerfile-prod
-    command: gunicorn -c conf.py --bind 0.0.0.0:21337 app:app
+    build: .
     container_name: flaskapp
     restart: always
     ports:
@@ -39,6 +37,8 @@ services:
       MONGODB_USERNAME: requestrepouser
       MONGODB_PASSWORD: changethis
       MONGODB_HOSTNAME: mongodb
+      DOMAIN: requestrepo.com
+      JWT_SECRET: changethis
     depends_on:
       - mongodb
 volumes:
