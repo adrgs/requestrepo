@@ -18,6 +18,8 @@ cd requestrepo
 docker-compose up --build
 ```
 
+You can access your instance on localhost HTTP port 80, HTTPS port 443, DNS on port 53 and the Python app directly on port 21337.
+
 ## Development
 
 For development, it is recommended to start each service individually for the best developer experience
