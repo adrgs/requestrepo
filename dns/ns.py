@@ -146,8 +146,7 @@ class Resolver:
         elif QTYPE[reply.q.qtype] == 'TXT':
             data = get_dns_record(str(reply.q.qname), 'TXT')
             if data == None:
-                new_record = Record(
-                    TXT, '3r_c8OKexhD8zYQUx6QKjIlnkn6E_YB_vdzgZ5Xbpjk')
+                new_record = Record(TXT, os.getenv('TXT') or 'Hello!')
             else:
                 new_record = Record(TXT, data['value'])
         elif QTYPE[reply.q.qtype] == 'A':
