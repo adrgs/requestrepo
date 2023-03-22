@@ -219,7 +219,7 @@ export class AppSidebar extends Component {
                          ref={(el) => { this.messagesEnd = el; }}>
                     </div>
                 </div>
-                <div className='github-button' style={{position:"absolute", bottom:"0", height:"100px", textAlign:"center", width:"100%"}}>
+                <div className='github-button' style={{position:"absolute", bottom:"0", height:"100px", textAlign:"center", width:"100%", lineHeight:"64px"}}>
                     <GitHubButton href="https://github.com/adrgs/requestrepo" data-size="large" aria-label="See on GitHub">See on GitHub</GitHubButton>
                     <span style={{"marginRight":"10px"}}></span>
                     <GitHubButton href="https://github.com/adrgs/requestrepo" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star adrgs/requestrepo on GitHub">Star</GitHubButton>
