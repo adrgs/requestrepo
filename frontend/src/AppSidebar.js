@@ -3,6 +3,7 @@ import {RequestCard} from "./components/RequestCard";
 import {Checkbox} from 'primereact/checkbox';
 import {Button} from 'primereact/button';
 import {Utils} from "./Utils";
+import GitHubButton from 'react-github-btn'
 
 export class AppSidebar extends Component {
 
@@ -219,7 +220,9 @@ export class AppSidebar extends Component {
                     </div>
                 </div>
                 <div className='github-button' style={{position:"absolute", bottom:"0", height:"100px", textAlign:"center", width:"100%"}}>
-                    <Button style={{margin:"0 auto", display:"block"}} label="See on GitHub" icon="pi pi-github" className="p-button-plain p-button-text" onClick={() => {window.open("https://github.com/adrgs/requestrepo")}} />
+                    <GitHubButton href="https://github.com/adrgs/requestrepo" data-size="large" aria-label="See on GitHub">See on GitHub</GitHubButton>
+                    <span style={{"marginRight":"10px"}}></span>
+                    <GitHubButton href="https://github.com/adrgs/requestrepo" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star adrgs/requestrepo on GitHub">Star</GitHubButton>
                 </div>
             </div>
         );
