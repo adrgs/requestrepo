@@ -1,7 +1,4 @@
-import os
 from pymongo import MongoClient
-import urllib.parse
-import re
 from config import config
 from utils import get_subdomain
 
@@ -12,7 +9,7 @@ client = MongoClient(
 )
 
 
-def insert_into_db(value) -> None:
+def insert_into_db(value: dict[str, any]) -> None:
     db = client[config.mongodb_database]
 
     collection = db["dns_requests"]
@@ -20,7 +17,7 @@ def insert_into_db(value) -> None:
     collection.insert_one(value)
 
 
-def get_dns_record(domain: str, dtype):
+def get_dns_record(domain: str, dtype: str) -> any | None:
     db = client[config.mongodb_database]
 
     ddns = db["ddns"]
@@ -28,7 +25,9 @@ def get_dns_record(domain: str, dtype):
     return result
 
 
-def update_dns_record(subdomain: str | None, domain: str, dtype, newval) -> None:
+def update_dns_record(
+    subdomain: str | None, domain: str, dtype: str, newval: str
+) -> None:
     db = client[config.mongodb_database]
 
     ddns = db["ddns"]
