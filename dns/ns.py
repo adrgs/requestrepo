@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import datetime
 import os
-from time import sleep
 import random
+import threading
 
 from dnslib import DNSLabel, QTYPE, RD, RR, RCODE
 from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
@@ -171,12 +171,13 @@ servers = [
 ]
 
 if __name__ == "__main__":
+    stop_event = threading.Event()
+
     for s in servers:
         s.start_thread()
 
     try:
-        while 1:
-            sleep(0.1)
+        stop_event.wait()
     except KeyboardInterrupt:
         pass
     finally:
