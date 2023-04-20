@@ -12,6 +12,7 @@ from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
 from dnslib.server import DNSServer
 from mongolog import insert_into_db, update_dns_record, get_dns_record
 
+
 EPOCH = datetime.datetime(1970, 1, 1)
 SERIAL = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
@@ -23,17 +24,6 @@ TYPE_LOOKUP = {
     NS: QTYPE.NS,
     SOA: QTYPE.SOA,
     TXT: QTYPE.TXT,
-}
-
-SUSPICIOUS_RECORDS = {
-    "ftp": "FTP ",
-    "cpanel": "cPanel hosting control panel",
-    "admin": "common record for admin control panels",
-    "ssh": "SSH service",
-    "wordpress": "common blogging platform",
-    "store": "common record for stores",
-    "staging": "common record for staging environments",
-    "mail": "common record for email",
 }
 
 
