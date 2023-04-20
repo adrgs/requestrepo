@@ -1,8 +1,6 @@
 FROM python:3.10
 
-COPY ./requirements.txt /app/requirements.txt
-COPY ./ns.py /app/ns.py
-COPY ./mongolog.py /app/mongolog.py
+COPY ./ /app/
 WORKDIR /app
 
 RUN pip install -r requirements.txt
