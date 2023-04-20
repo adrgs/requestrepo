@@ -16,6 +16,8 @@ class Config:
         os.environ.get("MONGODB_HOSTNAME", "127.0.0.1")
     )
     server_ip: str = os.environ.get("SERVER_IP", "127.0.0.1")
+    server_domain: str = os.environ.get("SERVER_DOMAIN", "requestrepo.com")
+    subdomain_length: int = int(os.environ.get("SUBDOMAIN_LENGTH", 8))
 
 
 config = Config()
