@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-import sys
 import datetime
-import time
 import os
 from time import sleep
-import re
 import random
 
 from dnslib import DNSLabel, QTYPE, RD, RR, RCODE
@@ -93,9 +90,9 @@ def save_into_db(reply, ip, raw):
 
 
 class Resolver:
-    def __init__(self, server_ip: str, domain_name: str):
+    def __init__(self, server_ip: str, server_domain: str):
         self.server_ip = server_ip
-        self.domain_name = domain_name + "."
+        self.server_domain = server_domain + "."
 
     def resolve(self, request, handler):
         reply = request.reply()
@@ -106,7 +103,7 @@ class Resolver:
         if QTYPE[reply.q.qtype] == "CNAME":
             data = get_dns_record(str(reply.q.qname), "CNAME")
             if data == None:
-                new_record = Record(CNAME, self.domain_name)
+                new_record = Record(CNAME, self.server_domain)
             else:
                 new_record = Record(CNAME, data["value"])
         elif QTYPE[reply.q.qtype] == "TXT":
@@ -188,7 +185,7 @@ class Resolver:
         return reply
 
 
-resolver = Resolver(config.server_ip)
+resolver = Resolver(config.server_ip, config.server_domain)
 servers = [
     DNSServer(resolver, port=53, address="0.0.0.0", tcp=True),
     DNSServer(resolver, port=53, address="0.0.0.0", tcp=False),
