@@ -94,6 +94,50 @@ class Resolver:
         self.server_ip = server_ip
         self.server_domain = server_domain + "."
 
+    def resolve_cname(self, reply):
+        data = get_dns_record(str(reply.q.qname), "CNAME")
+        if data == None:
+            return Record(CNAME, self.server_domain)
+        else:
+            return Record(CNAME, data["value"])
+
+    def resolve_txt(self, reply):
+        data = get_dns_record(str(reply.q.qname), "TXT")
+        if data == None:
+            return Record(TXT, os.getenv("TXT") or "Hello!")
+        else:
+            return Record(TXT, data["value"])
+
+    def resolve_ip(self, reply, dtype):
+        new_record = None
+        data = get_dns_record(str(reply.q.qname), dtype)
+        if data == None:
+            new_record = Record(A if dtype == "A" else AAAA, self.server_ip)
+        else:
+            ips = data["value"]
+            if "/" not in ips and "%" not in ips:
+                new_record = Record(A, ips)
+            else:
+                if "%" in ips:
+                    ips = ips.split("%")
+                    idx = random.randint(0, len(ips) - 1)
+                    if "/" in ips[idx]:
+                        new_ips = ips[idx].split("/")
+                        new_record = Record(A, new_ips[0])
+                        new_ips = "/".join(new_ips[1:] + [new_ips[0]])
+                        ips[idx] = new_ips
+                        ips = "%".join(ips)
+                        update_dns_record(data["subdomain"], data["domain"], "A", ips)
+                    else:
+                        new_record = Record(A, ips[idx])
+                else:
+                    ips = ips.split("/")
+                    new_record = Record(A, ips[0])
+                    ips = "/".join(ips[1:] + [ips[0]])
+                    update_dns_record(data["subdomain"], data["domain"], "A", ips)
+
+        return new_record
+
     def resolve(self, request, handler):
         reply = request.reply()
 
@@ -101,78 +145,13 @@ class Resolver:
         new_record = None
 
         if QTYPE[reply.q.qtype] == "CNAME":
-            data = get_dns_record(str(reply.q.qname), "CNAME")
-            if data == None:
-                new_record = Record(CNAME, self.server_domain)
-            else:
-                new_record = Record(CNAME, data["value"])
+            new_record = self.resolve_cname(reply)
         elif QTYPE[reply.q.qtype] == "TXT":
-            data = get_dns_record(str(reply.q.qname), "TXT")
-            if data == None:
-                new_record = Record(TXT, os.getenv("TXT") or "Hello!")
-            else:
-                new_record = Record(TXT, data["value"])
+            new_record = self.resolve_txt(reply)
         elif QTYPE[reply.q.qtype] == "A":
-            data = get_dns_record(str(reply.q.qname), "A")
-            if data == None:
-                new_record = Record(A, self.server_ip)
-            else:
-                ips = data["value"]
-                if "/" not in ips and "%" not in ips:
-                    new_record = Record(A, ips)
-                else:
-                    if "%" in ips:
-                        ips = ips.split("%")
-                        idx = random.randint(0, len(ips) - 1)
-                        if "/" in ips[idx]:
-                            new_ips = ips[idx].split("/")
-                            new_record = Record(A, new_ips[0])
-                            new_ips = "/".join(new_ips[1:] + [new_ips[0]])
-                            ips[idx] = new_ips
-                            ips = "%".join(ips)
-                            update_dns_record(
-                                data["subdomain"], data["domain"], "A", ips
-                            )
-                        else:
-                            new_record = Record(A, ips[idx])
-                    else:
-                        ips = ips.split("/")
-                        new_record = Record(A, ips[0])
-                        ips = "/".join(ips[1:] + [ips[0]])
-                        update_dns_record(data["subdomain"], data["domain"], "A", ips)
+            new_record = self.resolve_ip(reply, "A")
         elif QTYPE[reply.q.qtype] == "AAAA":
-            data = get_dns_record(str(reply.q.qname), "AAAA")
-            if data == None:
-                try:
-                    new_record = Record(AAAA, self.server_ip)
-                except:
-                    pass
-            else:
-                ips = data["value"]
-                if "/" not in ips and "%" not in ips:
-                    new_record = Record(AAAA, ips)
-                else:
-                    if "%" in ips:
-                        ips = ips.split("%")
-                        idx = random.randint(0, len(ips) - 1)
-                        if "/" in ips[idx]:
-                            new_ips = ips[idx].split("/")
-                            new_record = Record(AAAA, new_ips[0])
-                            new_ips = "/".join(new_ips[1:] + [new_ips[0]])
-                            ips[idx] = new_ips
-                            ips = "%".join(ips)
-                            update_dns_record(
-                                data["subdomain"], str(reply.q.qname), "AAAA", ips
-                            )
-                        else:
-                            new_record = Record(AAAA, ips[idx])
-                    else:
-                        ips = ips.split("/")
-                        new_record = Record(AAAA, ips[0])
-                        ips = "/".join(ips[1:] + [ips[0]])
-                        update_dns_record(
-                            data["subdomain"], str(reply.q.qname), "AAAA", ips
-                        )
+            new_record = self.resolve_ip(reply, "AAAA")
 
         if new_record != None:
             reply.add_answer(new_record.try_rr(request.q))
