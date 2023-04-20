@@ -1,4 +1,4 @@
-FROM python:3
+FROM python:3.10
 
 COPY ./requirements.txt /app/requirements.txt
 COPY ./ns.py /app/ns.py
