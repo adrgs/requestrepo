@@ -4,12 +4,13 @@ import os
 import random
 import threading
 
-from dnslib import DNSLabel, QTYPE, RD, RR, RCODE
+from dnslib import DNSRecord, QTYPE, RD, RR
 from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
 from dnslib.server import DNSServer
 from mongolog import insert_into_db, update_dns_record, get_dns_record
 from config import config
 from utils import get_subdomain
+from typing import Any
 
 
 EPOCH = datetime.datetime(1970, 1, 1)
@@ -27,7 +28,15 @@ TYPE_LOOKUP = {
 
 
 class Record:
-    def __init__(self, rdata_type, *args, rtype=None, rname=None, ttl=None, **kwargs):
+    def __init__(
+        self,
+        rdata_type: RD | A | AAAA | CNAME | MX | NS | SOA | TXT,
+        *args,
+        rtype=None,
+        rname=None,
+        ttl=None,
+        **kwargs
+    ) -> None:
         if isinstance(rdata_type, RD):
             self._rtype = TYPE_LOOKUP[rdata_type.__class__]
             rdata = rdata_type
@@ -52,25 +61,25 @@ class Record:
             rdata=rdata, ttl=self.sensible_ttl() if ttl is None else ttl, **kwargs
         )
 
-    def try_rr(self, q):
+    def try_rr(self, q) -> RR | None:
         if q.qtype == QTYPE.ANY or q.qtype == self._rtype:
             return self.as_rr(q.qname)
 
-    def as_rr(self, alt_rname):
+    def as_rr(self, alt_rname) -> RR:
         return RR(rname=self._rname or alt_rname, rtype=self._rtype, **self.kwargs)
 
-    def sensible_ttl(self):
+    def sensible_ttl(self) -> int:
         return 1
 
     @property
-    def is_soa(self):
+    def is_soa(self) -> bool:
         return self._rtype == QTYPE.SOA
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "{} {}".format(QTYPE[self._rtype], self.kwargs)
 
 
-def save_into_db(reply, ip, raw):
+def save_into_db(reply: DNSRecord, ip: str, raw: bytes) -> None:
     name = str(reply.q.qname)
     uid = get_subdomain(name)
 
@@ -90,25 +99,25 @@ def save_into_db(reply, ip, raw):
 
 
 class Resolver:
-    def __init__(self, server_ip: str, server_domain: str):
+    def __init__(self, server_ip: str, server_domain: str) -> None:
         self.server_ip = server_ip
         self.server_domain = server_domain + "."
 
-    def resolve_cname(self, reply):
+    def resolve_cname(self, reply: DNSRecord) -> Record | None:
         data = get_dns_record(str(reply.q.qname), "CNAME")
         if data == None:
             return Record(CNAME, self.server_domain)
         else:
             return Record(CNAME, data["value"])
 
-    def resolve_txt(self, reply):
+    def resolve_txt(self, reply: DNSRecord) -> Record | None:
         data = get_dns_record(str(reply.q.qname), "TXT")
         if data == None:
             return Record(TXT, os.getenv("TXT") or "Hello!")
         else:
             return Record(TXT, data["value"])
 
-    def resolve_ip(self, reply, dtype):
+    def resolve_ip(self, reply: DNSRecord, dtype: str) -> Record | None:
         new_record = None
         data = get_dns_record(str(reply.q.qname), dtype)
         if data == None:
@@ -138,11 +147,11 @@ class Resolver:
 
         return new_record
 
-    def resolve(self, request, handler):
+    def resolve(self, request: DNSRecord, handler: Any) -> DNSRecord:
         reply = request.reply()
 
         # We assume that the data in the DB is correct (using server side checks)
-        new_record = None
+        new_record: Record | None = None
 
         if QTYPE[reply.q.qtype] == "CNAME":
             new_record = self.resolve_cname(reply)
