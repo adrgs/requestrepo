@@ -11,6 +11,8 @@ from dnslib import DNSLabel, QTYPE, RD, RR, RCODE
 from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
 from dnslib.server import DNSServer
 from mongolog import insert_into_db, update_dns_record, get_dns_record
+from config import config
+from utils import get_subdomain
 
 
 EPOCH = datetime.datetime(1970, 1, 1)
@@ -71,25 +73,12 @@ class Record:
         return "{} {}".format(QTYPE[self._rtype], self.kwargs)
 
 
-if "SERVER_IP" in os.environ:
-    SERVER_IP = os.environ["SERVER_IP"]
-else:
-    SERVER_IP = "127.0.0.1"
-
-REGXPRESSION = "^(.+\\.)?(([0-9a-z]{8})\\.requestrepo\\.com\\.?)$"
-
-
 def save_into_db(reply, ip, raw):
     name = str(reply.q.qname)
-    uid = re.search(REGXPRESSION, name.lower())
-    if uid == None:
-        uid = "Bad"
-    else:
-        uid = uid.group(3)
-        if uid[0] == ".":
-            uid = uid[1:9]
-        else:
-            uid = uid[:8]
+    uid = get_subdomain(name)
+
+    if not uid:
+        return
 
     data = {
         "date": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
@@ -104,8 +93,9 @@ def save_into_db(reply, ip, raw):
 
 
 class Resolver:
-    def __init__(self):
-        self.server_ip = SERVER_IP
+    def __init__(self, server_ip: str, domain_name: str):
+        self.server_ip = server_ip
+        self.domain_name = domain_name + "."
 
     def resolve(self, request, handler):
         reply = request.reply()
@@ -116,7 +106,7 @@ class Resolver:
         if QTYPE[reply.q.qtype] == "CNAME":
             data = get_dns_record(str(reply.q.qname), "CNAME")
             if data == None:
-                new_record = Record(CNAME, "requestrepo.com.")
+                new_record = Record(CNAME, self.domain_name)
             else:
                 new_record = Record(CNAME, data["value"])
         elif QTYPE[reply.q.qtype] == "TXT":
@@ -198,7 +188,7 @@ class Resolver:
         return reply
 
 
-resolver = Resolver()
+resolver = Resolver(config.server_ip)
 servers = [
     DNSServer(resolver, port=53, address="0.0.0.0", tcp=True),
     DNSServer(resolver, port=53, address="0.0.0.0", tcp=False),
