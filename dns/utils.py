@@ -2,6 +2,8 @@ from config import config
 
 
 def get_subdomain(domain: str) -> str | None:
+    domain = domain.lower()
+
     rindex_domain = domain.rfind("." + config.server_domain)
 
     if rindex_domain == -1:
