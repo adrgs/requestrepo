@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import datetime
 import os
-from time import sleep
 import random
 import threading
 
