@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from config import config
 from utils import get_subdomain
+from typing import Any
 
 client = MongoClient(
     "mongodb://%s:%s@%s"
@@ -9,7 +10,7 @@ client = MongoClient(
 )
 
 
-def insert_into_db(value: dict[str, any]) -> None:
+def insert_into_db(value: dict[str, Any]) -> None:
     db = client[config.mongodb_database]
 
     collection = db["dns_requests"]
@@ -17,7 +18,7 @@ def insert_into_db(value: dict[str, any]) -> None:
     collection.insert_one(value)
 
 
-def get_dns_record(domain: str, dtype: str) -> any | None:
+def get_dns_record(domain: str, dtype: str) -> Any | None:
     db = client[config.mongodb_database]
 
     ddns = db["ddns"]
