@@ -5,7 +5,7 @@ from mongolog import *
 import base64
 import datetime
 import jwt
-from util import get_random_subdomain
+from utils import get_random_subdomain
 import re
 import json
 import os
