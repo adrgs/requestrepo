@@ -1,8 +1,6 @@
-import os
 import pymongo
-from bson.objectid import ObjectId
-import urllib.parse
 import base64
+from bson.objectid import ObjectId
 from config import config
 
 client = pymongo.MongoClient(
