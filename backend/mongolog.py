@@ -2,6 +2,7 @@ import pymongo
 import base64
 from bson.objectid import ObjectId
 from config import config
+from typing import Any
 
 client = pymongo.MongoClient(
     "mongodb://%s:%s@%s"
