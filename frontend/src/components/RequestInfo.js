@@ -40,9 +40,9 @@ export class RequestInfo extends Component {
 
         if (request.name===undefined) {
             data = request.method+ " " + request.path + " " + request.protocol + "\r\n";
-            data += 'Host' + ": " + request.headers['Host'] + "\r\n";
+            data += 'host' + ": " + request.headers['host'] + "\r\n";
             headerKeys.map( (item, index) => {
-                if (item !== 'Host') {
+                if (item !== 'host') {
                     data += item + ": " + request.headers[item] + "\r\n";
                 }
             });
@@ -72,8 +72,8 @@ export class RequestInfo extends Component {
                             <td className="req-table-b"><a href={request.url}>{request.url}</a></td>
                         </tr>
                         <tr>
-                            <td className="req-table-a">Sender IP</td>
-                            <td className="req-table-b">{request.ip}</td>
+                            <td className="req-table-a">Sender</td>
+                            <td className="req-table-b">{request.ip}:{request.port}</td>
                         </tr>
                         <tr>
                             <td className="req-table-a">Date</td>
@@ -86,6 +86,10 @@ export class RequestInfo extends Component {
                         <tr>
                             <td className="req-table-a">Query string</td>
                             <td className="req-table-b">{request.query}</td>
+                        </tr>
+                        <tr>
+                            <td className="req-table-a">Fragment</td>
+                            <td className="req-table-b">{request.fragment}</td>
                         </tr>
                         </tbody>
                     </table>

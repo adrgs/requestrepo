@@ -15,6 +15,7 @@ import { toast } from "react-toastify";
 export class EditResponsePage extends Component {
 	constructor(props) {
 		super(props);
+		console.log(this.props.headers);
 		this.state = {
 			filteredHeaders: null,
 			headers: (this.props.headers ? this.props.headers : []),
@@ -25,7 +26,12 @@ export class EditResponsePage extends Component {
 
 		if (!this.state.fetched) {
 			Utils.getFile().then(res => {
-				this.setState({ headers: res['headers'] });
+
+				let headers = Object.entries(res['headers']).map(([key, value]) => {
+					return { header: key, value: value };
+				});
+
+				this.setState({ headers: headers });
 				try {
 					this.setState({ content: atob(res['raw']) });
 				} catch { }

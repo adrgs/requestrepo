@@ -15,7 +15,7 @@ export class Utils {
 
     static async getRequests(timestamp) {
         let reqUrl = this.apiUrl + this.requestsEndpoint;
-        if (timestamp != undefined) {
+        if (timestamp) {
             reqUrl += "?t=" + timestamp;
         }
         let res = await axios.get(reqUrl, { withCredentials: true });
@@ -36,7 +36,7 @@ export class Utils {
 
     static async getFile() {
         let reqUrl = this.apiUrl + this.fileEndpoint;
-        let res = await axios.get(reqUrl, { withCredentials: true });
+        let res = await axios.get(reqUrl, { params: { token: localStorage.getItem('token') } });
         return res.data;
     }
 
@@ -46,29 +46,14 @@ export class Utils {
         return res.data;
     }
 
-    static getCookie(name) {
-        let decodedCookie = decodeURIComponent(document.cookie);
-        let ca = decodedCookie.split(';');
-        for (let i = 0; i < ca.length; i++) {
-            let c = ca[i];
-            while (c.charAt(0) == ' ') {
-                c = c.substring(1);
-            }
-            if (c.indexOf(name) == 0) {
-                return c.substring(name.length, c.length);
-            }
-        }
-        return "";
-    };
-
     static getUserURL() {
         return this.subdomain + "." + this.siteUrl;
     }
 
     static userHasSubdomain() {
         if (this.subdomain === "") {
-            let cookie = this.getCookie("token");
-            if (cookie === "") return false;
+            let cookie = localStorage.getItem('token');
+            if (!cookie) return false;
             cookie = cookie.split('.');
             if (cookie.length < 2) return false;
             cookie = cookie[1];
@@ -83,6 +68,7 @@ export class Utils {
         let reqUrl = this.apiUrl + this.subdomainEndpoint;
         return axios.post(reqUrl, null, { withCredentials: true }).then(function (response) {
             localStorage.clear();
+            localStorage.setItem('token', response.data.token);
             window.location.reload();
         });
     }

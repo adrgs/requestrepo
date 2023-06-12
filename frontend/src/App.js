@@ -56,28 +56,93 @@ class App extends Component {
 
         this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? '{"length":0}' : localStorage.getItem("visited"));
 
+        /*
         Utils.getDNSRecords().then(res => {
            this.setState({dnsRecords: res});
            this.setState({dnsFetched: true});
         });
+        */
+
+        let socket = new WebSocket(`ws://127.0.0.1:21337/api/ws`);
+        let user = this.user;
+        let app = this;
+
+        this.socket = socket;
+
+        socket.onopen = function(event) {
+            // Send the token to the WebSocket server
+            console.log('WebSocket connection opened');
+            socket.send(localStorage.getItem('token'));
+            console.log('Token sent to WebSocket');
+        };
+    
+        // Event handler for incoming WebSocket messages
+        socket.onmessage = function(event) {
+            event = JSON.parse(event.data);
+            let cmd = event['cmd'];
+            if (cmd === "requests") {
+                let requests = event['data'].map(r => JSON.parse(r));
+
+                let httpRequests = requests.filter(r => r['type'] === 'http');
+                if (httpRequests.length > 0) {
+                    user['httpRequests'] = user['httpRequests'].concat(httpRequests);
+
+                    for (let i=0;i<user['httpRequests'].length;i++)
+                    {
+                        user.requests[user['httpRequests'][i]['_id']] = user['httpRequests'][i];
+                        user['httpRequests'][i]['new'] = false;
+                    }
+                }
+
+                let dnsRequests = requests.filter(r => r['type'] === 'dns');
+                if (dnsRequests.length > 0) {
+                    user['dnsRequests'] = user['dnsRequests'].concat(httpRequests);
+                    for (let i=0;i<this.user['dnsRequests'].length;i++)
+                    {
+                        this.user.requests[this.user['dnsRequests'][i]['_id']] = this.user['dnsRequests'][i];
+                        this.user['dnsRequests'][i]['new'] = false;
+                    }
+                }
+
+                app.updateTitle();
+                app.setState({ state: app.state });
+            }
+            else if (cmd === "request") {
+                let request = JSON.parse(event['data']);
+                request['new'] = true;
+                if (request['type'] === 'http') {
+                    user['httpRequests'] = user['httpRequests'].concat([request]);
+                } else if (request['type'] === 'dns') {
+                    user['dnsRequests'] = user['dnsRequests'].concat([request]);
+                }
+                user.requests[request['_id']] = request;
+                app.updateTitle();
+                app.setState({ state: app.state });
+            }
+        };
+    
+        // Event handler for WebSocket connection closure
+        socket.onclose = function(event) {
+            console.log('WebSocket connection closed');
+            document.location.reload();
+        };
 
         Utils.getFile().then(res => {
-            let response = this.state.response;
             try {
                 let decoded = atob(res.raw);
                 res.raw = decoded;
             } catch { }
 
-            response = res;
             res.fetched=true;
             this.setState({response:res});
             this.setState(this.state);
         });
 
-        Utils.getDNSRecords().then(res => {
+        /*Utils.getDNSRecords().then(res => {
            this.setState({dnsRecords: res});
-        });
+        });*/
 
+        /*
         Utils.getRequests().then(res=> {
             this.user['httpRequests'] = this.user['httpRequests'].concat(res['http']);
             for (let i=0;i<this.user['httpRequests'].length;i++)
@@ -102,6 +167,7 @@ class App extends Component {
                 Utils.getRandomSubdomain();
             }
         });
+        */
 
         this.onWrapperClick = this.onWrapperClick.bind(this);
         this.onToggleMenu = this.onToggleMenu.bind(this);
@@ -189,6 +255,7 @@ class App extends Component {
 
         let shouldUpdate = false;
 
+        /*
         Utils.getRequests(user['timestamp']).then(res => {
             let ts = parseInt(user['timestamp']);
 
@@ -225,6 +292,7 @@ class App extends Component {
             }
             this.updateTitle();
         });
+        */
     }
 
     copyUrl(e)
