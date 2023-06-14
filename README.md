@@ -25,11 +25,11 @@ You can access your instance on localhost HTTP port 80, HTTPS port 443, DNS on p
 For development, it is recommended to start each service individually for the best developer experience
 
 ```
-# start the mongodb instance
-cd backend; docker-compose up --build
+# start the redis instance
+docker run -d --name my-redis -p 6379:6379 redis
 
 # start the backend service
-cd backend; python app.py
+cd backend; uvicorn app:app --port 21337 --no-server-header
 
 # start the frontend service
 cd frontend; npm run start
@@ -41,7 +41,7 @@ cd dns; python ns.py
 ## Built With
 
 * [React](https://reactjs.org/) - JavaScript library for building user interfaces
-* [Flask](https://flask.palletsprojects.com/) - A micro web framework for Python
+* [FastAPI](https://fastapi.tiangolo.com/lo/) - FastAPI framework, high performance, easy to learn, fast to code, ready for production
 
 ## Contributing
 
