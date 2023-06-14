@@ -15,7 +15,7 @@ services:
       DOMAIN: requestrepo.com
       JWT_SECRET: changethis
       REDIS_HOST: redisdb
-      INCLUDE_SERVER_DOMAIN: true
+      INCLUDE_SERVER_DOMAIN: "true"
     depends_on:
       - redisdb
   dns:
