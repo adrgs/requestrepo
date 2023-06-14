@@ -1,7 +1,5 @@
 FROM python:3.10
 
-EXPOSE 21337
-
 RUN apt-get update && apt-get install -y \
     software-properties-common \
     npm
@@ -15,7 +13,7 @@ WORKDIR /tmp/frontend
 RUN npm install --force
 RUN npm run build
 
-COPY ./backend /app
+COPY ./new-backend /app
 RUN cp -r /tmp/frontend/build/* /app/public/
 RUN rm -rf /tmp/frontend
 
@@ -26,4 +24,7 @@ RUN chmod 703 /app/pages
 RUN useradd -ms /bin/bash app
 USER app
 
-CMD ["gunicorn", "-w", "4", "--bind", "0.0.0.0:21337", "wsgi:app"]
+EXPOSE 80
+EXPOSE 443
+
+CMD ["gunicorn", "-w", "8", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:80", "app:app"]

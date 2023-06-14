@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { Dropdown } from "primereact/dropdown";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
+import { Utils } from "../Utils";
 
 export class RecordInput extends Component {
   constructor(props) {
@@ -72,7 +73,7 @@ export class RecordInput extends Component {
               if (e.target.value.length < 64) this.changeEvent(e, "domain");
             }}
           />
-          .{this.props.subdomain}.requestrepo.com
+          .{this.props.subdomain}.{Utils.siteUrl}
         </div>
         <div className="col">
           <label>Value: </label>

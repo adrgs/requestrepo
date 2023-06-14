@@ -54,12 +54,7 @@ class App extends Component {
 
     this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? "{}" : localStorage.getItem("visited"));
 
-    Utils.getDNSRecords().then(res => {
-        this.setState({dnsRecords: res});
-        this.setState({dnsFetched: true});
-    });
-
-    let socket = new WebSocket(`ws://127.0.0.1:21337/api/ws`);
+    let socket = new WebSocket(`ws://${document.location.host}/api/ws`);
     let user = this.user;
     let app = this;
 
@@ -172,6 +167,12 @@ class App extends Component {
       this.setState(this.state);
     });
 
+    Utils.getDNSRecords().then((res) => {
+      console.log('dns', res);
+      this.setState({ dnsRecords: res });
+      this.setState({ dnsFetched: true });
+    });
+
     this.onWrapperClick = this.onWrapperClick.bind(this);
     this.onToggleMenu = this.onToggleMenu.bind(this);
     this.onSidebarClick = this.onSidebarClick.bind(this);
@@ -240,7 +241,7 @@ class App extends Component {
 
   updateTitle() {
     let n = this.state.user.httpRequests.length + this.state.user.dnsRequests.length - Object.keys(this.state.user.visited).length;
-    let text = "Dashboard - requestrepo.com";
+    let text = "Dashboard - " + Utils.siteUrl;
     if (n <= 0) {
       document.title = text;
     } else {

@@ -9,8 +9,8 @@ export class Utils {
   static deleteAllEndpoint = "/api/delete_all";
   static fileEndpoint = "/api/get_file";
   static updateFileEndpoint = "/api/update_file";
-  static DNSRecordsEndpoint = "/api/get_dns_records";
-  static updateDNSRecordsEndpoint = "/api/update_dns_records";
+  static DNSRecordsEndpoint = "/api/get_dns";
+  static updateDNSRecordsEndpoint = "/api/update_dns";
   static subdomain = "";
 
   static async getDNSRecords() {

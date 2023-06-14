@@ -20,6 +20,7 @@ import jwt
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List
+import re
 
 app = FastAPI()
 
@@ -76,6 +77,87 @@ def verify_jwt(token):
         return None
 
 
+class Record(BaseModel):
+    domain: str
+    type: int
+    value: str
+
+
+class DnsRecords(BaseModel):
+    records: List[Record]
+
+
+def validation_error(msg):
+    response = JSONResponse({"error": msg})
+    response.status_code = 401
+    return response
+
+
+@app.post("/api/update_dns")
+async def update_dns(records: DnsRecords, token: str):
+    DNS_RECORDS = ["A", "AAAA", "CNAME", "TXT"]
+
+    subdomain = verify_jwt(token)
+
+    final_records = []
+
+    old_records = await redis.get(f"dns:{subdomain}")
+    if old_records:
+        old_records = json.loads(old_records)
+        for record in old_records:
+            await redis.delete(f"dns:{subdomain}:{record['type']}:{record['domain']}")
+
+    for record in records.records:
+        domain = record.domain.lower()
+        value = record.value
+        dtype = record.type
+
+        if not domain or not value:
+            continue
+
+        if len(domain) > 63:
+            return validation_error("Domain name too long")
+
+        if len(value) > 255:
+            return validation_error("Value too long")
+
+        if dtype < 0 or dtype >= len(DNS_RECORDS):
+            return validation_error("Invalid type")
+
+        if not re.search("^[ -~]+$", value) and dtype != 3:
+            return validation_error("Invalid characters in value")
+
+        if not re.match(
+            "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$", domain
+        ):
+            return validation_error("Invalid characters in domain")
+        
+        domain = f'{domain}.{subdomain}.{config.server_domain}.'
+        dtype = DNS_RECORDS[dtype]
+
+        record = {"domain": domain, "type": dtype, "value": value, "_id": str(uuid.uuid4())}
+
+        await redis.set(f"dns:{subdomain}:{record['type']}:{record['domain']}", json.dumps(record))
+
+        final_records.append(record)
+
+    await redis.set(f"dns:{subdomain}", json.dumps(final_records))
+
+    return JSONResponse({"msg": "Updated records"})
+
+
+@app.get("/api/get_dns")
+async def get_dns(token: str):
+    subdomain = verify_jwt(token)
+
+    records = await redis.get(f"dns:{subdomain}")
+
+    if records is None:
+        return JSONResponse([])
+
+    return JSONResponse(json.loads(records))
+
+
 @app.get("/api/get_file")
 async def get_file(token: str):
     subdomain = verify_jwt(token)
@@ -129,9 +211,9 @@ async def delete_all(token: str):
     requests = [request for request in requests if request != "{}"]
 
     ids = [json.loads(request)["_id"] for request in requests]
-    
+
     await redis.delete(f"requests:{subdomain}")
-    
+
     for id in ids:
         await redis.delete(f"request:{subdomain}:{id}")
 

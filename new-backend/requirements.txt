@@ -1,3 +1,5 @@
-uvicorn
+uvicorn[standard]
 fastapi
 aioredis
+gunicorn
+PyJWT

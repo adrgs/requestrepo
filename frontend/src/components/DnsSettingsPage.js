@@ -11,7 +11,7 @@ export class DnsSettingsPage extends Component {
       dnsRecords: this.props.dnsRecords ? this.props.dnsRecords : [],
     };
 
-    if (this.props.fetched == false) {
+    if (this.props.fetched === false) {
       Utils.getDNSRecords().then((res) => {
         this.setState({ dnsRecords: res });
       });
@@ -81,8 +81,8 @@ export class DnsSettingsPage extends Component {
         if (typeof element.type === "string") {
           element.type = ["A", "AAAA", "CNAME", "TXT"].indexOf(element.type);
         }
-        if (element.domain.lastIndexOf(this.props.user.subdomain + "." + "requestrepo.com") >= 0) {
-          element.domain = element.domain.substr(0, element.domain.lastIndexOf(this.props.user.subdomain + "." + "requestrepo.com") - 1);
+        if (element.domain.lastIndexOf(this.props.user.subdomain + "." + Utils.siteUrl) >= 0) {
+          element.domain = element.domain.substr(0, element.domain.lastIndexOf(this.props.user.subdomain + "." + Utils.siteUrl) - 1);
         }
       } catch {}
       return element;
