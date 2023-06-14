@@ -177,8 +177,8 @@ export class RequestInfo extends Component {
                   <td className="req-table-b">{request.name}</td>
                 </tr>
                 <tr>
-                  <td className="req-table-a">Sender IP</td>
-                  <td className="req-table-b">{request.ip}</td>
+                  <td className="req-table-a">Sender</td>
+                  <td className="req-table-b">{request.ip}:{request.port}</td>
                 </tr>
                 <tr>
                   <td className="req-table-a">Date</td>
@@ -186,7 +186,7 @@ export class RequestInfo extends Component {
                 </tr>
                 <tr>
                   <td className="req-table-a">Type</td>
-                  <td className="req-table-b">{request.type}</td>
+                  <td className="req-table-b">{request.dtype}</td>
                 </tr>
               </tbody>
             </table>
