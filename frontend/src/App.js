@@ -120,6 +120,8 @@ class App extends Component {
       if (cmd === "requests") {
         let requests = event["data"].map((r) => JSON.parse(r));
 
+        console.log(requests);
+
         let httpRequests = requests.filter((r) => r["type"] === "http");
         if (httpRequests.length > 0) {
           user["httpRequests"] = user["httpRequests"].concat(httpRequests);
@@ -132,7 +134,7 @@ class App extends Component {
 
         let dnsRequests = requests.filter((r) => r["type"] === "dns");
         if (dnsRequests.length > 0) {
-          user["dnsRequests"] = user["dnsRequests"].concat(httpRequests);
+          user["dnsRequests"] = user["dnsRequests"].concat(dnsRequests);
           for (let i = 0; i < user["dnsRequests"].length; i++) {
             user.requests[user["dnsRequests"][i]["_id"]] = user["dnsRequests"][i];
             user["dnsRequests"][i]["new"] = false;

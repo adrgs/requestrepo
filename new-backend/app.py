@@ -105,7 +105,7 @@ async def update_dns(records: DnsRecords, token: str):
     if old_records:
         old_records = json.loads(old_records)
         for record in old_records:
-            await redis.delete(f"dns:{subdomain}:{record['type']}:{record['domain']}")
+            await redis.delete(f"dns:{record['type']}:{record['domain']}")
 
     for record in records.records:
         domain = record.domain.lower()
@@ -137,7 +137,7 @@ async def update_dns(records: DnsRecords, token: str):
 
         record = {"domain": domain, "type": dtype, "value": value, "_id": str(uuid.uuid4())}
 
-        await redis.set(f"dns:{subdomain}:{record['type']}:{record['domain']}", json.dumps(record))
+        await redis.set(f"dns:{record['type']}:{record['domain']}", json.dumps(record))
 
         final_records.append(record)
 

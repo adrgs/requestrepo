@@ -1,2 +1,2 @@
 dnslib
-pymongo
+redis[hiredis]
