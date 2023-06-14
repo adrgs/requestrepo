@@ -2,6 +2,9 @@
 backend/pages/*
 backend/public/*
 
+new-backend/pages/*
+new-backend/public/*
+
 # Logs
 logs
 *.log

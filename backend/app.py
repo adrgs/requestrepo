@@ -1,366 +1,323 @@
-from functools import wraps
-from flask import Flask, jsonify, request, make_response, send_from_directory
-from werkzeug.routing import Rule
-from mongolog import *
+from fastapi import FastAPI, HTTPException
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+from starlette import status
+from utils import (
+    get_subdomain_from_hostname,
+    write_basic_file,
+    get_random_subdomain,
+    get_subdomain_from_path,
+)
+from aioredis import from_url
+from config import config
+from pathlib import Path
 import base64
-import datetime
-import jwt
-from util import get_random_subdomain
-import re
+from fastapi.responses import FileResponse, Response
 import json
-import os
+import datetime
+import uuid
+import jwt
+from fastapi.websockets import WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from typing import List
+import re
 
-JWT_SECRET = os.getenv('JWT_SECRET', os.urandom(32))
-DOMAIN = os.getenv('DOMAIN', 'requestrepo.com')
+app = FastAPI(server_header=False)
 
-app = Flask(__name__, static_url_path='/public/static')
-app.url_map.add(Rule('/', endpoint='index'))
-app.url_map.add(Rule('/<path:path>', endpoint='catch_all'))
+redis = None
 
 
-def check_subdomain(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        subdomain = get_subdomain_from_hostname(request.host)
-        if subdomain:
-            return subdomain_response(request, subdomain)
+@app.on_event("startup")
+async def startup_event():
+    global redis
+    redis = await from_url(
+        f"redis://{config.redis_host}", encoding="utf-8", decode_responses=True
+    )
 
-        return f(*args, **kwargs)
 
-    return decorated_function
+@app.on_event("shutdown")
+async def shutdown_event():
+    global redis
+    if redis is not None:
+        await redis.close()
+
+
+async def log_request(request, subdomain):
+    dic = {}
+    headers = dict(request.headers)
+
+    dic["_id"] = str(uuid.uuid4())
+    dic["type"] = "http"
+    dic["raw"] = base64.b64encode(await request.body()).decode()
+    dic["uid"] = subdomain
+    dic["ip"] = request.client.host
+    dic["port"] = request.client.port
+    dic["headers"] = headers
+    dic["method"] = request.method
+    dic["protocol"] = (
+        request.scope["scheme"].upper() + "/" + request.scope["http_version"]
+    )
+    dic["path"] = request.url.path
+    dic["fragment"] = "#" + request.url.fragment if request.url.fragment else ""
+    dic["query"] = "?" + request.url.query if request.url.query else ""
+    dic["url"] = str(request.url)
+    dic["date"] = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+
+    data = json.dumps(dic)
+
+    await redis.publish(f"pubsub:{subdomain}", data)
+    idx = await redis.rpush(f"requests:{subdomain}", data) - 1
+    await redis.set(f"request:{subdomain}:{dic['_id']}", idx)
 
 
 def verify_jwt(token):
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=['HS256'])['subdomain']
+        return jwt.decode(token, config.jwt_secret, algorithms=["HS256"])["subdomain"]
     except Exception:
         return None
 
 
-def write_basic_file(subdomain):
-    file_data = {
-        'headers': [{
-            'header': 'Access-Control-Allow-Origin',
-            'value': '*'
-        }, {
-            'header': 'Content-Type',
-            'value': 'text/html'
-        }],
-        'status_code':
-        200,
-        'raw':
-        ''
-    }
-
-    with open('pages/' + subdomain, 'w') as outfile:
-        json.dump(file_data, outfile)
+class Record(BaseModel):
+    domain: str
+    type: int
+    value: str
 
 
-def log_request(request, subdomain):
-    dic = {}
-    headers = dict(request.headers)
-
-    dic['raw'] = request.stream.read()
-    dic['uid'] = subdomain
-    if 'Requestrepo-X-Forwarded-For' in headers:
-        dic['ip'] = headers['Requestrepo-X-Forwarded-For']
-        del headers['Requestrepo-X-Forwarded-For']
-    else:
-        dic['ip'] = request.remote_addr
-    dic['headers'] = headers
-    dic['method'] = request.method
-    dic['protocol'] = request.environ.get('SERVER_PROTOCOL')
-    if request.full_path[-1] == '?' and request.url[-1] != '?':
-        dic['path'] = request.full_path[:-1]
-    else:
-        dic['path'] = request.full_path
-    if dic['path'].find('?') > -1:
-        dic['query'] = dic['path'][dic['path'].find('?'):]
-    else:
-        dic['query'] = ''
-    dic['url'] = request.url
-    dic['date'] = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-
-    http_insert_into_db(dic)
+class DnsRecords(BaseModel):
+    records: List[Record]
 
 
-def get_subdomain_from_hostname(host):
-    subdomain = host[:-len(DOMAIN) - 1][-8:]
-    if not subdomain or not subdomain.isalnum():
-        return None
-
-    return subdomain.lower()
-
-
-def subdomain_response(request, subdomain):
-    log_request(request, subdomain)
-    data = {'raw': '', 'headers': [], 'status_code': 200}
-    if not os.path.exists('pages/' + subdomain):
-        write_basic_file(subdomain)
-    with open('pages/' + subdomain, 'r') as json_file:
-        try:
-            data = json.load(json_file)
-        except:
-            pass
-    try:
-        resp = make_response(base64.b64decode(data['raw']))
-    except:
-        resp = make_response('')
-    resp.headers['server'] = 'requestrepo.com'
-    if 'headers' in data:
-        for header in data['headers']:
-            resp.headers[header['header']] = header['value']
-    resp.status_code = data['status_code']
-    return resp
-
-
-@app.endpoint('index')
-@check_subdomain
-def index():
-    return send_from_directory('public', 'index.html', as_attachment=False)
-
-
-@app.endpoint('catch_all')
-@check_subdomain
-def catch_all(path):
-    subdomain = request.path[1:8 + 1].lower()
-    if len(subdomain) == 8 and subdomain.isalnum():
-        return subdomain_response(request, subdomain)
-
-    response = send_from_directory('public', path, as_attachment=False)
-
+def validation_error(msg):
+    response = JSONResponse({"error": msg})
+    response.status_code = 401
     return response
 
 
-@app.route('/api/get_dns_requests')
-@check_subdomain
-def get_dns_requests():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    time = request.args.get('t')
-    if type(time) == str and time.isdigit():
-        time = int(time)
-    if not subdomain:
-        return jsonify({'error': 'Unauthorized'}), 401
+@app.post("/api/update_dns")
+async def update_dns(records: DnsRecords, token: str):
+    DNS_RECORDS = ["A", "AAAA", "CNAME", "TXT"]
 
-    return jsonify(dns_get_subdomain(subdomain, time))
+    subdomain = verify_jwt(token)
+
+    final_records = []
+
+    old_records = await redis.get(f"dns:{subdomain}")
+    if old_records:
+        old_records = json.loads(old_records)
+        for record in old_records:
+            await redis.delete(f"dns:{record['type']}:{record['domain']}")
+
+    for record in records.records:
+        domain = record.domain.lower()
+        value = record.value
+        dtype = record.type
+
+        if not domain or not value:
+            continue
+
+        if len(domain) > 63:
+            return validation_error("Domain name too long")
+
+        if len(value) > 255:
+            return validation_error("Value too long")
+
+        if dtype < 0 or dtype >= len(DNS_RECORDS):
+            return validation_error("Invalid type")
+
+        if not re.search("^[ -~]+$", value) and dtype != 3:
+            return validation_error("Invalid characters in value")
+
+        if not re.match(
+            "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$", domain
+        ):
+            return validation_error("Invalid characters in domain")
+        
+        domain = f'{domain}.{subdomain}.{config.server_domain}.'
+        dtype = DNS_RECORDS[dtype]
+
+        record = {"domain": domain, "type": dtype, "value": value, "_id": str(uuid.uuid4())}
+
+        await redis.set(f"dns:{record['type']}:{record['domain']}", json.dumps(record))
+
+        final_records.append(record)
+
+    await redis.set(f"dns:{subdomain}", json.dumps(final_records))
+
+    return JSONResponse({"msg": "Updated records"})
 
 
-@app.route('/api/get_http_requests')
-@check_subdomain
-def get_http_requests():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    time = request.args.get('t')
-    if type(time) == str and time.isdigit():
-        time = int(time)
-    if not subdomain:
-        return jsonify({'error': 'Unauthorized'}), 401
+@app.get("/api/get_dns")
+async def get_dns(token: str):
+    subdomain = verify_jwt(token)
 
-    return jsonify(http_get_subdomain(subdomain, time))
+    records = await redis.get(f"dns:{subdomain}")
 
+    if records is None:
+        return JSONResponse([])
 
-@app.route('/api/get_requests')
-@check_subdomain
-def get_requests():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    if not subdomain:
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    time = request.args.get('t')
-    if type(time) == str and time.isdigit():
-        time = int(time)
-    http_requests = http_get_subdomain(subdomain, time)
-    dns_requests = dns_get_subdomain(subdomain, time)
-    server_time = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-    return jsonify({
-        'http': http_requests,
-        'dns': dns_requests,
-        'date': server_time
-    })
+    return JSONResponse(json.loads(records))
 
 
-@app.route('/api/get_token', methods=['POST', 'OPTIONS'])
-@check_subdomain
-def get_token():
-    if request.method == 'OPTIONS':
-        return 'POST'
+@app.get("/api/get_file")
+async def get_file(token: str):
+    subdomain = verify_jwt(token)
 
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    subdomain_path = Path(f"pages/") / Path(subdomain).name
+    if not subdomain_path.exists():
+        write_basic_file(subdomain)
+
+    with open("pages/" + subdomain, "r") as json_file:
+        return Response(json_file.read())
+
+
+class Header(BaseModel):
+    header: str
+    value: str
+
+
+class File(BaseModel):
+    raw: str
+    headers: List[Header]
+    status_code: int
+
+
+class DeleteRequest(BaseModel):
+    id: str
+
+
+@app.post("/api/delete_request")
+async def delete_request(req: DeleteRequest, token: str):
+    subdomain = verify_jwt(token)
+
+    id = req.id
+
+    idx = await redis.get(f"request:{subdomain}:{id}")
+
+    if idx is not None:
+        await redis.lset(f"requests:{subdomain}", idx, "{}")
+        await redis.delete(f"request:{subdomain}:{id}")
+
+    return JSONResponse({"msg": "Deleted request"})
+
+
+@app.post("/api/delete_all")
+async def delete_all(token: str):
+    subdomain = verify_jwt(token)
+
+    requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
+    requests = [request for request in requests if request != "{}"]
+
+    ids = [json.loads(request)["_id"] for request in requests]
+
+    await redis.delete(f"requests:{subdomain}")
+
+    for id in ids:
+        await redis.delete(f"request:{subdomain}:{id}")
+
+    return JSONResponse({"msg": "Deleted all requests"})
+
+
+@app.post("/api/update_file")
+async def update_file(file: File, token: str):
+    subdomain = verify_jwt(token)
+
+    with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
+        json.dump(file.dict(), outfile)
+
+    return JSONResponse({"msg": "Updated response"})
+
+
+@app.post("/api/get_token")
+async def get_token():
     subdomain = get_random_subdomain()
-    while users_get_subdomain(subdomain) != None:
+
+    while await redis.exists(f"subdomain:{subdomain}"):
         subdomain = get_random_subdomain()
 
-    dns_delete_records(subdomain)
+    await redis.set(f"subdomain:{subdomain}", 1)
+
     write_basic_file(subdomain)
 
     payload = {
-        'iat': datetime.datetime.utcnow(),
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=31),
-        'subdomain': subdomain
+        "iat": datetime.datetime.utcnow(),
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=31),
+        "subdomain": subdomain,
     }
-    token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
-    resp = make_response(token)
-    resp.set_cookie('token', token)
+
+    token = jwt.encode(payload, config.jwt_secret, algorithm="HS256")
+
+    return JSONResponse({"token": token, "subdomain": subdomain})
+
+
+@app.websocket("/api/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    token = await websocket.receive_text()
+    subdomain = verify_jwt(token)
+
+    if subdomain is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
+    requests = [request for request in requests if request != "{}"]
+
+    await websocket.send_json({"cmd": "requests", "data": requests})
+
+    pubsub = redis.pubsub()
+    await pubsub.subscribe(f"pubsub:{subdomain}")
+    async for message in pubsub.listen():
+        if message["type"] == "message":
+            await websocket.send_json({"cmd": "request", "data": message["data"]})
+
+
+async def catch_all(request):
+    host = request.headers.get("host")
+    subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
+        request.url.path
+    )
+
+    if subdomain is None:
+        path = Path(request.url.path)
+        path = Path(f"public/") / path.relative_to(path.anchor)
+        if not path.exists() or path.is_dir():
+            return FileResponse("public/index.html")
+        return FileResponse(path)
+
+    subdomain_path = Path(f"pages/") / Path(subdomain).name
+    if not subdomain_path.exists():
+        write_basic_file(subdomain)
+
+    data = {"raw": "", "headers": {}, "status_code": 200}
+
+    with open("pages/" + subdomain, "r") as json_file:
+        try:
+            data = json.load(json_file)
+        except Exception:
+            pass
+    try:
+        resp = Response(base64.b64decode(data["raw"]))
+    except Exception:
+        resp = Response(b"")
+
+    headers_obj = {}
+
+    for header in data["headers"]:
+        key = header["header"]
+        value = header["value"]
+        headers_obj[key] = value
+
+    resp.headers.update(headers_obj)
+    resp.status_code = data["status_code"]
+
+    await log_request(request, subdomain)
 
     return resp
 
 
-@app.route('/api/get_server_time')
-@check_subdomain
-def get_server_time():
-    return jsonify({
-        'date':
-        int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-    })
-
-
-@app.route('/api/delete_request', methods=['POST'])
-@check_subdomain
-def delete_request():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    if not subdomain:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    content = request.json
-    if content:
-        _id = content.get('id')
-        rtype = content.get('type')
-        delete_request_from_db(_id, subdomain, rtype)
-        return jsonify({"rtype": rtype, "_id": _id})
-
-
-@app.route('/api/get_file', methods=['GET'])
-@check_subdomain
-def get_file():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    if not subdomain:
-        return jsonify({"raw": "", "headers": [], "status_code": 200})
-
-    if not os.path.exists('pages/' + subdomain):
-        write_basic_file(subdomain)
-
-    with open('pages/' + subdomain, 'r') as outfile:
-        return outfile.read()
-
-
-@app.route('/api/update_file', methods=['POST'])
-@check_subdomain
-def update_file():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    if subdomain:
-        content = request.json
-        status_code = 200
-        if 'status_code' in content:
-            try:
-                try:
-                    if len(content['status_code']) > 9:
-                        return jsonify({"error": "invalid status_code"}), 401
-                    status_code = int(content['status_code'])
-                except:
-                    pass
-            except:
-                return jsonify({"error": "invalid status_code"}), 401
-        raw = ""
-        if 'raw' in content:
-            if len(content['raw']) <= 2000000:
-                try:
-                    base64.b64decode(content['raw'])
-                    raw = content['raw']
-                except:
-                    return jsonify({"error": "invalid response"}), 401
-            else:
-                return jsonify(
-                    {"error": "response should be smaller than 2MB"}), 401
-        headers = []
-        if 'headers' in content:
-            if len(headers) <= 30:
-                for header in content['headers']:
-                    if 'header' in header and 'value' in header:
-                        headers.append({
-                            'header': header['header'],
-                            'value': header['value']
-                        })
-            else:
-                return jsonify({"error": "maximum of 30 headers"}), 401
-            with open('pages/' + subdomain, 'w') as outfile:
-                json.dump(
-                    {
-                        'headers': headers,
-                        'raw': raw,
-                        'status_code': status_code
-                    }, outfile)
-        return jsonify({"msg": "Updated response"})
-    return jsonify({"error": "Unauthorized"}), 401
-
-
-@app.route('/api/get_dns_records', methods=['GET'])
-@check_subdomain
-def get_dns_records():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    if subdomain:
-        return jsonify(dns_get_records(subdomain))
-    return jsonify({"error": "Unauthorized"}), 401
-
-
-DNS_RECORDS = ['A', 'AAAA', 'CNAME', 'TXT']
-
-
-@app.route('/api/update_dns_records', methods=['POST'])
-@check_subdomain
-def update_dns_records():
-    subdomain = verify_jwt(request.cookies.get('token'))
-    if not subdomain:
-        return jsonify({"error": "unauthenticated"}), 401
-
-    dns_delete_records(subdomain)
-    content = request.json
-
-    if 'records' not in content:
-        return jsonify({"error": "Invalid records"}), 401
-
-    for record in content['records']:
-        if type(record) is not dict:
-            continue
-
-        domain = record.get('domain')
-        dtype = record.get('type')
-        value = record.get('value')
-
-        if domain is None or dtype is None or value is None:
-            continue
-        if domain == "" or value == "":
-            continue
-
-        domain = domain.lower()
-
-        if len(domain) > 63:
-            return jsonify({"error": "Domain too big"}), 401
-
-        if len(value) > 255:
-            return jsonify({"error": "Value too big"}), 401
-
-        if type(dtype) is not int:
-            return jsonify({"error": "Invalid type"}), 401
-
-        if dtype < 0 or dtype >= len(DNS_RECORDS):
-            return jsonify({"error": "Invalid type range"}), 401
-
-        if not re.search("^[ -~]+$", value):
-            return jsonify({"error": "Invailid regex"}), 401
-
-        if not re.match(
-                "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$",
-                domain):
-            return jsonify({"error": "invalid regex"}), 401
-
-        domain = f'{domain}.{subdomain}.{DOMAIN}.'
-
-        try:
-            dtype = DNS_RECORDS[dtype]
-            dns_insert_record(subdomain, domain, dtype, value)
-        except Exception as e:
-            return jsonify({"error": str(e)}), 401
-
-    return jsonify({"msg": "Updated records"})
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=21337, debug=True)
+catch_all_route = Route("/{path:path}", endpoint=catch_all, methods=[])
+app.router.routes.append(catch_all_route)

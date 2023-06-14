@@ -9,6 +9,7 @@ class Config:
     subdomain_length: int = int(os.environ.get("SUBDOMAIN_LENGTH", 8))
     subdomain_alphabet: str = os.environ.get("SUBDOMAIN_ALPHABET", "0123456789abcdefghijklmnopqrstuvwxyz")
     subdomain_alphabet_set: set = set(subdomain_alphabet)
+    jwt_secret: bytes = (os.getenv('JWT_SECRET') and os.getenv('JWT_SECRET').encode()) or b"secret"
 
 
 config = Config()

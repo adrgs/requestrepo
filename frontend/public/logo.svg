@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="request" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 403.06 69.46">
+  <defs>
+    <style>
+      .cls-1, .cls-2 {
+        font-family: Roboto-Regular, Roboto;
+        font-size: 60px;
+      }
+
+      .cls-1 {
+        fill: #454545;
+      }
+
+      .cls-3 {
+        fill: #fff;
+        stroke: #777;
+      }
+
+      .cls-2, .cls-4 {
+        fill: #0077d8;
+      }
+
+      .cls-4 {
+        fill-rule: evenodd;
+      }
+
+      .cls-5 {
+        isolation: isolate;
+      }
+    </style>
+  </defs>
+  <text class="cls-2" transform="translate(80.24 51.83)"><tspan x="0" y="0">request</tspan></text>
+  <text class="cls-1" transform="translate(282.69 51.83)"><tspan x="0" y="0">repo</tspan></text>
+  <circle class="cls-3" cx="34" cy="35.46" r="33.5"/>
+  <g id="Arrow_2_1" data-name="Arrow 2 1" class="cls-5">
+    <g id="Arrow_2_1-2" data-name="Arrow 2 1">
+      <polygon class="cls-4" points="34.76 13.02 15.55 13.02 38.2 35.63 15.55 58.23 34.76 58.23 57.42 35.63 34.76 13.02"/>
+    </g>
+  </g>
+</svg>

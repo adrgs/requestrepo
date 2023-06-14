@@ -1,4 +1,5 @@
-Flask
-pymongo
-pyjwt
+uvicorn[standard]
+fastapi
+aioredis
 gunicorn
+PyJWT

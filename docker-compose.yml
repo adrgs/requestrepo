@@ -1,16 +1,23 @@
 version: "3"
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: mongodb
+  redisdb:
+    image: redis:latest
+    container_name: redisdb
     restart: always
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: requestrepouser
-      MONGO_INITDB_ROOT_PASSWORD: changethis
+  backend:
+    build: .
+    container_name: backend
+    restart: always
     ports:
-      - 27017:27017
-    volumes:
-      - mongodb_data:/data/db
+      - 80:80
+      - 443:443
+    environment:
+      DOMAIN: requestrepo.com
+      JWT_SECRET: changethis
+      REDIS_HOST: redisdb
+      INCLUDE_SERVER_DOMAIN: true
+    depends_on:
+      - redisdb
   dns:
     build:
       context: ./dns
@@ -20,38 +27,8 @@ services:
       - "53:53/tcp"
       - "53:53/udp"
     environment:
-      MONGODB_DATABASE: requestrepo
-      MONGODB_USERNAME: requestrepouser
-      MONGODB_PASSWORD: changethis
-      MONGODB_HOSTNAME: mongodb
       DOMAIN: requestrepo.com
+      REDIS_HOST: redisdb
       SERVER_IP: 130.61.138.67
-  flaskapp:
-    build: .
-    container_name: flaskapp
-    restart: always
-    ports:
-      - 21337:21337
-    environment:
-      MONGODB_DATABASE: requestrepo
-      MONGODB_USERNAME: requestrepouser
-      MONGODB_PASSWORD: changethis
-      MONGODB_HOSTNAME: mongodb
-      DOMAIN: requestrepo.com
-      JWT_SECRET: changethis
     depends_on:
-      - mongodb
-  nginx:
-    image: nginx
-    container_name: nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/fullchain.pem:/etc/nginx/fullchain.pem
-      - ./nginx/privkey.pem:/etc/nginx/privkey.pem
-volumes:
-  mongodb_data:
-    driver: local
+      - redisdb

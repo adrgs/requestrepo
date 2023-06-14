@@ -7,10 +7,13 @@ import threading
 from dnslib import DNSRecord, QTYPE, RD, RR
 from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
 from dnslib.server import DNSServer
-from mongolog import insert_into_db, update_dns_record, get_dns_record
 from config import config
 from utils import get_subdomain
 from typing import Any
+import json
+import redis
+import uuid
+import base64
 
 
 EPOCH = datetime.datetime(1970, 1, 1)
@@ -35,7 +38,7 @@ class Record:
         rtype=None,
         rname=None,
         ttl=None,
-        **kwargs
+        **kwargs,
     ) -> None:
         if isinstance(rdata_type, RD):
             self._rtype = TYPE_LOOKUP[rdata_type.__class__]
@@ -79,7 +82,21 @@ class Record:
         return "{} {}".format(QTYPE[self._rtype], self.kwargs)
 
 
-def save_into_db(reply: DNSRecord, ip: str, raw: bytes) -> None:
+def update_dns_record(domain: str, dtype: str, newval: str) -> None:
+    r = redis.Redis(host=config.redis_host, port=6379, db=0)
+
+    data = {"domain": domain, "type": dtype, "value": newval, "_id": str(uuid.uuid4())}
+
+    result = r.get(f"dns:{dtype}:{domain}")
+
+    if result:
+        result = json.loads(result)
+        data["_id"] = result["_id"]
+
+    r.set(f"dns:{dtype}:{domain}", json.dumps(data))
+
+
+def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
     name = str(reply.q.qname)
     uid = get_subdomain(name)
 
@@ -87,15 +104,42 @@ def save_into_db(reply: DNSRecord, ip: str, raw: bytes) -> None:
         return
 
     data = {
+        "type": "dns",
         "date": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
         "ip": ip,
-        "type": QTYPE[reply.q.qtype],
+        "port": port,
+        "dtype": QTYPE[reply.q.qtype],
         "name": name,
         "uid": uid,
         "reply": str(reply),
-        "raw": raw,
+        "raw": base64.b64encode(raw).decode(),
+        "_id": str(uuid.uuid4()),
     }
     insert_into_db(data)
+
+
+def insert_into_db(value: dict[str, Any]) -> None:
+    r = redis.Redis(host=config.redis_host, port=6379, db=0)
+
+    subdomain = value["uid"]
+    data = json.dumps(value)
+
+    r.publish(f"pubsub:{subdomain}", data)
+    idx = r.rpush(f"requests:{subdomain}", data) - 1
+    r.set(f"request:{subdomain}:{value['_id']}", idx)
+
+
+def get_dns_record(domain: str, dtype: str) -> Any | None:
+    r = redis.Redis(host=config.redis_host, port=6379, db=0)
+
+    domain = domain.lower()
+
+    result = r.get(f"dns:{dtype}:{domain}")
+
+    if result:
+        result = json.loads(result)
+
+    return result
 
 
 class Resolver:
@@ -136,14 +180,14 @@ class Resolver:
                         new_ips = "/".join(new_ips[1:] + [new_ips[0]])
                         ips[idx] = new_ips
                         ips = "%".join(ips)
-                        update_dns_record(data["subdomain"], data["domain"], "A", ips)
+                        update_dns_record(data["domain"], "A", ips)
                     else:
                         new_record = Record(A, ips[idx])
                 else:
                     ips = ips.split("/")
                     new_record = Record(A, ips[0])
                     ips = "/".join(ips[1:] + [ips[0]])
-                    update_dns_record(data["subdomain"], data["domain"], "A", ips)
+                    update_dns_record(data["domain"], "A", ips)
 
         return new_record
 
@@ -153,19 +197,28 @@ class Resolver:
         # We assume that the data in the DB is correct (using server side checks)
         new_record: Record | None = None
 
-        if QTYPE[reply.q.qtype] == "CNAME":
-            new_record = self.resolve_cname(reply)
-        elif QTYPE[reply.q.qtype] == "TXT":
-            new_record = self.resolve_txt(reply)
-        elif QTYPE[reply.q.qtype] == "A":
-            new_record = self.resolve_ip(reply, "A")
-        elif QTYPE[reply.q.qtype] == "AAAA":
-            new_record = self.resolve_ip(reply, "AAAA")
+        try:
+            if QTYPE[reply.q.qtype] == "CNAME":
+                new_record = self.resolve_cname(reply)
+            elif QTYPE[reply.q.qtype] == "TXT":
+                new_record = self.resolve_txt(reply)
+            elif QTYPE[reply.q.qtype] == "A":
+                new_record = self.resolve_ip(reply, "A")
+            elif QTYPE[reply.q.qtype] == "AAAA":
+                new_record = self.resolve_ip(reply, "AAAA")
+        except Exception as ex:
+            print(ex)
+            pass
 
         if new_record != None:
             reply.add_answer(new_record.try_rr(request.q))
             try:
-                save_into_db(reply, handler.client_address[0], handler.request[0])
+                save_into_db(
+                    reply,
+                    handler.client_address[0],
+                    handler.client_address[1],
+                    handler.request[0],
+                )
             except Exception as ex:
                 print(ex)
                 pass
@@ -180,6 +233,7 @@ servers = [
 ]
 
 if __name__ == "__main__":
+    print("Starting DNS server...")
     stop_event = threading.Event()
 
     for s in servers:
