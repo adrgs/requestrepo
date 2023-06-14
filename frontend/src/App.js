@@ -54,12 +54,10 @@ class App extends Component {
 
     this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? "{}" : localStorage.getItem("visited"));
 
-    /*
-        Utils.getDNSRecords().then(res => {
-           this.setState({dnsRecords: res});
-           this.setState({dnsFetched: true});
-        });
-        */
+    Utils.getDNSRecords().then(res => {
+        this.setState({dnsRecords: res});
+        this.setState({dnsFetched: true});
+    });
 
     let socket = new WebSocket(`ws://127.0.0.1:21337/api/ws`);
     let user = this.user;

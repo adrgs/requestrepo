@@ -13,24 +13,15 @@ export class Utils {
   static updateDNSRecordsEndpoint = "/api/update_dns_records";
   static subdomain = "";
 
-  static async getRequests(timestamp) {
-    let reqUrl = this.apiUrl + this.requestsEndpoint;
-    if (timestamp) {
-      reqUrl += "?t=" + timestamp;
-    }
-    let res = await axios.get(reqUrl, { withCredentials: true });
-    return res.data;
-  }
-
   static async getDNSRecords() {
     let reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
-    let res = await axios.get(reqUrl, { withCredentials: true });
+    let res = await axios.get(reqUrl, { params: { token: localStorage.getItem("token") } });
     return res.data;
   }
 
   static async updateDNSRecords(data) {
     let reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
-    let res = await axios.post(reqUrl, data, { withCredentials: true });
+    let res = await axios.post(reqUrl, data, { params: { token: localStorage.getItem("token") } });
     return res.data;
   }
 
