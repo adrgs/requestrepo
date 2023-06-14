@@ -3,7 +3,6 @@ import {RequestCard} from "./components/RequestCard";
 import {Checkbox} from 'primereact/checkbox';
 import {Button} from 'primereact/button';
 import {Utils} from "./Utils";
-import GitHubButton from 'react-github-btn'
 
 export class AppSidebar extends Component {
 
@@ -123,11 +122,15 @@ export class AppSidebar extends Component {
 
     deleteAllRequests()
     {
-        let requests = this.getRequests();
-        for (var i=0;i<requests.length;i++)
-        {
-            this.props.clickRequestAction('delete', requests[i].id);
-        }
+        Utils.deleteAll().then((res) => {
+            this.props.user.httpRequests = [];
+            this.props.user.dnsRequests = [];
+            this.props.user.requests = {};
+            this.props.user.visited = {};
+            localStorage.visited = '{}';
+            localStorage.lastSelectedRequest = undefined;
+            this.props.doRerender();
+        });
     }
 
     hasValue(item, needle) {
@@ -219,10 +222,8 @@ export class AppSidebar extends Component {
                          ref={(el) => { this.messagesEnd = el; }}>
                     </div>
                 </div>
-                <div className='github-button' style={{position:"absolute", bottom:"0", height:"100px", textAlign:"center", width:"100%", lineHeight:"64px"}}>
-                    <GitHubButton href="https://github.com/adrgs/requestrepo" data-size="large" aria-label="See on GitHub">See on GitHub</GitHubButton>
-                    <span style={{"marginRight":"10px"}}></span>
-                    <GitHubButton href="https://github.com/adrgs/requestrepo" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star adrgs/requestrepo on GitHub">Star</GitHubButton>
+                <div className='github-button' style={{position:"absolute", bottom:"0", height:"100px", textAlign:"center", width:"100%"}}>
+                    <Button href="#/edit-response" label="Mark all as read" icon="pi pi-check-square" className="p-button-text p-button-secondary" style={{marginRight:'.25em'}} onClick={this.props.markAllAsVisited} />
                 </div>
             </div>
         );

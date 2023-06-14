@@ -57,10 +57,10 @@ def get_subdomain_from_hostname(
 
 def write_basic_file(subdomain: str):
     file_data = {
-        "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "text/html",
-        },
+        "headers": [
+            {"header":"Access-Control-Allow-Origin", "value":"*"},
+            {"header":"Content-Type", "value":"text/html"},
+        ],
         "status_code": 200,
         "raw": "",
     }

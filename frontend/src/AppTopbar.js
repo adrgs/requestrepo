@@ -1,6 +1,7 @@
 import React, {Component} from 'react';
 import {InputText} from 'primereact/inputtext';
 import PropTypes from 'prop-types';
+import GitHubButton from 'react-github-btn'
 
 export class AppTopbar extends Component {
 
@@ -26,11 +27,14 @@ export class AppTopbar extends Component {
     render() {
         return (
             <div className="layout-topbar clearfix">
-                <a href={"#"}>
                 <div style={{"float":"left"}}>
-                    <h2 style={{"color":"black"}}><span style={{"color":"#007ad9"}}>request</span>repo</h2>
-                </div>
+                <a href={"#"}>
+                    <object data="/logo.svg" type="image/svg+xml" style={{height:"30px"}}></object>
                 </a>
+                </div>
+                <div style={{"float":"left", marginLeft:"1rem"}} className="desktop-only">
+                    <GitHubButton href="https://github.com/adrgs/requestrepo" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star adrgs/requestrepo on GitHub">Star</GitHubButton>
+                </div>
                 <div className="layout-topbar-icons" style={{maxWidth:"40%"}}>
                     <span style={{marginTop:"8px", "width":"100%"}} className="layout-topbar-search">
                         <InputText style={{"width":"100%"}} type="text" placeholder="Search" value={this.state.searchValue} onChange={this.handleSearchValueChange}/>

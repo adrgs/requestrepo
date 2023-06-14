@@ -65,6 +65,12 @@
     max-width:100%;
 }
 
+@media (max-width: 512px) {
+    .desktop-only {
+        display: none;
+    }
+}
+
 @media (max-width: 1024px) {
     .layout-main {
         padding: 16px 16px 16px 16px;

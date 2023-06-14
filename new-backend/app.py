@@ -18,6 +18,8 @@ import datetime
 import uuid
 import jwt
 from fastapi.websockets import WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from typing import List
 
 app = FastAPI()
 
@@ -43,8 +45,6 @@ async def log_request(request, subdomain):
     dic = {}
     headers = dict(request.headers)
 
-    print(request.scope)
-
     dic["_id"] = str(uuid.uuid4())
     dic["type"] = "http"
     dic["raw"] = base64.b64encode(await request.body()).decode()
@@ -53,7 +53,9 @@ async def log_request(request, subdomain):
     dic["port"] = request.client.port
     dic["headers"] = headers
     dic["method"] = request.method
-    dic["protocol"] = request.scope["scheme"].upper() + '/' + request.scope["http_version"]
+    dic["protocol"] = (
+        request.scope["scheme"].upper() + "/" + request.scope["http_version"]
+    )
     dic["path"] = request.url.path
     dic["fragment"] = "#" + request.url.fragment if request.url.fragment else ""
     dic["query"] = "?" + request.url.query if request.url.query else ""
@@ -63,8 +65,8 @@ async def log_request(request, subdomain):
     data = json.dumps(dic)
 
     await redis.publish(f"pubsub:{subdomain}", data)
-    idx = await redis.rpush(f"requests:{subdomain}", data)
-    await redis.set(f"request:{dic['_id']}", idx)
+    idx = await redis.rpush(f"requests:{subdomain}", data) - 1
+    await redis.set(f"request:{subdomain}:{dic['_id']}", idx)
 
 
 def verify_jwt(token):
@@ -87,6 +89,63 @@ async def get_file(token: str):
 
     with open("pages/" + subdomain, "r") as json_file:
         return Response(json_file.read())
+
+
+class Header(BaseModel):
+    header: str
+    value: str
+
+
+class File(BaseModel):
+    raw: str
+    headers: List[Header]
+    status_code: int
+
+
+class DeleteRequest(BaseModel):
+    id: str
+
+
+@app.post("/api/delete_request")
+async def delete_request(req: DeleteRequest, token: str):
+    subdomain = verify_jwt(token)
+
+    id = req.id
+
+    idx = await redis.get(f"request:{subdomain}:{id}")
+
+    if idx is not None:
+        await redis.lset(f"requests:{subdomain}", idx, "{}")
+        await redis.delete(f"request:{subdomain}:{id}")
+
+    return JSONResponse({"msg": "Deleted request"})
+
+
+@app.post("/api/delete_all")
+async def delete_all(token: str):
+    subdomain = verify_jwt(token)
+
+    requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
+    requests = [request for request in requests if request != "{}"]
+
+    ids = [json.loads(request)["_id"] for request in requests]
+    
+    await redis.delete(f"requests:{subdomain}")
+    
+    for id in ids:
+        await redis.delete(f"request:{subdomain}:{id}")
+
+    return JSONResponse({"msg": "Deleted all requests"})
+
+
+@app.post("/api/update_file")
+async def update_file(file: File, token: str):
+    subdomain = verify_jwt(token)
+
+    with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
+        json.dump(file.dict(), outfile)
+
+    return JSONResponse({"msg": "Updated response"})
 
 
 @app.post("/api/get_token")
@@ -125,13 +184,13 @@ async def websocket_endpoint(websocket: WebSocket):
     requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
     requests = [request for request in requests if request != "{}"]
 
-    await websocket.send_json({"cmd":"requests", "data": requests})
+    await websocket.send_json({"cmd": "requests", "data": requests})
 
     pubsub = redis.pubsub()
     await pubsub.subscribe(f"pubsub:{subdomain}")
     async for message in pubsub.listen():
         if message["type"] == "message":
-            await websocket.send_json({"cmd":"request", "data": message["data"]})
+            await websocket.send_json({"cmd": "request", "data": message["data"]})
 
 
 async def catch_all(request):
@@ -163,7 +222,14 @@ async def catch_all(request):
     except Exception:
         resp = Response(b"")
 
-    resp.headers.update(data["headers"])
+    headers_obj = {}
+
+    for header in data["headers"]:
+        key = header["header"]
+        value = header["value"]
+        headers_obj[key] = value
+
+    resp.headers.update(headers_obj)
     resp.status_code = data["status_code"]
 
     await log_request(request, subdomain)

@@ -54,7 +54,7 @@ class App extends Component {
             dnsFetched: false
         };
 
-        this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? '{"length":0}' : localStorage.getItem("visited"));
+        this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? '{}' : localStorage.getItem("visited"));
 
         /*
         Utils.getDNSRecords().then(res => {
@@ -67,13 +67,55 @@ class App extends Component {
         let user = this.user;
         let app = this;
 
+        window.addEventListener('storage', (e) => {
+            if (e.key === "visited") {
+                app.state.user.visited = JSON.parse(e.newValue);
+                for (const [key, ] of Object.entries(app.state.user.visited)) {
+                    if (app.state.user.requests[key]) {
+                        app.state.user.requests[key]['new'] = false;
+                    }
+                }
+                if (e.newValue === "{}") {
+                    app.state.user['httpRequests'] = [];
+                    app.state.user['dnsRequests'] = [];
+                    app.state.user['requests'] = {};
+                }
+
+                app.setState({ state: app.state });
+                app.forceUpdate();
+                app.updateTitle();
+            } else if (e.key === "token") {
+                document.location.reload();
+            } else if (e.key === "lastSelectedRequest") {
+                let id = e.newValue;
+                if (app.state.user.requests[id] !== undefined) {
+                    app.state.user.selectedRequest = id;
+                    app.state.user.requests[id]['new'] = false;
+                    app.setState({ state: app.state });
+                }
+            } else if (e.key === "lastDeletedRequest") {
+                let id = e.newValue;
+                delete app.state.user.requests[id];
+                delete app.state.user.visited[id];
+
+                app.state.user.httpRequests = app.state.user.httpRequests.filter(function (value, index, arr) {
+                    return (value['_id'] !== id);
+                });
+                app.state.user.dnsRequests = app.state.user.dnsRequests.filter(function (value, index, arr) {
+                    return (value['_id'] !== id);
+                });
+
+                app.setState({ state: app.state });
+                                app.forceUpdate();
+                app.updateTitle();
+            }
+         });
+
         this.socket = socket;
 
         socket.onopen = function(event) {
             // Send the token to the WebSocket server
-            console.log('WebSocket connection opened');
             socket.send(localStorage.getItem('token'));
-            console.log('Token sent to WebSocket');
         };
     
         // Event handler for incoming WebSocket messages
@@ -97,10 +139,10 @@ class App extends Component {
                 let dnsRequests = requests.filter(r => r['type'] === 'dns');
                 if (dnsRequests.length > 0) {
                     user['dnsRequests'] = user['dnsRequests'].concat(httpRequests);
-                    for (let i=0;i<this.user['dnsRequests'].length;i++)
+                    for (let i=0;i<user['dnsRequests'].length;i++)
                     {
-                        this.user.requests[this.user['dnsRequests'][i]['_id']] = this.user['dnsRequests'][i];
-                        this.user['dnsRequests'][i]['new'] = false;
+                        user.requests[user['dnsRequests'][i]['_id']] = user['dnsRequests'][i];
+                        user['dnsRequests'][i]['new'] = false;
                     }
                 }
 
@@ -111,11 +153,11 @@ class App extends Component {
                 let request = JSON.parse(event['data']);
                 request['new'] = true;
                 if (request['type'] === 'http') {
-                    user['httpRequests'] = user['httpRequests'].concat([request]);
+                    app.user['httpRequests'] = app.user['httpRequests'].concat([request]);
                 } else if (request['type'] === 'dns') {
-                    user['dnsRequests'] = user['dnsRequests'].concat([request]);
+                    app.user['dnsRequests'] = app.user['dnsRequests'].concat([request]);
                 }
-                user.requests[request['_id']] = request;
+                app.user.requests[request['_id']] = request;
                 app.updateTitle();
                 app.setState({ state: app.state });
             }
@@ -123,7 +165,6 @@ class App extends Component {
     
         // Event handler for WebSocket connection closure
         socket.onclose = function(event) {
-            console.log('WebSocket connection closed');
             document.location.reload();
         };
 
@@ -138,78 +179,51 @@ class App extends Component {
             this.setState(this.state);
         });
 
-        /*Utils.getDNSRecords().then(res => {
-           this.setState({dnsRecords: res});
-        });*/
-
-        /*
-        Utils.getRequests().then(res=> {
-            this.user['httpRequests'] = this.user['httpRequests'].concat(res['http']);
-            for (let i=0;i<this.user['httpRequests'].length;i++)
-            {
-                this.user.requests[this.user['httpRequests'][i]['_id']] = this.user['httpRequests'][i];
-                this.user['httpRequests'][i]['new'] = false;
-            }
-
-            this.user['dnsRequests'] = this.user['dnsRequests'].concat(res['dns']);
-
-            for (let i=0;i<this.user['dnsRequests'].length;i++)
-            {
-                this.user.requests[this.user['dnsRequests'][i]['_id']] = this.user['dnsRequests'][i];
-                this.user['dnsRequests'][i]['new'] = false;
-            }
-
-            this.user['timestamp'] = res['date'];
-            this.updateTitle();
-            this.setState({ state: this.state });
-        }, err => {
-            if (err.response.status === 401 && err.response.data.error === "Unauthorized") {
-                Utils.getRandomSubdomain();
-            }
-        });
-        */
-
         this.onWrapperClick = this.onWrapperClick.bind(this);
         this.onToggleMenu = this.onToggleMenu.bind(this);
         this.onSidebarClick = this.onSidebarClick.bind(this);
         this.onMenuItemClick = this.onMenuItemClick.bind(this);
-        this.updateFunction = this.updateFunction.bind(this);
         this.clickRequestAction = this.clickRequestAction.bind(this);
         this.copyUrl = this.copyUrl.bind(this);
         this.newUrl = this.newUrl.bind(this);
         this.updateTitle = this.updateTitle.bind(this);
         this.updateSearchValue = this.updateSearchValue.bind(this);
+        this.doRerender = this.doRerender.bind(this);
+        this.markAllAsVisited = this.markAllAsVisited.bind(this);
         this.createMenu();
+    }
+
+    markAllAsVisited() {
+        let obj = {};
+        for (let [key, _] of Object.entries(this.state.user.requests)) {
+            this.state.user.requests[key]['new'] = false
+            obj[key] = true;
+        }
+        this.state.user.visited = obj;
+        localStorage.setItem("visited", JSON.stringify(obj));
+        this.updateTitle();
+        this.setState({user: this.state.user});
+        this.forceUpdate();
     }
 
     clickRequestAction(action, id)
     {
-        if (action == 'select') {
+        if (action === 'select') {
             if (this.state.user.requests[id] !== undefined) {
                 this.state.user.selectedRequest = id;
                 this.state.user.requests[id]['new'] = false;
                 if (this.state.user.visited[id] === undefined) {
                     this.state.user.visited[id] = true;
-                    this.state.user.visited['length'] = (this.state.user.visited['length'] !== undefined ? this.state.user.visited['length'] + 1 : 1);
                     localStorage.setItem("visited", JSON.stringify(this.state.user.visited));
                 }
                 localStorage.setItem('lastSelectedRequest', id);
             }
         }
-        else if (action == 'delete') {
-            let type = (this.state.user.requests[id].name===undefined ? "HTTP" : "DNS");
-            this.state.user.requests[id] = undefined;
-            this.state.user.visited[id] = undefined;
-            if (this.state.user.visited.length!==undefined) {
-                this.state.user.visited.length--;
-            } else {
-                this.state.user.visited.length = 0;
-            }
-            if (this.state.user.visited.length < 0 )
-            {
-                this.state.user.visited.length = 0;
-            }
+        else if (action === 'delete') {
+            delete this.state.user.requests[id];
+            delete this.state.user.visited[id];
             localStorage.setItem("visited", JSON.stringify(this.state.user.visited));
+            localStorage.setItem("lastDeletedRequest", id);
 
             this.state.user.httpRequests = this.state.user.httpRequests.filter(function (value, index, arr) {
                 return (value['_id'] !== id);
@@ -218,10 +232,10 @@ class App extends Component {
                 return (value['_id'] !== id);
             });
 
-            Utils.deleteRequest(id, type);
+            Utils.deleteRequest(id);
 
-            this.setState({ state: this.state });
-        } else if (action == 'reset') {
+            this.setState({ user: this.state.user });
+        } else if (action === 'reset') {
             this.state.user.selectedRequest = undefined;
             localStorage.setItem('lastSelectedRequest', undefined);
         }
@@ -233,7 +247,9 @@ class App extends Component {
     }
 
     updateTitle() {
-        let n = (this.state.user.httpRequests.length + this.state.user.dnsRequests.length) - (this.state.user.visited.length !== undefined ? this.state.user.visited.length : 0);
+        let n = (this.state.user.httpRequests.length + this.state.user.dnsRequests.length) - (
+            Object.keys(this.state.user.visited).length
+        );
         let text = "Dashboard - requestrepo.com";
         if (n<=0) {
             document.title = text;
@@ -245,54 +261,6 @@ class App extends Component {
     updateSearchValue(val) {
         this.state.searchValue = val;
         this.setState({ state: this.state });
-    }
-
-    updateFunction() {
-        let user = this.state.user;
-        if (!user) return;
-
-        let newRequests = 0;
-
-        let shouldUpdate = false;
-
-        /*
-        Utils.getRequests(user['timestamp']).then(res => {
-            let ts = parseInt(user['timestamp']);
-
-            var arr = ['http', 'dns'];
-
-            for (var idx=0;idx<arr.length;idx++) {
-                for (let i = 0; i < res[arr[idx]].length; i++) {
-                    if (this.user.requests[res[arr[idx]][i]['_id']] !== undefined) continue;
-
-                    res[arr[idx]][i]['new'] = true;
-                    this.user.requests[res[arr[idx]][i]['_id']] = res[arr[idx]][i];
-                    newRequests += 1;
-                }
-            }
-            user['httpRequests'] = user['httpRequests'].concat(res['http']);
-            user['dnsRequests'] = user['dnsRequests'].concat(res['dns']);
-
-            let t2 = parseInt(res.date);
-            if (t2>=ts) {
-                user['timestamp'] = (t2+1).toString();
-            }
-
-            if (newRequests > 0)
-            {
-                this.setState({user});
-                toast('🚀 ' + newRequests + ` new request${newRequests > 1 ? 's' : ''}!`, {
-                    position: "bottom-center",
-                    autoClose: 4000,
-                    hideProgressBar: false,
-                    closeOnClick: true,
-                    pauseOnHover: true,
-                    draggable: true
-                });
-            }
-            this.updateTitle();
-        });
-        */
     }
 
     copyUrl(e)
@@ -319,7 +287,7 @@ class App extends Component {
     }
 
     componentDidMount() {
-        this.interval = setInterval(this.updateFunction, 5000);
+    
     }
 
     componentWillUnmount() {
@@ -331,6 +299,10 @@ class App extends Component {
             this.addClass(document.body, 'body-overflow-hidden');
         else
             this.removeClass(document.body, 'body-overflow-hidden');
+    }
+
+    doRerender() {
+        this.forceUpdate();
     }
 
     render() {
@@ -348,7 +320,7 @@ class App extends Component {
             <div className={wrapperClass} onClick={this.onWrapperClick}>
                 <AppTopbar onToggleMenu={this.onToggleMenu} updateSearchValue={this.updateSearchValue}/>
 
-                <AppSidebar user={this.state.user} searchValue={this.state.searchValue} clickRequestAction={this.clickRequestAction}/>
+                <AppSidebar user={this.state.user} searchValue={this.state.searchValue} clickRequestAction={this.clickRequestAction} doRerender={this.doRerender} markAllAsVisited={this.markAllAsVisited}/>
 
                 <div className="layout-main">
                     <div className="grid">

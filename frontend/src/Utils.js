@@ -7,6 +7,7 @@ export class Utils {
     static requestsEndpoint = "/api/get_requests";
     static subdomainEndpoint = "/api/get_token";
     static deleteRequestEndpoint = "/api/delete_request";
+    static deleteAllEndpoint = "/api/delete_all";
     static fileEndpoint = "/api/get_file";
     static updateFileEndpoint = "/api/update_file";
     static DNSRecordsEndpoint = "/api/get_dns_records";
@@ -42,7 +43,7 @@ export class Utils {
 
     static async updateFile(data) {
         let reqUrl = this.apiUrl + this.updateFileEndpoint;
-        let res = await axios.post(reqUrl, data, { withCredentials: true });
+        let res = await axios.post(reqUrl, data, { params: { token: localStorage.getItem('token') } });
         return res.data;
     }
 
@@ -75,7 +76,12 @@ export class Utils {
 
     static deleteRequest(id, type) {
         let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
-        return axios.post(reqUrl, { "id": id, "type": type }, { withCredentials: true });
+        return axios.post(reqUrl, { "id": id }, { params: { token: localStorage.getItem('token') } });
+    }
+
+    static deleteAll(id, type) {
+        let reqUrl = this.apiUrl + this.deleteAllEndpoint;
+        return axios.post(reqUrl, null, { params: { token: localStorage.getItem('token') } });
     }
 
 }
