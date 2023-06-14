@@ -13,7 +13,7 @@ WORKDIR /tmp/frontend
 RUN npm install --force
 RUN npm run build
 
-COPY ./new-backend /app
+COPY ./backend /app
 RUN cp -r /tmp/frontend/build/* /app/public/
 RUN rm -rf /tmp/frontend
 
