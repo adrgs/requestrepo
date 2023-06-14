@@ -213,7 +213,12 @@ class Resolver:
         if new_record != None:
             reply.add_answer(new_record.try_rr(request.q))
             try:
-                save_into_db(reply, handler.client_address[0], handler.client_address[1], handler.request[0])
+                save_into_db(
+                    reply,
+                    handler.client_address[0],
+                    handler.client_address[1],
+                    handler.request[0],
+                )
             except Exception as ex:
                 print(ex)
                 pass
@@ -228,6 +233,7 @@ servers = [
 ]
 
 if __name__ == "__main__":
+    print("Starting DNS server...")
     stop_event = threading.Event()
 
     for s in servers:

@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from typing import List
 import re
 
-app = FastAPI()
+app = FastAPI(server_header=False)
 
 redis = None
 

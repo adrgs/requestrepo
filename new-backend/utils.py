@@ -66,7 +66,7 @@ def write_basic_file(subdomain: str):
     }
 
     if config.include_server_domain:
-        file_data["headers"]["server"] = config.server_domain
+        file_data["headers"].append({"header":"Server", "value": config.server_domain})
 
     with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
         json.dump(file_data, outfile)

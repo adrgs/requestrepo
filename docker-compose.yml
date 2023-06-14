@@ -15,5 +15,20 @@ services:
       DOMAIN: requestrepo.com
       JWT_SECRET: changethis
       REDIS_HOST: redisdb
+      INCLUDE_SERVER_DOMAIN: true
+    depends_on:
+      - redisdb
+  dns:
+    build:
+      context: ./dns
+    container_name: dns
+    restart: always
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    environment:
+      DOMAIN: requestrepo.com
+      REDIS_HOST: redisdb
+      SERVER_IP: 130.61.138.67
     depends_on:
       - redisdb

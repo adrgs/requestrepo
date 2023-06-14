@@ -54,9 +54,14 @@ class App extends Component {
 
     this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? "{}" : localStorage.getItem("visited"));
 
-    let ws_url = `ws://${document.location.host}/api/ws`;
+    let protocol = "ws";
+    if (document.location.protocol === "https:") {
+      protocol = "wss";
+    }
+
+    let ws_url = `${protocol}://${document.location.host}/api/ws`;
     if (document.location.hostname === "localhost" || document.location.hostname === "127.0.0.1") {
-      ws_url = `ws://localhost:21337/api/ws`;
+      ws_url = `${protocol}://localhost:21337/api/ws`;
     }
     let socket = new WebSocket(ws_url);
     let user = this.user;
