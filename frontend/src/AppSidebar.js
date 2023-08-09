@@ -85,7 +85,7 @@ export class AppSidebar extends Component {
 
         if ((j >= user.dnsRequests.length || dateA < dateB) && i < user.httpRequests.length) {
           let req = user.requests[user.httpRequests[i]["_id"]];
-          obj["title"] = req["path"];
+          obj["title"] = req["path"] + (req["query"] ? req["query"] : "") + (req["fragment"] ? req["fragment"] : "");
           obj["method"] = req["method"];
           obj["time"] = this.convertUTCDateToLocalDate(dateA).toLocaleString();
           obj["detail"] = req["ip"];
