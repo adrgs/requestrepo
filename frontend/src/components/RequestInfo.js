@@ -143,7 +143,7 @@ export class RequestInfo extends Component {
               <div>
                 <InputText type="text" style={{ width: "100%" }} value={request.raw} />
                 <br />
-                <pre style={{ maxHeight: "400px" }}>{atob(request.raw)}</pre>
+                <pre style={{ maxHeight: "400px", overflowY: "scroll" }}>{atob(request.raw)}</pre>
               </div>
             ) : (
               <p>(empty)</p>
