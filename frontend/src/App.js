@@ -60,7 +60,7 @@ class App extends Component {
     }
 
     let ws_url = `${protocol}://${document.location.host}/api/ws`;
-    if (document.location.hostname === "localhost" || document.location.hostname === "127.0.0.1") {
+    if ((document.location.hostname === "localhost" || document.location.hostname === "127.0.0.1") && window.location.port === '3000') {
       ws_url = `${protocol}://localhost:21337/api/ws`;
     }
     let socket = new WebSocket(ws_url);
@@ -125,8 +125,6 @@ class App extends Component {
       if (cmd === "requests") {
         let requests = event["data"].map((r) => JSON.parse(r));
 
-        console.log(requests);
-
         let httpRequests = requests.filter((r) => r["type"] === "http");
         if (httpRequests.length > 0) {
           user["httpRequests"] = user["httpRequests"].concat(httpRequests);
@@ -164,6 +162,7 @@ class App extends Component {
 
     // Event handler for WebSocket connection closure
     socket.onclose = function (event) {
+      // alert("WebSocket connection closed! Please reload the page.");
       document.location.reload();
     };
 
@@ -176,12 +175,21 @@ class App extends Component {
       res.fetched = true;
       this.setState({ response: res });
       this.setState(this.state);
+    }).catch((err) => {
+      if (err.response.status === 403) {
+        localStorage.removeItem("token");
+        document.location.reload();
+      }
     });
 
     Utils.getDNSRecords().then((res) => {
-      console.log('dns', res);
       this.setState({ dnsRecords: res });
       this.setState({ dnsFetched: true });
+    }).catch((err) => {
+      if (err.response.status === 403) {
+        localStorage.removeItem("token");
+        document.location.reload();
+      }
     });
 
     this.onWrapperClick = this.onWrapperClick.bind(this);
