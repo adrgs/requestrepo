@@ -60,10 +60,10 @@ class App extends Component {
     }
 
     let ws_url = `${protocol}://${document.location.host}/api/ws`;
-    if ((document.location.hostname === "localhost" || document.location.hostname === "127.0.0.1") && window.location.port === '3000') {
+    if ((document.location.hostname === "localhost" || document.location.hostname === "127.0.0.1") && window.location.port === "3000") {
       ws_url = `${protocol}://localhost:21337/api/ws`;
     }
-    let socket = new WebSocket(ws_url);
+
     let user = this.user;
     let app = this;
 
@@ -111,86 +111,96 @@ class App extends Component {
       }
     });
 
-    this.socket = socket;
+    function initWebSocket(ws_url) {
+      let socket = new WebSocket(ws_url);
+      socket.onopen = function (event) {
+        // Send the token to the WebSocket server
+        socket.send(localStorage.getItem("token"));
+      };
 
-    socket.onopen = function (event) {
-      // Send the token to the WebSocket server
-      socket.send(localStorage.getItem("token"));
-    };
+      // Event handler for incoming WebSocket messages
+      socket.onmessage = function (event) {
+        event = JSON.parse(event.data);
+        let cmd = event["cmd"];
+        if (cmd === "requests") {
+          let requests = event["data"].map((r) => JSON.parse(r));
 
-    // Event handler for incoming WebSocket messages
-    socket.onmessage = function (event) {
-      event = JSON.parse(event.data);
-      let cmd = event["cmd"];
-      if (cmd === "requests") {
-        let requests = event["data"].map((r) => JSON.parse(r));
+          let httpRequests = requests.filter((r) => r["type"] === "http");
+          if (httpRequests.length > 0) {
+            user["httpRequests"] = user["httpRequests"].concat(httpRequests);
 
-        let httpRequests = requests.filter((r) => r["type"] === "http");
-        if (httpRequests.length > 0) {
-          user["httpRequests"] = user["httpRequests"].concat(httpRequests);
-
-          for (let i = 0; i < user["httpRequests"].length; i++) {
-            user.requests[user["httpRequests"][i]["_id"]] = user["httpRequests"][i];
-            user["httpRequests"][i]["new"] = false;
+            for (let i = 0; i < user["httpRequests"].length; i++) {
+              user.requests[user["httpRequests"][i]["_id"]] = user["httpRequests"][i];
+              user["httpRequests"][i]["new"] = false;
+            }
           }
-        }
 
-        let dnsRequests = requests.filter((r) => r["type"] === "dns");
-        if (dnsRequests.length > 0) {
-          user["dnsRequests"] = user["dnsRequests"].concat(dnsRequests);
-          for (let i = 0; i < user["dnsRequests"].length; i++) {
-            user.requests[user["dnsRequests"][i]["_id"]] = user["dnsRequests"][i];
-            user["dnsRequests"][i]["new"] = false;
+          let dnsRequests = requests.filter((r) => r["type"] === "dns");
+          if (dnsRequests.length > 0) {
+            user["dnsRequests"] = user["dnsRequests"].concat(dnsRequests);
+            for (let i = 0; i < user["dnsRequests"].length; i++) {
+              user.requests[user["dnsRequests"][i]["_id"]] = user["dnsRequests"][i];
+              user["dnsRequests"][i]["new"] = false;
+            }
           }
+
+          app.updateTitle();
+          app.setState({ state: app.state });
+        } else if (cmd === "request") {
+          let request = JSON.parse(event["data"]);
+          request["new"] = true;
+          if (request["type"] === "http") {
+            app.user["httpRequests"] = app.user["httpRequests"].concat([request]);
+          } else if (request["type"] === "dns") {
+            app.user["dnsRequests"] = app.user["dnsRequests"].concat([request]);
+          }
+          app.user.requests[request["_id"]] = request;
+          app.updateTitle();
+          app.setState({ state: app.state });
         }
+      };
 
-        app.updateTitle();
-        app.setState({ state: app.state });
-      } else if (cmd === "request") {
-        let request = JSON.parse(event["data"]);
-        request["new"] = true;
-        if (request["type"] === "http") {
-          app.user["httpRequests"] = app.user["httpRequests"].concat([request]);
-        } else if (request["type"] === "dns") {
-          app.user["dnsRequests"] = app.user["dnsRequests"].concat([request]);
+      // Event handler for WebSocket connection closure
+      socket.onclose = function () {
+        setTimeout(function() {
+          initWebSocket(ws_url);
+        }, 1000);
+      };
+
+      app.socket = socket;
+    }
+
+    initWebSocket(ws_url);
+
+    Utils.getFile()
+      .then((res) => {
+        try {
+          let decoded = atob(res.raw);
+          res.raw = decoded;
+        } catch {}
+
+        res.fetched = true;
+        this.setState({ response: res });
+        this.setState(this.state);
+      })
+      .catch((err) => {
+        if (err.response.status === 403) {
+          localStorage.removeItem("token");
+          document.location.reload();
         }
-        app.user.requests[request["_id"]] = request;
-        app.updateTitle();
-        app.setState({ state: app.state });
-      }
-    };
+      });
 
-    // Event handler for WebSocket connection closure
-    socket.onclose = function (event) {
-      // alert("WebSocket connection closed! Please reload the page.");
-      document.location.reload();
-    };
-
-    Utils.getFile().then((res) => {
-      try {
-        let decoded = atob(res.raw);
-        res.raw = decoded;
-      } catch {}
-
-      res.fetched = true;
-      this.setState({ response: res });
-      this.setState(this.state);
-    }).catch((err) => {
-      if (err.response.status === 403) {
-        localStorage.removeItem("token");
-        document.location.reload();
-      }
-    });
-
-    Utils.getDNSRecords().then((res) => {
-      this.setState({ dnsRecords: res });
-      this.setState({ dnsFetched: true });
-    }).catch((err) => {
-      if (err.response.status === 403) {
-        localStorage.removeItem("token");
-        document.location.reload();
-      }
-    });
+    Utils.getDNSRecords()
+      .then((res) => {
+        this.setState({ dnsRecords: res });
+        this.setState({ dnsFetched: true });
+      })
+      .catch((err) => {
+        if (err.response.status === 403) {
+          localStorage.removeItem("token");
+          document.location.reload();
+        }
+      });
 
     this.onWrapperClick = this.onWrapperClick.bind(this);
     this.onToggleMenu = this.onToggleMenu.bind(this);
