@@ -9,7 +9,7 @@ export class RequestsPage extends Component {
 
   render() {
     return (
-      <div className="card card-w-title" style={{ border: "1px solid #cccccc", borderTop: "0px", borderRadius: "0px 0px 5px 5px" }}>
+      <div className="card card-w-title card-body">
         {this.props.user !== null && this.props.user !== undefined && this.props.user.requests[this.props.user.selectedRequest] === undefined && (
           <div className="grid">
             <div className="col-12">

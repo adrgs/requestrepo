@@ -18,6 +18,10 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+body.dark {
+    background-color: #2f2f2f;
+}
+
 a {
     text-decoration: none;
 }

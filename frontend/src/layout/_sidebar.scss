@@ -1,3 +1,16 @@
+:root {
+    --sidebar-header-bg-color: #f8f9fa;
+    --sidebar-color: #000;
+    --sidebar-border-color: #ccc;
+    --sidebar-bg-color: #f3f4f9;
+}
+body.dark {
+    --sidebar-header-bg-color: #282828;
+    --sidebar-border-color: #000;
+    --sidebar-color: #fff;
+    --sidebar-bg-color: #151515;
+}
+
 .layout-sidebar {
     position: fixed;
     width: 300px;
@@ -8,8 +21,8 @@
     -moz-user-select: none;
     -webkit-user-select: none;
     @include transition(left $transitionDuration);
-    border-right: 1px solid #ccc;
-    border-bottom: 1px solid #ccc;
+    border-right: 1px solid var(--sidebar-border-color);
+    border-bottom: 1px solid var(--sidebar-border-color);
 
     .layout-logo {
         text-align: center;
@@ -31,8 +44,18 @@
 }
 
 .layout-sidebar-header {
-    border-bottom:1px solid #ccc;
-    background-color: #f8f9fa;
-    color:#000;
+    border-bottom:1px solid var(--sidebar-border-color);
+    background-color: var(--sidebar-header-bg-color);
+    color:var(--sidebar-color);
     font-size:14px;
+}
+
+.layout-sidebar-subheader {
+    text-align: center;
+    padding: "5px";
+    border-bottom: 1px solid var(--sidebar-border-color);
+}
+
+.layout-sidebar {
+    background-color: var(--sidebar-bg-color);
 }

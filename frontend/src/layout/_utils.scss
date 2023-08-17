@@ -1,3 +1,69 @@
+:root {
+    --card-color: #000;
+    --card-bg-color: #fff;
+    --req-table-nth: #f6f8fa;
+    --card-request-bg-color: #fefefe;
+    --card-request-visited-bg-color: #f5f5f5;
+    --card-request-hover-bg-color: #f0f0f0;
+    --card-request-border: #ccc;
+    --card-request-active-border: #005ab9;
+}
+body.dark {
+    --card-color: #fff;
+    --card-bg-color: #222;
+    --req-table-nth: #151515;
+    --card-request-bg-color: #252525;
+    --card-request-visited-bg-color: #151515;
+    --card-request-hover-bg-color: #1f1f1f;
+    --card-request-border: #000;
+    --card-request-active-border: #559ce9;
+}
+
+.p-component.p-toolbar {
+    border-color: rgb(204, 204, 204);
+}
+
+.card-body {
+    border: 1px solid var(--card-request-border);
+    border-top: 0;
+    border-radius: "0px 0px 5px 5px";
+}
+
+body.dark .p-toolbar {
+    background-color: #191919;
+    border: 1px solid #000;
+}
+
+body.dark a:visited {
+    color: #559ce9;
+}
+
+body.dark pre {
+    background-color: #151515;
+}
+
+body.dark input {
+    background-color: #111;
+    border-color: #000;
+    color:#eee;
+}
+
+body.dark .p-dropdown, body.dark .p-dropdown-item {
+    background-color: #111!important;
+    border-color: #000;
+    color:#eee!important;
+}
+
+body.dark .p-dropdown-panel {
+    background-color: #111!important;
+    border-color: #000;
+    color:#eee!important;
+}
+
+body.dark .p-inputtext:enabled:focus {
+    box-shadow: 0 0 0 0.0rem #000;
+}
+
 /* Typography */
 h1 {
     font-weight: normal;
@@ -12,7 +78,8 @@ h2 {
 }
 
 .card {
-    background-color: #ffffff;
+    background-color: var(--card-bg-color);
+    color: var(--card-color);
     padding: 1em;
     @include border-radius($borderRadius);
 
@@ -22,11 +89,11 @@ h2 {
 
     &.request {
         border-radius: 0px;
-        background-color: #fefefe;
-        border-bottom: 1px solid #ccc;
+        background-color: var(--card-request-bg-color);
+        border-bottom: 1px solid var(--card-request-border);
 
         &:hover {
-            background-color: #f0f0f0;
+            background-color: var(--card-request-hover-bg-color);
             cursor: pointer;
         }
     }
@@ -34,11 +101,11 @@ h2 {
     &.active {
         background-color: #007ad9 !important;
         color: #ffffff !important;
-        border-bottom: 1px solid #005ab9 !important;
+        border-bottom: 1px solid var(--card-request-active-border) !important;
     }
 
     &.visited {
-        background-color: #f5f5f5;
+        background-color: var(--card-request-visited-bg-color);
     }
 
     h1 {
@@ -165,7 +232,7 @@ code {
     width: 100%;
 
     tr:nth-child(even) {
-        background: #f6f8fa
+        background: var(--req-table-nth);
     }
 }
 

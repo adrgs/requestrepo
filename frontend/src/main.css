@@ -75,6 +75,10 @@ body {
     -webkit-font-smoothing: antialiased
 }
 
+body.dark {
+    background-color: #000;
+}
+
 a {
     text-decoration: none
 }

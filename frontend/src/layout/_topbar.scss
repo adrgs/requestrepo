@@ -1,14 +1,26 @@
+:root {
+    --topbar-bg-color: #fff;
+    --topbar-color: #858796;
+    --topbar-border-color: #ccc;
+}
+
+body.dark {
+    --topbar-bg-color: #222;
+    --topbar-color: #fff;
+    --topbar-border-color: #000;
+}
+
 .layout-topbar {
     position: fixed;
     height: 50px;
-    padding: .7em 1.5em 0em 1.5em;
-    color: #858796;
+    padding: .7em 15px 0em 15px;
+    color: var(--topbar-color);
     z-index: 999;
     right: 0;
-    background-color: #fff;
+    background-color: var(--topbar-bg-color);
     @include clearfix();
     @include transition(left $transitionDuration);
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid var(--topbar-border-color);
 
     .layout-topbar-icons {
         float: right;

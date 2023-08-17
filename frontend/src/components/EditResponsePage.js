@@ -125,7 +125,7 @@ export class EditResponsePage extends Component {
       return <HeaderInput key={index} index={index} header={element["header"]} value={element["value"]} handleHeaderInputChange={this.handleHeaderInputChange} headersData={this.state.headersData} />;
     });
     return (
-      <div className="card card-w-title" style={{ border: "1px solid #cccccc", borderTop: "0px", borderRadius: "0px 0px 5px 5px" }}>
+      <div className="card card-w-title card-body">
         <div className="grid">
           <div className="col-12">
             <div className="grid">

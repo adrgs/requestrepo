@@ -195,7 +195,7 @@ export class AppSidebar extends Component {
     return (
       <div className={"layout-sidebar layout-sidebar-light"}>
         <div className={"layout-sidebar-header"}>
-          <div style={{ textAlign: "center", padding: "5px", borderBottom: "1px solid #ccc" }}>
+          <div className={"layout-sidebar-subheader"}>
             <Button label="Delete all requests" icon="pi pi-times" className="p-button-danger p-button-text" onClick={this.deleteAllRequests} />
           </div>
           <div style={{ padding: "0.85rem" }}>

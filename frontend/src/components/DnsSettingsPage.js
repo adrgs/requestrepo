@@ -102,7 +102,7 @@ export class DnsSettingsPage extends Component {
       );
     });
     return (
-      <div className="card card-w-title" style={{ border: "1px solid #cccccc", borderTop: "0px", borderRadius: "0px 0px 5px 5px" }}>
+      <div className="card card-w-title card-body">
         <div className="grid">
           <div className="col-6">
             <h1>DNS Records</h1>

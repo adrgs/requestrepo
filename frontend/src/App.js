@@ -52,6 +52,19 @@ class App extends Component {
       dnsFetched: false,
     };
 
+    if (localStorage.getItem("theme") !== "dark" && localStorage.getItem("theme") !== "light") {
+      // get system theme
+      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        localStorage.setItem("theme", "dark");
+      } else {
+        localStorage.setItem("theme", "light");
+      }
+    }
+
+    if (localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
+
     this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? "{}" : localStorage.getItem("visited"));
 
     let protocol = "ws";
@@ -338,7 +351,7 @@ class App extends Component {
           <div className="grid">
             <div className="col-12">
               <Toolbar
-                style={{ lineHeight: "3", borderColor: "#cccccc", borderRadius: "5px 5px 0px 0px" }}
+                style={{ lineHeight: "3", borderRadius: "5px 5px 0px 0px" }}
                 left={
                   <div style={{ textAlign: "center" }}>
                     <a href="#/requests">
