@@ -61,7 +61,10 @@ export class Utils {
       localStorage.clear();
       localStorage.setItem("token", response.data.token);
       window.location.reload();
+    }).catch(function (_) {
+      alert("Cannot get subdomain, backend is down. Please try again later.");
     });
+  
   }
 
   static deleteRequest(id) {
