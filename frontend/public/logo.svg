@@ -3,7 +3,7 @@
   <defs>
     <style>
       .cls-1, .cls-2 {
-        font-family: Roboto-Regular, Roboto;
+        font-family: Roboto-Regular, Roboto, Sans-serif;
         font-size: 60px;
       }
 
