@@ -36,7 +36,7 @@ export class RequestInfo extends Component {
     if (request.headers) headerKeys = Object.keys(request.headers);
 
     if (request.name === undefined) {
-      data = request.method + " " + request.path + " " + request.protocol + "\r\n";
+      data = request.method + " " + request.path + " " + request.protocol.replace("HTTPS", "HTTP") + "\r\n";
       data += "host: " + request.headers["host"] + "\r\n";
       headerKeys.map((item) => {
         if (item !== "host") {
