@@ -3,7 +3,7 @@ FROM python:3.10
 RUN apt-get update && apt-get install -y \
     software-properties-common \
     npm
-RUN npm install npm@latest -g && \
+RUN npm install npm@9.2.0 -g && \
     npm install n -g && \
     n latest
 
