@@ -10,7 +10,7 @@ Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine testing purposes.
+These instructions will get you a copy of the project up and running on your local machine for testing purposes.
 
 ```
 git clone git@github.com:adrgs/requestrepo.git
