@@ -128,6 +128,9 @@ class App extends Component {
       let socket = new WebSocket(ws_url);
       socket.onopen = function (event) {
         // Send the token to the WebSocket server
+        app.state.user["httpRequests"] = [];
+        app.state.user["dnsRequests"] = [];
+        app.state.user["requests"] = {};
         socket.send(localStorage.getItem("token"));
       };
 
