@@ -76,8 +76,15 @@ export class Utils {
   }
 
   static base64EncodeUnicode(str) {
-    // Encode the Latin1 string to base64
-    return btoa(str);
+    // Convert each character to Latin1 or URL-encoded
+    var latin1OrEncodedStr = Array.from(str).map(function (c) {
+      var code = c.charCodeAt(0);
+      // Latin1 characters are in the range of 0 to 255
+      return (code >= 0 && code <= 255) ? c : encodeURIComponent(c);
+    }).join('');
+
+    // Base64 encode the modified string
+    return btoa(latin1OrEncodedStr);
   }
 
   static base64DecodeUnicode(str) {
