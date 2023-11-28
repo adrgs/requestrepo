@@ -87,13 +87,20 @@ export class Utils {
   }
 
   static base64DecodeUnicode(str) {
-    // Decode from base64 to a Latin1 string
-    var latin1String = atob(str);
+    // Decode from base64
+    var binaryString = atob(str);
 
-    // Convert the Latin1 string back to a UTF-8 byte sequence
-    var utf8Bytes = escape(latin1String);
+    try {
+      // Convert binary string to a percent-encoded string
+      var percentEncodedStr = binaryString.split('').map(function (c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join('');
 
-    // Decode the UTF-8 bytes back to a JavaScript string
-    return decodeURIComponent(utf8Bytes);
+      // Attempt to decode as UTF-8
+      return decodeURIComponent(percentEncodedStr);
+    } catch (e) {
+      // If UTF-8 decoding fails, return the binary string (Latin1)
+      return binaryString;
+    }
   }
 }
