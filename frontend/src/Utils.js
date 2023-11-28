@@ -76,14 +76,8 @@ export class Utils {
   }
 
   static base64EncodeUnicode(str) {
-    // Encode the string as UTF-8
-    var utf8Bytes = encodeURIComponent(str);
-
-    // Convert UTF-8 bytes to a Latin1 string
-    var latin1Bytes = unescape(utf8Bytes);
-
     // Encode the Latin1 string to base64
-    return btoa(latin1Bytes);
+    return btoa(str);
   }
 
   static base64DecodeUnicode(str) {
