@@ -48,7 +48,7 @@ export class Utils {
       cookie = cookie.split(".");
       if (cookie.length < 2) return false;
       cookie = cookie[1];
-      let jsonToken = JSON.parse(atob(cookie));
+      let jsonToken = JSON.parse(Utils.base64DecodeUnicode(cookie));
       if (jsonToken["subdomain"] !== undefined) {
         this.subdomain = jsonToken["subdomain"];
       }
@@ -62,7 +62,7 @@ export class Utils {
       localStorage.setItem("token", response.data.token);
       window.location.reload();
     });
-  
+
   }
 
   static deleteRequest(id) {
@@ -73,5 +73,27 @@ export class Utils {
   static deleteAll(id, type) {
     let reqUrl = this.apiUrl + this.deleteAllEndpoint;
     return axios.post(reqUrl, null, { params: { token: localStorage.getItem("token") } });
+  }
+
+  static base64EncodeUnicode(str) {
+    // Encode the string as UTF-8
+    var utf8Bytes = encodeURIComponent(str);
+
+    // Convert UTF-8 bytes to a Latin1 string
+    var latin1Bytes = unescape(utf8Bytes);
+
+    // Encode the Latin1 string to base64
+    return btoa(latin1Bytes);
+  }
+
+  static base64DecodeUnicode(str) {
+    // Decode from base64 to a Latin1 string
+    var latin1String = atob(str);
+
+    // Convert the Latin1 string back to a UTF-8 byte sequence
+    var utf8Bytes = escape(latin1String);
+
+    // Decode the UTF-8 bytes back to a JavaScript string
+    return decodeURIComponent(utf8Bytes);
   }
 }

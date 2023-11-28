@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
+import { Utils } from "../Utils";
 
 export class RequestInfo extends Component {
   constructor(props) {
@@ -30,7 +31,7 @@ export class RequestInfo extends Component {
 
   render() {
     let request = this.props.request;
-    let data = atob(request.raw);
+    let data = Utils.base64DecodeUnicode(request.raw);
 
     let headerKeys;
     if (request.headers) headerKeys = Object.keys(request.headers);
@@ -46,7 +47,7 @@ export class RequestInfo extends Component {
       });
       data += "\r\n";
       if (request.raw) {
-        data += atob(request.raw) + "\r\n";
+        data += Utils.base64DecodeUnicode(request.raw) + "\r\n";
       }
     }
 
@@ -143,7 +144,7 @@ export class RequestInfo extends Component {
               <div>
                 <InputText type="text" style={{ width: "100%" }} value={request.raw} />
                 <br />
-                <pre style={{ maxHeight: "400px", overflowY: "scroll" }}>{atob(request.raw)}</pre>
+                <pre style={{ maxHeight: "400px", overflowY: "scroll" }}>{Utils.base64DecodeUnicode(request.raw)}</pre>
               </div>
             ) : (
               <p>(empty)</p>
@@ -151,7 +152,7 @@ export class RequestInfo extends Component {
           </div>
           <div className="col-12 raw-req">
             <h1>Raw request</h1>
-            <InputText type="text" style={{ width: "100%" }} value={btoa(data)} />
+            <InputText type="text" style={{ width: "100%" }} value={Utils.base64EncodeUnicode(data)} />
             <br />
             <pre style={{ overflowWrap: "break-word", padding: "10px" }}>{data}</pre>
           </div>

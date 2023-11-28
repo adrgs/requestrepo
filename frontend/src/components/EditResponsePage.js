@@ -25,7 +25,7 @@ export class EditResponsePage extends Component {
       Utils.getFile().then((res) => {
         this.setState({ headers: res["headers"] });
         try {
-          this.setState({ content: atob(res["raw"]) });
+          this.setState({ content: Utils.base64DecodeUnicode(res["raw"]) });
         } catch {}
         this.setState({ statusCode: res["status_code"] });
         this.setState({ fetched: true });
@@ -60,7 +60,7 @@ export class EditResponsePage extends Component {
       return value.header.length > 0;
     });
     obj["status_code"] = this.state.statusCode;
-    obj["raw"] = btoa(this.state.content);
+    obj["raw"] = Utils.base64EncodeUnicode(this.state.content);
     Utils.updateFile(obj).then((res) => {
       if (res.error) {
         this.props.toast.error(res.error, {
@@ -83,7 +83,7 @@ export class EditResponsePage extends Component {
         Utils.getFile().then((res) => {
           this.setState({ headers: res["headers"] });
           try {
-            this.setState({ content: atob(res["raw"]) });
+            this.setState({ content: Utils.base64DecodeUnicode(res["raw"]) });
           } catch {}
           this.setState({ statusCode: res["status_code"] });
           this.setState({ fetched: true });

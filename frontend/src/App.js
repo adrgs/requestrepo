@@ -191,7 +191,7 @@ class App extends Component {
     Utils.getFile()
       .then((res) => {
         try {
-          let decoded = atob(res.raw);
+          let decoded = Utils.base64DecodeUnicode(res.raw);
           res.raw = decoded;
         } catch {}
 
