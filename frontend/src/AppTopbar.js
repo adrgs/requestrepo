@@ -40,11 +40,6 @@ export class AppTopbar extends Component {
             <object data="/logo.svg" type="image/svg+xml" style={{ height: "30px" }}>requestrepo</object>
           </a>
         </div>
-        <div style={{ float: "left", marginLeft: "1rem" }} className="desktop-only">
-          <GitHubButton href="https://github.com/adrgs/requestrepo" data-color-scheme={localStorage.getItem("theme")} data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star adrgs/requestrepo on GitHub">
-            Star
-          </GitHubButton>
-        </div>
         <div className="layout-topbar-icons" style={{ maxWidth: "23%" }}>
           <span style={{ marginTop: "8px", width: "100%" }} className="layout-topbar-search">
             <InputText style={{ width: "100%" }} type="text" placeholder="Search" value={this.state.searchValue} onChange={this.handleSearchValueChange} />
