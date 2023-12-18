@@ -13,7 +13,7 @@ Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 These instructions will get you a copy of the project up and running on your local machine for testing purposes.
 
 ```
-git clone git@github.com:adrgs/requestrepo.git
+git clone https://github.com/adrgs/requestrepo.git
 cd requestrepo
 docker-compose up --build
 ```
