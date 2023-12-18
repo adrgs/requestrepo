@@ -5,7 +5,7 @@
 
 Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 
-![requestrepo demo](https://i.imgur.com/yiap11c.png)
+![requestrepo demo](https://i.imgur.com/pzn8O18.png)
 
 
 ## Getting Started
