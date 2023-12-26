@@ -16,10 +16,10 @@ import uuid
 import base64
 
 
-EPOCH = datetime.datetime(1970, 1, 1)
-SERIAL = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+EPOCH: datetime.datetime = datetime.datetime(1970, 1, 1)
+SERIAL: int = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
-TYPE_LOOKUP = {
+TYPE_LOOKUP: dict[A | AAAA | CNAME | MX | NS | SOA | TXT, int] = {
     A: QTYPE.A,
     AAAA: QTYPE.AAAA,
     CNAME: QTYPE.CNAME,
@@ -85,7 +85,8 @@ class Record:
 def update_dns_record(domain: str, dtype: str, newval: str) -> None:
     r = redis.Redis(host=config.redis_host, port=6379, db=0)
 
-    data = {"domain": domain, "type": dtype, "value": newval, "_id": str(uuid.uuid4())}
+    data = {"domain": domain, "type": dtype,
+            "value": newval, "_id": str(uuid.uuid4())}
 
     result = r.get(f"dns:{dtype}:{domain}")
 
@@ -129,7 +130,7 @@ def insert_into_db(value: dict[str, Any]) -> None:
     r.set(f"request:{subdomain}:{value['_id']}", idx)
 
 
-def get_dns_record(domain: str, dtype: str) -> Any | None:
+def get_dns_record(domain: str, dtype: str) -> dict[str, Any] | None:
     r = redis.Redis(host=config.redis_host, port=6379, db=0)
 
     domain = domain.lower()
@@ -137,15 +138,13 @@ def get_dns_record(domain: str, dtype: str) -> Any | None:
     result = r.get(f"dns:{dtype}:{domain}")
 
     if result:
-        result = json.loads(result)
-
-    return result
+        return json.loads(result)
 
 
 class Resolver:
     def __init__(self, server_ip: str, server_domain: str) -> None:
-        self.server_ip = server_ip
-        self.server_domain = server_domain + "."
+        self.server_ip: str = server_ip
+        self.server_domain: str = server_domain + "."
 
     def resolve_cname(self, reply: DNSRecord) -> Record | None:
         data = get_dns_record(str(reply.q.qname), "CNAME")
@@ -162,7 +161,7 @@ class Resolver:
             return Record(TXT, data["value"])
 
     def resolve_ip(self, reply: DNSRecord, dtype: str) -> Record | None:
-        new_record = None
+        new_record: None | Record = None
         data = get_dns_record(str(reply.q.qname), dtype)
         if data == None:
             new_record = Record(A if dtype == "A" else AAAA, self.server_ip)
@@ -192,36 +191,29 @@ class Resolver:
         return new_record
 
     def resolve(self, request: DNSRecord, handler: Any) -> DNSRecord:
-        reply = request.reply()
+        reply: DNSRecord = request.reply()
 
         # We assume that the data in the DB is correct (using server side checks)
         new_record: Record | None = None
 
-        try:
-            if QTYPE[reply.q.qtype] == "CNAME":
-                new_record = self.resolve_cname(reply)
-            elif QTYPE[reply.q.qtype] == "TXT":
-                new_record = self.resolve_txt(reply)
-            elif QTYPE[reply.q.qtype] == "A":
-                new_record = self.resolve_ip(reply, "A")
-            elif QTYPE[reply.q.qtype] == "AAAA":
-                new_record = self.resolve_ip(reply, "AAAA")
-        except Exception as ex:
-            print(ex)
-            pass
+        if QTYPE[reply.q.qtype] == "CNAME":
+            new_record = self.resolve_cname(reply)
+        elif QTYPE[reply.q.qtype] == "TXT":
+            new_record = self.resolve_txt(reply)
+        elif QTYPE[reply.q.qtype] == "A":
+            new_record = self.resolve_ip(reply, "A")
+        elif QTYPE[reply.q.qtype] == "AAAA":
+            new_record = self.resolve_ip(reply, "AAAA")
+        else:
+            return reply
 
-        if new_record != None:
-            reply.add_answer(new_record.try_rr(request.q))
-            try:
-                save_into_db(
-                    reply,
-                    handler.client_address[0],
-                    handler.client_address[1],
-                    handler.request[0],
-                )
-            except Exception as ex:
-                print(ex)
-                pass
+        reply.add_answer(new_record.try_rr(request.q))
+        save_into_db(
+            reply,
+            handler.client_address[0],
+            handler.client_address[1],
+            handler.request[0],
+        )
 
         return reply
 
@@ -242,7 +234,7 @@ if __name__ == "__main__":
     try:
         stop_event.wait()
     except KeyboardInterrupt:
-        pass
+        print("Stopping DNS server...")
     finally:
         for s in servers:
             s.stop()
