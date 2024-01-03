@@ -18,6 +18,7 @@ import datetime
 import uuid
 import jwt
 from fastapi.websockets import WebSocket, WebSocketDisconnect
+from websockets.exceptions import ConnectionClosed
 from pydantic import BaseModel
 from typing import List
 import re
@@ -266,13 +267,28 @@ async def websocket_endpoint(websocket: WebSocket):
     requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
     requests = [request for request in requests if request != "{}"]
 
-    await websocket.send_json({"cmd": "requests", "data": requests})
+    while websocket.client_state.CONNECTED:
+        try:
+            await websocket.send_json({"cmd": "requests", "data": requests})
+            break
+        except Exception as e:
+            if type(e) == WebSocketDisconnect:
+                await websocket.close()
+                return
+    
 
     pubsub = redis.pubsub()
     await pubsub.subscribe(f"pubsub:{subdomain}")
     async for message in pubsub.listen():
         if message["type"] == "message":
-            await websocket.send_json({"cmd": "request", "data": message["data"]})
+            while websocket.client_state.CONNECTED:
+                try:
+                    await websocket.send_json({"cmd": "request", "data": message["data"]})
+                    break
+                except Exception as e:
+                    if type(e) == WebSocketDisconnect:
+                        await websocket.close()
+                        return
 
 
 async def catch_all(request):
