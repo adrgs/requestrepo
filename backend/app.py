@@ -271,10 +271,8 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             await websocket.send_json({"cmd": "requests", "data": requests})
             break
-        except Exception as e:
-            if type(e) == WebSocketDisconnect:
-                await websocket.close()
-                return
+        except ConnectionClosed:
+            pass
     
 
     pubsub = redis.pubsub()
@@ -285,10 +283,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     await websocket.send_json({"cmd": "request", "data": message["data"]})
                     break
-                except Exception as e:
-                    if type(e) == WebSocketDisconnect:
-                        await websocket.close()
-                        return
+                except ConnectionClosed:
+                    pass
 
 
 async def catch_all(request):
