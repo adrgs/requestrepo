@@ -161,32 +161,35 @@ class Resolver:
             return Record(TXT, data["value"])
 
     def resolve_ip(self, reply: DNSRecord, dtype: str) -> Record | None:
-        new_record: None | Record = None
+        new_record: Record | None = None
         data = get_dns_record(str(reply.q.qname), dtype)
-        if data == None:
-            new_record = Record(A if dtype == "A" else AAAA, self.server_ip)
-        else:
-            ips = data["value"]
-            if "/" not in ips and "%" not in ips:
-                new_record = Record(A, ips)
+        try:
+            if data == None:
+                new_record = Record(A if dtype == "A" else AAAA, self.server_ip)
             else:
-                if "%" in ips:
-                    ips = ips.split("%")
-                    idx = random.randint(0, len(ips) - 1)
-                    if "/" in ips[idx]:
-                        new_ips = ips[idx].split("/")
-                        new_record = Record(A, new_ips[0])
-                        new_ips = "/".join(new_ips[1:] + [new_ips[0]])
-                        ips[idx] = new_ips
-                        ips = "%".join(ips)
-                        update_dns_record(data["domain"], "A", ips)
-                    else:
-                        new_record = Record(A, ips[idx])
+                ips = data["value"]
+                if "/" not in ips and "%" not in ips:
+                    new_record = Record(A, ips)
                 else:
-                    ips = ips.split("/")
-                    new_record = Record(A, ips[0])
-                    ips = "/".join(ips[1:] + [ips[0]])
-                    update_dns_record(data["domain"], "A", ips)
+                    if "%" in ips:
+                        ips = ips.split("%")
+                        idx = random.randint(0, len(ips) - 1)
+                        if "/" in ips[idx]:
+                            new_ips = ips[idx].split("/")
+                            new_record = Record(A, new_ips[0])
+                            new_ips = "/".join(new_ips[1:] + [new_ips[0]])
+                            ips[idx] = new_ips
+                            ips = "%".join(ips)
+                            update_dns_record(data["domain"], "A", ips)
+                        else:
+                            new_record = Record(A, ips[idx])
+                    else:
+                        ips = ips.split("/")
+                        new_record = Record(A, ips[0])
+                        ips = "/".join(ips[1:] + [ips[0]])
+                        update_dns_record(data["domain"], "A", ips)
+        except:
+            pass
 
         return new_record
 
@@ -207,13 +210,15 @@ class Resolver:
         else:
             return reply
 
-        reply.add_answer(new_record.try_rr(request.q))
         save_into_db(
             reply,
             handler.client_address[0],
             handler.client_address[1],
             handler.request[0],
         )
+
+        if not new_record is None:
+            reply.add_answer(new_record.try_rr(request.q))
 
         return reply
 
