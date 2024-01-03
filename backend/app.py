@@ -132,11 +132,12 @@ async def update_dns(records: DnsRecords, token: str):
             "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$", domain
         ):
             return validation_error("Invalid characters in domain")
-        
+
         domain = f'{domain}.{subdomain}.{config.server_domain}.'
         dtype = DNS_RECORDS[dtype]
 
-        record = {"domain": domain, "type": dtype, "value": value, "_id": str(uuid.uuid4())}
+        record = {"domain": domain, "type": dtype,
+                  "value": value, "_id": str(uuid.uuid4())}
 
         await redis.set(f"dns:{record['type']}:{record['domain']}", json.dumps(record))
 
@@ -267,24 +268,21 @@ async def websocket_endpoint(websocket: WebSocket):
     requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
     requests = [request for request in requests if request != "{}"]
 
-    while websocket.client_state.CONNECTED:
-        try:
-            await websocket.send_json({"cmd": "requests", "data": requests})
-            break
-        except ConnectionClosed:
-            pass
-    
+    try:
+        await websocket.send_json({"cmd": "requests", "data": requests})
+    except (WebSocketDisconnect, ConnectionClosed):
+        await websocket.close()
+        return
 
     pubsub = redis.pubsub()
     await pubsub.subscribe(f"pubsub:{subdomain}")
     async for message in pubsub.listen():
         if message["type"] == "message":
-            while websocket.client_state.CONNECTED:
-                try:
-                    await websocket.send_json({"cmd": "request", "data": message["data"]})
-                    break
-                except ConnectionClosed:
-                    pass
+            try:
+                await websocket.send_json({"cmd": "request", "data": message["data"]})
+            except (WebSocketDisconnect, ConnectionClosed):
+                await websocket.close()
+                return
 
 
 async def catch_all(request):
