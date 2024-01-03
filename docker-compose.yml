@@ -2,6 +2,7 @@ version: "3"
 services:
   redisdb:
     image: redis:latest
+    command: redis-server --appendonly yes
     container_name: redisdb
     restart: always
     volumes:
@@ -36,3 +37,5 @@ services:
       SERVER_IP: 130.61.138.67
     depends_on:
       - redisdb
+volumes:
+  redis_data:
