@@ -12,9 +12,12 @@ Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 
 These instructions will get you a copy of the project up and running on your local machine for testing purposes.
 
-```
+```sh
 git clone https://github.com/adrgs/requestrepo.git
 cd requestrepo
+cp .env.example .env
+# modify .env as needed
+chmod 703 ./backend/pages
 docker-compose up --build
 ```
 
@@ -24,7 +27,7 @@ You can access your instance on localhost HTTP port 80, HTTPS port 443, DNS on p
 
 For development, it is recommended to start each service individually for the best developer experience
 
-```
+```sh
 # start the redis instance
 docker run -d --name my-redis -p 6379:6379 redis
 
