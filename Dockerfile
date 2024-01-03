@@ -13,12 +13,15 @@ WORKDIR /tmp/frontend
 RUN npm install --force
 RUN npm run build
 
+COPY ./backend/requirements.txt /app/requirements.txt
+
+WORKDIR /app
+RUN pip install -r requirements.txt
+
 COPY ./backend /app
 RUN cp -r /tmp/frontend/build/* /app/public/
 RUN rm -rf /tmp/frontend
 
-WORKDIR /app
-RUN pip install -r requirements.txt
 RUN chmod 703 /app/pages
 
 COPY start.sh /app/start.sh
