@@ -386,7 +386,7 @@ class App extends Component {
           </div>
         </div>
 
-        <ToastContainer />
+        <ToastContainer theme={Utils.getTheme()} />
         <div className="layout-mask"></div>
       </div>
     );
