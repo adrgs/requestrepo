@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Button } from "primereact/button";
-import { RecordInput } from "./RecordInput";
-import { Utils } from "../Utils";
+import { RecordInput } from "./record-input";
+import { Utils } from "../utils";
 
 export class DnsSettingsPage extends Component {
   constructor(props) {

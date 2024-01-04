@@ -1,22 +1,22 @@
 import React, { Component } from "react";
 import classNames from "classnames";
-import { AppTopbar } from "./AppTopbar";
-import { AppSidebar } from "./AppSidebar";
+import { AppTopbar } from "./components/topbar";
+import { AppSidebar } from "./components/sidebar";
 import { Route, Routes } from "react-router-dom";
-import { RequestsPage } from "./components/RequestsPage";
-import { EditResponsePage } from "./components/EditResponsePage";
-import { DnsSettingsPage } from "./components/DnsSettingsPage";
+import { RequestsPage } from "./components/requests-page";
+import { EditResponsePage } from "./components/edit-response-page";
+import { DnsSettingsPage } from "./components/dns-settings-page";
+import { Toolbar } from "primereact/toolbar";
+import { Button } from "primereact/button";
+import { InputText } from "primereact/inputtext";
+import { Utils } from "./utils";
+import { ToastContainer, toast } from "react-toastify";
 import "primereact/resources/themes/lara-light-blue/theme.css";
 import "primereact/resources/primereact.min.css";
 import "primeicons/primeicons.css";
 import "primeflex/primeflex.css";
-import "./App.scss";
-import { Toolbar } from "primereact/toolbar";
-import { Button } from "primereact/button";
-import { InputText } from "primereact/inputtext";
-import { Utils } from "./Utils";
-import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import "./app.scss";
 
 class App extends Component {
   constructor() {
@@ -52,18 +52,7 @@ class App extends Component {
       dnsFetched: false,
     };
 
-    if (localStorage.getItem("theme") !== "dark" && localStorage.getItem("theme") !== "light") {
-      // get system theme
-      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        localStorage.setItem("theme", "dark");
-      } else {
-        localStorage.setItem("theme", "light");
-      }
-    }
-
-    if (localStorage.getItem("theme") === "dark") {
-      document.body.classList.add("dark");
-    }
+    Utils.initTheme();
 
     this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? "{}" : localStorage.getItem("visited"));
 
@@ -178,7 +167,7 @@ class App extends Component {
 
       // Event handler for WebSocket connection closure
       socket.onclose = function () {
-        setTimeout(function() {
+        setTimeout(function () {
           initWebSocket(ws_url);
         }, 1000);
       };
@@ -229,7 +218,6 @@ class App extends Component {
     this.updateSearchValue = this.updateSearchValue.bind(this);
     this.doRerender = this.doRerender.bind(this);
     this.markAllAsVisited = this.markAllAsVisited.bind(this);
-    this.createMenu();
   }
 
   markAllAsVisited() {
@@ -398,7 +386,7 @@ class App extends Component {
           </div>
         </div>
 
-        <ToastContainer />
+        <ToastContainer theme={Utils.getTheme()} />
         <div className="layout-mask"></div>
       </div>
     );
@@ -449,121 +437,6 @@ class App extends Component {
         mobileMenuActive: false,
       });
     }
-  }
-
-  createMenu() {
-    this.menu = [
-      {
-        label: "Dashboard",
-        icon: "pi pi-fw pi-home",
-        command: () => {
-          window.location = "#/";
-        },
-      },
-      {
-        label: "Menu Modes",
-        icon: "pi pi-fw pi-cog",
-        items: [
-          { label: "Static Menu", icon: "pi pi-fw pi-bars", command: () => this.setState({ layoutMode: "static" }) },
-          { label: "Overlay Menu", icon: "pi pi-fw pi-bars", command: () => this.setState({ layoutMode: "overlay" }) },
-        ],
-      },
-      {
-        label: "Menu Colors",
-        icon: "pi pi-fw pi-align-left",
-        items: [
-          { label: "Dark", icon: "pi pi-fw pi-bars", command: () => this.setState({ layoutColorMode: "dark" }) },
-          { label: "Light", icon: "pi pi-fw pi-bars", command: () => this.setState({ layoutColorMode: "light" }) },
-        ],
-      },
-      {
-        label: "Components",
-        icon: "pi pi-fw pi-globe",
-        badge: "9",
-        items: [
-          { label: "Sample Page", icon: "pi pi-fw pi-th-large", to: "/sample" },
-          { label: "Forms", icon: "pi pi-fw pi-file", to: "/forms" },
-          { label: "Data", icon: "pi pi-fw pi-table", to: "/data" },
-          { label: "Panels", icon: "pi pi-fw pi-list", to: "/panels" },
-          { label: "Overlays", icon: "pi pi-fw pi-clone", to: "/overlays" },
-          { label: "Menus", icon: "pi pi-fw pi-plus", to: "/menus" },
-          { label: "Messages", icon: "pi pi-fw pi-spinner", to: "/messages" },
-          { label: "Charts", icon: "pi pi-fw pi-chart-bar", to: "/charts" },
-          { label: "Misc", icon: "pi pi-fw pi-upload", to: "/misc" },
-        ],
-      },
-      {
-        label: "Template Pages",
-        icon: "pi pi-fw pi-file",
-        items: [{ label: "Empty Page", icon: "pi pi-fw pi-circle-off", to: "/empty" }],
-      },
-      {
-        label: "Menu Hierarchy",
-        icon: "pi pi-fw pi-search",
-        items: [
-          {
-            label: "Submenu 1",
-            icon: "pi pi-fw pi-bookmark",
-            items: [
-              {
-                label: "Submenu 1.1",
-                icon: "pi pi-fw pi-bookmark",
-                items: [
-                  { label: "Submenu 1.1.1", icon: "pi pi-fw pi-bookmark" },
-                  { label: "Submenu 1.1.2", icon: "pi pi-fw pi-bookmark" },
-                  { label: "Submenu 1.1.3", icon: "pi pi-fw pi-bookmark" },
-                ],
-              },
-              {
-                label: "Submenu 1.2",
-                icon: "pi pi-fw pi-bookmark",
-                items: [
-                  { label: "Submenu 1.2.1", icon: "pi pi-fw pi-bookmark" },
-                  { label: "Submenu 1.2.2", icon: "pi pi-fw pi-bookmark" },
-                ],
-              },
-            ],
-          },
-          {
-            label: "Submenu 2",
-            icon: "pi pi-fw pi-bookmark",
-            items: [
-              {
-                label: "Submenu 2.1",
-                icon: "pi pi-fw pi-bookmark",
-                items: [
-                  { label: "Submenu 2.1.1", icon: "pi pi-fw pi-bookmark" },
-                  { label: "Submenu 2.1.2", icon: "pi pi-fw pi-bookmark" },
-                  { label: "Submenu 2.1.3", icon: "pi pi-fw pi-bookmark" },
-                ],
-              },
-              {
-                label: "Submenu 2.2",
-                icon: "pi pi-fw pi-bookmark",
-                items: [
-                  { label: "Submenu 2.2.1", icon: "pi pi-fw pi-bookmark" },
-                  { label: "Submenu 2.2.2", icon: "pi pi-fw pi-bookmark" },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        label: "Documentation",
-        icon: "pi pi-fw pi-question",
-        command: () => {
-          window.location = "#/documentation";
-        },
-      },
-      {
-        label: "View Source",
-        icon: "pi pi-fw pi-search",
-        command: () => {
-          window.location = "https://github.com/primefaces/sigma";
-        },
-      },
-    ];
   }
 
   addClass(element, className) {

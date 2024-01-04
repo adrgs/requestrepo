@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
-import GitHubButton from "react-github-btn";
+import { Utils } from "../utils";
 
 export class AppTopbar extends Component {
   constructor(props) {
@@ -13,14 +13,7 @@ export class AppTopbar extends Component {
   }
 
   toggleTheme() {
-    // add dark to body
-    if (document.body.classList.contains("dark")) {
-      document.body.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    } else {
-      document.body.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    }
+    Utils.toggleTheme();
   }
 
   static defaultProps = {};

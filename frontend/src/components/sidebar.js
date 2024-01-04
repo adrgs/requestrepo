@@ -1,8 +1,8 @@
 import React, { Component } from "react";
-import { RequestCard } from "./components/RequestCard";
+import { RequestCard } from "./request-card";
 import { Checkbox } from "primereact/checkbox";
 import { Button } from "primereact/button";
-import { Utils } from "./Utils";
+import { Utils } from "../utils";
 
 export class AppSidebar extends Component {
   constructor(props) {

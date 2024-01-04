@@ -2,7 +2,7 @@ import React, { Component } from "react";
 import { Dropdown } from "primereact/dropdown";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
-import { Utils } from "../Utils";
+import { Utils } from "../utils";
 
 export class RecordInput extends Component {
   constructor(props) {

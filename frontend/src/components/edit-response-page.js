@@ -1,13 +1,16 @@
 import React, { Component } from "react";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
-import { HeaderService } from "../service/HeaderService";
+import { HeaderService } from "../service/header-service";
 import AceEditor from "react-ace";
 import "ace-builds/src-min-noconflict/ext-language_tools";
-import "ace-builds/src-noconflict/theme-github";
+import "ace-builds/src-min-noconflict/ext-beautify";
+import "ace-builds/src-min-noconflict/ext-searchbox";
+import "ace-builds/src-noconflict/theme-xcode";
+import "ace-builds/src-noconflict/theme-monokai";
 import "ace-builds/src-noconflict/mode-html";
-import { HeaderInput } from "./HeaderInput";
-import { Utils } from "../Utils";
+import { HeaderInput } from "./header-input";
+import { Utils } from "../utils";
 
 export class EditResponsePage extends Component {
   constructor(props) {
@@ -38,6 +41,14 @@ export class EditResponsePage extends Component {
     this.handleHeaderInputChange = this.handleHeaderInputChange.bind(this);
     this.contentChange = this.contentChange.bind(this);
     this.saveChanges = this.saveChanges.bind(this);
+
+    this.commands = [
+      {
+        name: "save",
+        bindKey: { win: "Ctrl-S", mac: "Cmd-S" },
+        exec: this.saveChanges,
+      },
+    ];
   }
 
   updateDimensions = () => {
@@ -138,8 +149,9 @@ export class EditResponsePage extends Component {
             </div>
             <AceEditor
               placeholder=""
+              commands={this.commands}
               mode="html"
-              theme="github"
+              theme={Utils.getTheme() === "dark" ? "monokai" : "xcode"}
               onLoad={this.onLoad}
               onChange={this.contentChange}
               fontSize={14}
@@ -152,8 +164,10 @@ export class EditResponsePage extends Component {
               value={this.state.content}
               setOptions={{
                 enableBasicAutocompletion: true,
-                enableLiveAutocompletion: false,
-                enableSnippets: false,
+                enableLiveAutocompletion: true,
+                enableEmmet: true,
+                enableMultiselect: true,
+                enableSnippets: true,
                 showLineNumbers: true,
                 tabSize: 2,
               }}
