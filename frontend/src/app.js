@@ -52,18 +52,7 @@ class App extends Component {
       dnsFetched: false,
     };
 
-    if (localStorage.getItem("theme") !== "dark" && localStorage.getItem("theme") !== "light") {
-      // get system theme
-      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        localStorage.setItem("theme", "dark");
-      } else {
-        localStorage.setItem("theme", "light");
-      }
-    }
-
-    if (localStorage.getItem("theme") === "dark") {
-      document.body.classList.add("dark");
-    }
+    Utils.initTheme();
 
     this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? "{}" : localStorage.getItem("visited"));
 

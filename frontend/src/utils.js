@@ -108,4 +108,36 @@ export class Utils {
       return binaryString;
     }
   }
+
+  static initTheme() {
+    if (localStorage.getItem("theme") !== "dark" && localStorage.getItem("theme") !== "light") {
+      // get system theme
+      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        localStorage.setItem("theme", "dark");
+      } else {
+        localStorage.setItem("theme", "light");
+      }
+    }
+
+    if (localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
+  }
+
+  static toggleTheme() {
+    if (document.body.classList.contains("dark")) {
+      document.body.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    } else {
+      document.body.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    }
+  }
+
+  static getTheme() {
+    if (document.body.classList.contains("dark")) {
+      return "dark";
+    }
+    return "light";
+  }
 }
