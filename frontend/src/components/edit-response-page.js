@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
-import { HeaderService } from "../service/HeaderService";
+import { HeaderService } from "../service/header-service";
 import AceEditor from "react-ace";
 import "ace-builds/src-min-noconflict/ext-language_tools";
 import "ace-builds/src-min-noconflict/ext-beautify";
