@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import classNames from "classnames";
-import { AppTopbar } from "./AppTopbar";
-import { AppSidebar } from "./AppSidebar";
+import { AppTopbar } from "./topbar";
+import { AppSidebar } from "./components/sidebar";
 import { Route, Routes } from "react-router-dom";
 import { RequestsPage } from "./components/RequestsPage";
 import { EditResponsePage } from "./components/EditResponsePage";
