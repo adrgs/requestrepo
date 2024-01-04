@@ -6,17 +6,17 @@ import { Route, Routes } from "react-router-dom";
 import { RequestsPage } from "./components/RequestsPage";
 import { EditResponsePage } from "./components/EditResponsePage";
 import { DnsSettingsPage } from "./components/DnsSettingsPage";
-import "primereact/resources/themes/lara-light-blue/theme.css";
-import "primereact/resources/primereact.min.css";
-import "primeicons/primeicons.css";
-import "primeflex/primeflex.css";
-import "./App.scss";
 import { Toolbar } from "primereact/toolbar";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
 import { Utils } from "./Utils";
 import { ToastContainer, toast } from "react-toastify";
+import "primereact/resources/themes/lara-light-blue/theme.css";
+import "primereact/resources/primereact.min.css";
+import "primeicons/primeicons.css";
+import "primeflex/primeflex.css";
 import "react-toastify/dist/ReactToastify.css";
+import "./app.scss";
 
 class App extends Component {
   constructor() {
@@ -178,7 +178,7 @@ class App extends Component {
 
       // Event handler for WebSocket connection closure
       socket.onclose = function () {
-        setTimeout(function() {
+        setTimeout(function () {
           initWebSocket(ws_url);
         }, 1000);
       };
