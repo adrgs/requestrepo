@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export class Utils {
-  static siteUrl = process.env.DOMAIN || "requestrepo.com";
+  static siteUrl = process.env.REACT_APP_DOMAIN || "requestrepo.com";
   static apiUrl = "";
   static requestsEndpoint = "/api/get_requests";
   static subdomainEndpoint = "/api/get_token";
@@ -62,7 +62,6 @@ export class Utils {
       localStorage.setItem("token", response.data.token);
       window.location.reload();
     });
-
   }
 
   static deleteRequest(id) {
@@ -77,11 +76,13 @@ export class Utils {
 
   static base64EncodeUnicode(str) {
     // Convert each character to Latin1 or URL-encoded
-    var latin1OrEncodedStr = Array.from(str).map(function (c) {
-      var code = c.charCodeAt(0);
-      // Latin1 characters are in the range of 0 to 255
-      return (code >= 0 && code <= 255) ? c : encodeURIComponent(c);
-    }).join('');
+    var latin1OrEncodedStr = Array.from(str)
+      .map(function (c) {
+        var code = c.charCodeAt(0);
+        // Latin1 characters are in the range of 0 to 255
+        return code >= 0 && code <= 255 ? c : encodeURIComponent(c);
+      })
+      .join("");
 
     // Base64 encode the modified string
     return btoa(latin1OrEncodedStr);
@@ -93,9 +94,12 @@ export class Utils {
 
     try {
       // Convert binary string to a percent-encoded string
-      var percentEncodedStr = binaryString.split('').map(function (c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-      }).join('');
+      var percentEncodedStr = binaryString
+        .split("")
+        .map(function (c) {
+          return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+        })
+        .join("");
 
       // Attempt to decode as UTF-8
       return decodeURIComponent(percentEncodedStr);
