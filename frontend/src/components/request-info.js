@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
-import { Utils } from "../Utils";
+import { Utils } from "../utils";
 
 export class RequestInfo extends Component {
   constructor(props) {

@@ -7,7 +7,7 @@ import "ace-builds/src-min-noconflict/ext-language_tools";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/mode-html";
 import { HeaderInput } from "./header-input";
-import { Utils } from "../Utils";
+import { Utils } from "../utils";
 
 export class EditResponsePage extends Component {
   constructor(props) {

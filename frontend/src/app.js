@@ -9,7 +9,7 @@ import { DnsSettingsPage } from "./components/dns-settings-page";
 import { Toolbar } from "primereact/toolbar";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
-import { Utils } from "./Utils";
+import { Utils } from "./utils";
 import { ToastContainer, toast } from "react-toastify";
 import "primereact/resources/themes/lara-light-blue/theme.css";
 import "primereact/resources/primereact.min.css";
