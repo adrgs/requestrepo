@@ -6,7 +6,7 @@ import AceEditor from "react-ace";
 import "ace-builds/src-min-noconflict/ext-language_tools";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/mode-html";
-import { HeaderInput } from "./HeaderInput";
+import { HeaderInput } from "./header-input";
 import { Utils } from "../Utils";
 
 export class EditResponsePage extends Component {

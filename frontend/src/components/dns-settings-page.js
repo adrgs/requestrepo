@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { Button } from "primereact/button";
-import { RecordInput } from "./RecordInput";
+import { RecordInput } from "./record-input";
 import { Utils } from "../Utils";
 
 export class DnsSettingsPage extends Component {

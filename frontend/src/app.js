@@ -1,11 +1,11 @@
 import React, { Component } from "react";
 import classNames from "classnames";
-import { AppTopbar } from "./topbar";
+import { AppTopbar } from "./components/topbar";
 import { AppSidebar } from "./components/sidebar";
 import { Route, Routes } from "react-router-dom";
-import { RequestsPage } from "./components/RequestsPage";
-import { EditResponsePage } from "./components/EditResponsePage";
-import { DnsSettingsPage } from "./components/DnsSettingsPage";
+import { RequestsPage } from "./components/requests-page";
+import { EditResponsePage } from "./components/edit-response-page";
+import { DnsSettingsPage } from "./components/dns-settings-page";
 import { Toolbar } from "primereact/toolbar";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";

@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { RequestInfo } from "./RequestInfo";
+import { RequestInfo } from "./request-info";
 
 export class RequestsPage extends Component {
   constructor(props) {
