@@ -236,7 +236,7 @@ async def update_file(file: File, token: str):
         raise HTTPException(status_code=403, detail="Invalid token")
 
     with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
-        json.dump(file.dict(), outfile)
+        outfile.write(file.model_dump_json())
 
     return JSONResponse({"msg": "Updated response"})
 
