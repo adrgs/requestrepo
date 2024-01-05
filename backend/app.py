@@ -99,6 +99,8 @@ async def update_dns(records: DnsRecords, token: str):
     DNS_RECORDS = ["A", "AAAA", "CNAME", "TXT"]
 
     subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
 
     final_records = []
 
@@ -151,6 +153,8 @@ async def update_dns(records: DnsRecords, token: str):
 @app.get("/api/get_dns")
 async def get_dns(token: str):
     subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
 
     records = await redis.get(f"dns:{subdomain}")
 
@@ -163,7 +167,6 @@ async def get_dns(token: str):
 @app.get("/api/get_file")
 async def get_file(token: str):
     subdomain = verify_jwt(token)
-
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
 
@@ -193,6 +196,8 @@ class DeleteRequest(BaseModel):
 @app.post("/api/delete_request")
 async def delete_request(req: DeleteRequest, token: str):
     subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
 
     id = req.id
 
@@ -208,6 +213,8 @@ async def delete_request(req: DeleteRequest, token: str):
 @app.post("/api/delete_all")
 async def delete_all(token: str):
     subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
 
     requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
     requests = [request for request in requests if request != "{}"]
@@ -225,9 +232,14 @@ async def delete_all(token: str):
 @app.post("/api/update_file")
 async def update_file(file: File, token: str):
     subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
+    
+    if len(file.raw) > 3_000_000:
+        return JSONResponse({"error": "Response too large"})
 
     with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
-        json.dump(file.dict(), outfile)
+        outfile.write(file.model_dump_json())
 
     return JSONResponse({"msg": "Updated response"})
 
