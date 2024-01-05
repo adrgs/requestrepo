@@ -88,6 +88,34 @@ export class Utils {
     return btoa(latin1OrEncodedStr);
   }
 
+  static arrayBufferToBase64(buffer) {
+    return btoa(this.arrayBufferToString(buffer));
+  }
+
+  static arrayBufferToString(buffer) {
+    var binary = "";
+    var bytes = new Uint8Array(buffer);
+    var len = bytes.byteLength;
+    for (var i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return binary;
+  }
+ 
+  static base64EncodeRaw(str) {
+    // Base64 encode the string
+    return btoa(str);
+  }
+
+  static base64DecodeRaw(str) {
+    // Base64 encode the string
+    return atob(str);
+  }
+
+  static base64EncodeLatin1(str) {
+    return this.arrayBufferToBase64(new TextEncoder().encode(str));  
+  }
+
   static base64DecodeUnicode(str) {
     // Decode from base64
     var binaryString = atob(str);

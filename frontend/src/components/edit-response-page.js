@@ -41,6 +41,9 @@ export class EditResponsePage extends Component {
     this.handleHeaderInputChange = this.handleHeaderInputChange.bind(this);
     this.contentChange = this.contentChange.bind(this);
     this.saveChanges = this.saveChanges.bind(this);
+    this.handleFileUpload = this.handleFileUpload.bind(this);
+    this.handleFileChange = this.handleFileChange.bind(this);
+    this.fileInput = React.createRef();
 
     this.commands = [
       {
@@ -50,6 +53,28 @@ export class EditResponsePage extends Component {
       },
     ];
   }
+
+  handleFileUpload = () => {
+    this.fileInput.current.click();
+  };
+
+  handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      // When file has been read, update state with its content
+      this.setState({ content: Utils.arrayBufferToString(e.target.result) }, () => {
+        this.saveChanges();
+      });
+    };
+
+    // Read the content of the file (as text, for example)
+    reader.readAsArrayBuffer(file);
+  };
 
   updateDimensions = () => {
     this.setState(this.state);
@@ -71,7 +96,11 @@ export class EditResponsePage extends Component {
       return value.header.length > 0;
     });
     obj["status_code"] = this.state.statusCode;
-    obj["raw"] = Utils.base64EncodeUnicode(this.state.content);
+    try {
+      obj["raw"] = Utils.base64EncodeRaw(this.state.content);
+    } catch {
+      obj["raw"] = Utils.base64EncodeLatin1(this.state.content);
+    }
     Utils.updateFile(obj).then((res) => {
       if (res.error) {
         this.props.toast.error(res.error, {
@@ -145,6 +174,8 @@ export class EditResponsePage extends Component {
               </div>
               <div className="col-6">
                 <Button label="Save changes" icon="pi pi-save" className="p-button-text p-button-success" style={{ float: "right" }} onClick={this.saveChanges} />
+                <Button label="Upload file" icon="pi pi-upload" className="p-button-text" style={{ float: "right" }} onClick={this.handleFileUpload} />
+                <input type="file" id="file" ref={this.fileInput} onChange={this.handleFileChange} style={{ display: "none" }} />
               </div>
             </div>
             <AceEditor
