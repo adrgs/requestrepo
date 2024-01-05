@@ -22,6 +22,7 @@ from websockets.exceptions import ConnectionClosed
 from pydantic import BaseModel
 from typing import List
 import re
+import ip2country
 
 app = FastAPI(server_header=False)
 
@@ -52,6 +53,9 @@ async def log_request(request, subdomain):
     dic["raw"] = base64.b64encode(await request.body()).decode()
     dic["uid"] = subdomain
     dic["ip"] = request.client.host
+    ip_country = ip2country.ip_to_country(request.client.host)
+    if ip_country is not None:
+        dic["country"] = ip_country
     dic["port"] = request.client.port
     dic["headers"] = headers
     dic["method"] = request.method
@@ -234,7 +238,7 @@ async def update_file(file: File, token: str):
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
-    
+
     if len(file.raw) > 3_000_000:
         return JSONResponse({"error": "Response too large"})
 
