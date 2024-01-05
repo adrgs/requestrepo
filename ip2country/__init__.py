@@ -1,6 +1,7 @@
+import functools
 import bisect
-import os
 import gzip
+import os
 
 show_country = False
 ip_list = []
@@ -10,6 +11,7 @@ def get_directory():
     return os.path.dirname(os.path.realpath(__file__))
 
 
+@functools.lru_cache(maxsize=1024)
 def ip_to_country(ip: str) -> str | None:
     if not is_ipv4(ip) or not show_country:
         return None
