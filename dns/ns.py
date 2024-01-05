@@ -14,6 +14,7 @@ import json
 import redis
 import uuid
 import base64
+import ip2country
 
 
 EPOCH: datetime.datetime = datetime.datetime(1970, 1, 1)
@@ -116,6 +117,11 @@ def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
         "raw": base64.b64encode(raw).decode(),
         "_id": str(uuid.uuid4()),
     }
+
+    country = ip2country.ip_to_country(ip)
+    if not country is None:
+        data["country"] = country
+
     insert_into_db(data)
 
 
@@ -165,7 +171,8 @@ class Resolver:
         data = get_dns_record(str(reply.q.qname), dtype)
         try:
             if data == None:
-                new_record = Record(A if dtype == "A" else AAAA, self.server_ip)
+                new_record = Record(
+                    A if dtype == "A" else AAAA, self.server_ip)
             else:
                 ips = data["value"]
                 if "/" not in ips and "%" not in ips:
@@ -209,7 +216,7 @@ class Resolver:
             new_record = self.resolve_ip(reply, "AAAA")
         else:
             return reply
-        
+
         if not new_record is None:
             reply.add_answer(new_record.try_rr(request.q))
 
