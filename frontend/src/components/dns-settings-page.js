@@ -112,7 +112,9 @@ export class DnsSettingsPage extends Component {
           </div>
         </div>
         <div className="grid">
-          <p>You can use / to cycle through the IPs or % to select a random IP (e.g. 127.0.0.1/8.8.8.8 or 127.0.0.1%8.8.8.8)</p>
+          <div className="col-12">
+            <p>You can use / to cycle through the IPs or % to select a random IP (e.g. 127.0.0.1/8.8.8.8 or 127.0.0.1%8.8.8.8)</p>
+          </div>
         </div>
         <div className="grid">
           <div className="col-12">
