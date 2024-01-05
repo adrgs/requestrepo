@@ -83,6 +83,14 @@ export class RequestInfo extends Component {
                     {request.ip}:{request.port}
                   </td>
                 </tr>
+                {request.country && (
+                  <tr>
+                    <td className="req-table-a">Country</td>
+                    <td className="req-table-b">
+                      <span class={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
+                    </td>
+                  </tr>
+                )}
                 <tr>
                   <td className="req-table-a">Date</td>
                   <td className="req-table-b">{this.convertUTCDateToLocalDate(request.date).toLocaleString()}</td>
@@ -179,8 +187,18 @@ export class RequestInfo extends Component {
                 </tr>
                 <tr>
                   <td className="req-table-a">Sender</td>
-                  <td className="req-table-b">{request.ip}:{request.port}</td>
+                  <td className="req-table-b">
+                    {request.ip}:{request.port}
+                  </td>
                 </tr>
+                {request.country && (
+                  <tr>
+                    <td className="req-table-a">Country</td>
+                    <td className="req-table-b">
+                      <span class={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
+                    </td>
+                  </tr>
+                )}
                 <tr>
                   <td className="req-table-a">Date</td>
                   <td className="req-table-b">{this.convertUTCDateToLocalDate(request.date).toLocaleString()}</td>
