@@ -22,7 +22,8 @@ services:
       - ./backend/pages:/app/pages
   dns:
     build:
-      context: ./dns
+      context: ./
+      dockerfile: ./dns/Dockerfile
     container_name: dns
     restart: always
     ports:
