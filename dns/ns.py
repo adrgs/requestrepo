@@ -209,6 +209,9 @@ class Resolver:
             new_record = self.resolve_ip(reply, "AAAA")
         else:
             return reply
+        
+        if not new_record is None:
+            reply.add_answer(new_record.try_rr(request.q))
 
         save_into_db(
             reply,
@@ -216,9 +219,6 @@ class Resolver:
             handler.client_address[1],
             handler.request[0],
         )
-
-        if not new_record is None:
-            reply.add_answer(new_record.try_rr(request.q))
 
         return reply
 
