@@ -89,6 +89,7 @@ export class AppSidebar extends Component {
           obj["method"] = req["method"];
           obj["time"] = this.convertUTCDateToLocalDate(dateA).toLocaleString();
           obj["detail"] = req["ip"];
+          obj["country"] = req["country"];
           obj["id"] = req["_id"];
           obj["key"] = obj["id"];
           obj["type"] = "HTTP";
@@ -102,6 +103,7 @@ export class AppSidebar extends Component {
           obj["method"] = "DNS";
           obj["time"] = this.convertUTCDateToLocalDate(dateB).toLocaleString();
           obj["detail"] = req["ip"];
+          obj["country"] = req["country"];
           obj["id"] = req["_id"];
           obj["key"] = obj["id"];
           obj["type"] = "DNS";
@@ -220,6 +222,7 @@ export class AppSidebar extends Component {
                 time={item.time}
                 new={item.new}
                 method={item.method}
+                country={item.country}
                 detail={item.detail}
                 id={item.id}
                 key={item.key}

@@ -19,6 +19,7 @@ WORKDIR /app
 RUN pip install -r requirements.txt
 
 COPY ./backend /app
+COPY ./ip2country /app/ip2country
 RUN cp -r /tmp/frontend/build/* /app/public/
 RUN rm -rf /tmp/frontend
 
