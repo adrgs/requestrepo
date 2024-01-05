@@ -8,6 +8,7 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.2.1",
     "classnames": "^2.3.2",
+    "flag-icons": "^7.1.0",
     "primeflex": "^3.3.0",
     "primeicons": "^6.0.1",
     "primereact": "^8.7.3",
