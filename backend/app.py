@@ -234,6 +234,9 @@ async def update_file(file: File, token: str):
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
+    
+    if len(file.raw) > 3_000_000:
+        return JSONResponse({"error": "Response too large"})
 
     with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
         outfile.write(file.model_dump_json())
