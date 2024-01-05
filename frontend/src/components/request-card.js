@@ -33,6 +33,7 @@ export class RequestCard extends Component {
           X
         </span>
         <span className="detail">
+          {this.props.country && <span style={{ marginRight: "5px" }} class={"fi fi-" + this.props.country.toLowerCase()}></span>}
           {this.props.detail}
           <span style={{ float: "right" }}>{this.props.time}</span>
         </span>
