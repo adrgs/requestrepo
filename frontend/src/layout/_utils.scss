@@ -1,272 +1,279 @@
 :root {
-    --card-color: #000;
-    --card-bg-color: #fff;
-    --req-table-nth: #f6f8fa;
-    --card-request-bg-color: #fefefe;
-    --card-request-visited-bg-color: #f5f5f5;
-    --card-request-hover-bg-color: #f0f0f0;
-    --card-request-border: #ccc;
-    --card-request-active-border: #005ab9;
+  --card-color: #000;
+  --card-bg-color: #fff;
+  --req-table-nth: #f6f8fa;
+  --card-request-bg-color: #fefefe;
+  --card-request-visited-bg-color: #f5f5f5;
+  --card-request-hover-bg-color: #f0f0f0;
+  --card-request-border: #ccc;
+  --card-request-active-border: #005ab9;
 }
 body.dark {
-    --card-color: #fff;
-    --card-bg-color: #222;
-    --req-table-nth: #151515;
-    --card-request-bg-color: #252525;
-    --card-request-visited-bg-color: #151515;
-    --card-request-hover-bg-color: #1f1f1f;
-    --card-request-border: #000;
-    --card-request-active-border: #559ce9;
+  --card-color: #fff;
+  --card-bg-color: #222;
+  --req-table-nth: #151515;
+  --card-request-bg-color: #252525;
+  --card-request-visited-bg-color: #151515;
+  --card-request-hover-bg-color: #1f1f1f;
+  --card-request-border: #000;
+  --card-request-active-border: #559ce9;
 }
 
 .p-component.p-toolbar {
-    border-color: rgb(204, 204, 204);
+  border-color: rgb(204, 204, 204);
 }
 
 .card-body {
-    border: 1px solid var(--card-request-border);
-    border-top: 0;
-    border-radius: "0px 0px 5px 5px";
+  border: 1px solid var(--card-request-border);
+  border-top: 0;
+  border-radius: "0px 0px 5px 5px";
 }
 
 body.dark .p-toolbar {
-    background-color: #191919;
-    border: 1px solid #000;
+  background-color: #191919;
+  border: 1px solid #000;
 }
 
 body.dark a:visited {
-    color: #559ce9;
+  color: #559ce9;
 }
 
 body.dark a {
-    color: #559ce9;
+  color: #559ce9;
 }
 
 body.dark pre {
-    background-color: #151515;
+  background-color: #151515;
 }
 
 body.dark .p-inputtext {
-    background-color: #111;
-    border-color: #000;
-    color:#eee;
+  background-color: #111;
+  border-color: #000;
+  color: #eee;
 }
 
-body.dark .p-dropdown, body.dark .p-dropdown-item {
-    background-color: #111!important;
-    border-color: #000;
-    color:#eee!important;
+body.dark .p-dropdown,
+body.dark .p-dropdown-item {
+  background-color: #111 !important;
+  border-color: #000;
+  color: #eee !important;
 }
 
 body.dark .p-dropdown-panel {
-    background-color: #111!important;
-    border-color: #000;
-    color:#eee!important;
+  background-color: #111 !important;
+  border-color: #000;
+  color: #eee !important;
 }
 
 body.dark .p-inputtext:enabled:focus {
-    box-shadow: 0 0 0 0.0rem #000;
+  box-shadow: 0 0 0 0rem #000;
 }
 
 /* Typography */
 h1 {
-    font-weight: normal;
-    margin: 0;
-    font-size: 24px;
+  font-weight: normal;
+  margin: 0;
+  font-size: 24px;
 }
 
 h2 {
-    font-size: 20px;
-    font-weight: normal;
-    margin: 0;
+  font-size: 20px;
+  font-weight: normal;
+  margin: 0;
 }
 
 .card {
-    background-color: var(--card-bg-color);
-    color: var(--card-color);
-    padding: 1em;
-    @include border-radius($borderRadius);
+  background-color: var(--card-bg-color);
+  color: var(--card-color);
+  padding: 1em;
+  @include border-radius($borderRadius);
 
-    &.card-w-title {
-        padding-bottom: 2em;
+  &.card-w-title {
+    padding-bottom: 2em;
+  }
+
+  &.request {
+    border-radius: 0px;
+    background-color: var(--card-request-bg-color);
+    border-bottom: 1px solid var(--card-request-border);
+
+    &:hover {
+      background-color: var(--card-request-hover-bg-color);
+      cursor: pointer;
     }
+  }
 
-    &.request {
-        border-radius: 0px;
-        background-color: var(--card-request-bg-color);
-        border-bottom: 1px solid var(--card-request-border);
+  &.active {
+    background-color: #007ad9 !important;
+    color: #ffffff !important;
+    border-bottom: 1px solid var(--card-request-active-border) !important;
+  }
 
-        &:hover {
-            background-color: var(--card-request-hover-bg-color);
-            cursor: pointer;
-        }
-    }
+  &.visited {
+    background-color: var(--card-request-visited-bg-color);
+  }
 
-    &.active {
-        background-color: #007ad9 !important;
-        color: #ffffff !important;
-        border-bottom: 1px solid var(--card-request-active-border) !important;
-    }
-
-    &.visited {
-        background-color: var(--card-request-visited-bg-color);
-    }
-
-    h1 {
-        margin: .2em 0 .5em 0;
-        padding: .1em;
-        font-size: 24px;
-        font-weight: 400;
-    }
+  h1 {
+    margin: 0.2em 0 0.5em 0;
+    padding: 0.1em;
+    font-size: 24px;
+    font-weight: 400;
+  }
 }
 
 .title {
-    text-overflow: ellipsis;
-    font-size: 14px;
-    max-width: 65%;
-    white-space: nowrap;
-    overflow: hidden;
-    display: inline-block;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  max-width: 65%;
+  white-space: nowrap;
+  overflow: hidden;
+  display: inline-block;
 }
 
 .detail {
-    display: block;
-    margin-top: 10px;
-    font-size: 10px;
+  display: block;
+  margin-top: 10px;
+  font-size: 10px;
 }
 
 .count {
-    color: #ffffff;
-    font-size: 8px;
-    top: -3px;
-    padding: 2px 4px;
-    margin-right: 5px;
-    display: inline-block;
-    top: -6px;
-    position: relative;
-    background-color: #666666;
+  color: #ffffff;
+  font-size: 8px;
+  top: -3px;
+  padding: 2px 4px;
+  margin-right: 5px;
+  display: inline-block;
+  top: -6px;
+  position: relative;
+  background-color: #666666;
 
-    @include border-radius($borderRadius);
+  @include border-radius($borderRadius);
 
-    &.get {
-        background-color: #20d077;
-    }
+  &.get {
+    background-color: #20d077;
+  }
 
-    &.post {
-        background-color: #FFAE00;
-    }
+  &.post {
+    background-color: #ffae00;
+  }
 
-    &.delete {
-        background-color: #FF0000;
-    }
+  &.delete {
+    background-color: #ff0000;
+  }
 
-    &.put {
-        background-color: #0036FF;
-    }
+  &.put {
+    background-color: #0036ff;
+  }
 
-    &.dns {
-        background-color: #33DAFF;
-    }
+  &.dns {
+    background-color: #33daff;
+  }
 
-    &.bigx {
-        visibility: hidden;
-        margin-top: 5px;
-        float: right;
-        margin-right: 0px;
-        font-size: 10px;
-        font-weight: bold;
-        padding: 2px 6px;
-        background-color: #FF0000;
-        border: 1px solid #aa0000;
-    }
+  &.bigx {
+    visibility: hidden;
+    margin-top: 5px;
+    float: right;
+    margin-right: 0px;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 6px;
+    background-color: #ff0000;
+    border: 1px solid #aa0000;
+  }
 }
 
 .card {
-    &:hover {
-        .bigx {
-            visibility: visible !important;
-        }
+  &:hover {
+    .bigx {
+      visibility: visible !important;
     }
+  }
 }
 
 .p-g {
-    -ms-flex-wrap: wrap;
-    flex-wrap: wrap;
+  -ms-flex-wrap: wrap;
+  flex-wrap: wrap;
 }
 
 pre,
 p,
 code {
-    white-space: pre-line;
-    overflow-wrap: break-word;
+  white-space: pre-line;
+  overflow-wrap: break-word;
 }
 
 .hexEditorHeader {
-    height: 30px !important;
+  height: 30px !important;
 }
 
 .byteValue {
-    padding: 3px;
+  padding: 3px;
 }
 
 .byteHeader {
-    padding: 3px;
+  padding: 3px;
 }
 
 .asciiValues {
-    padding-left: 10px;
+  padding-left: 10px;
 }
 
 .editAscii,
 .editHex {
-    width: 100% !important;
-    ;
+  width: 100% !important;
 }
 
 .hexEditorBody {
-    overflow-x: hidden !important;
+  overflow-x: hidden !important;
 }
 
-.raw-req>div:nth-last-child(2) {
-    height: 420px;
-    overflow-x: auto !important;
+.raw-req > div:nth-last-child(2) {
+  height: 420px;
+  overflow-x: auto !important;
 }
 
 .req-table {
-    width: 100%;
+  width: 100%;
 
-    tr:nth-child(even) {
-        background: var(--req-table-nth);
-    }
+  tr:nth-child(even) {
+    background: var(--req-table-nth);
+  }
 }
 
 td {
-    max-width: 0;
-    overflow-wrap: break-word;
+  max-width: 0;
+  overflow-wrap: break-word;
 }
 
 .req-table-a {
-    width: 30%;
+  width: 30%;
 }
 
 .req-table-b {
-    width: 70%;
+  width: 70%;
 }
 
 pre {
-    background-color: #f6f8fa;
+  background-color: #f6f8fa;
 }
 
 .delete-all {
-    color: #e90000;
-    cursor: pointer;
+  color: #e90000;
+  cursor: pointer;
 
-    &:hover {
-        color: red;
-    }
+  &:hover {
+    color: red;
+  }
 }
 
 .p-autocomplete .p-autocomplete-input {
-    max-width: 250px;
-    width: 100% !important;
+  max-width: 250px;
+  width: 100% !important;
+}
+
+.fi-zz {
+  background-image: url("https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/aq.svg");
+}
+.fi-zz.fis {
+  background-image: url("https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/1x1/aq.svg");
 }
