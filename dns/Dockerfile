@@ -1,6 +1,7 @@
 FROM python:3.10
 
-COPY ./ /app/
+COPY ./dns/ /app/
+COPY ./ip2country/ /app/ip2country/
 WORKDIR /app
 
 RUN pip install -r requirements.txt
