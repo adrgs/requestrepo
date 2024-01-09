@@ -4,10 +4,10 @@ import gzip
 import os
 
 show_country = False
-ip_list = []
+ip_list: list[tuple[int, str]] = []
 
 
-def get_directory():
+def get_directory() -> str:
     return os.path.dirname(os.path.realpath(__file__))
 
 
