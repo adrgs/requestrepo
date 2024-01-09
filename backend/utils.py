@@ -2,6 +2,7 @@ import random
 import json
 from pathlib import Path
 from config import config
+from typing import TypedDict
 
 
 def get_random_subdomain(
@@ -43,7 +44,7 @@ def get_subdomain_from_hostname(
     host = host.lower()
 
     r_index = host.rfind(domain)
-    subdomain = host[r_index - 1 - length : r_index - 1]
+    subdomain = host[r_index - 1 - length: r_index - 1]
 
     if (
         not subdomain
@@ -55,18 +56,30 @@ def get_subdomain_from_hostname(
     return subdomain
 
 
+class RequestRepoHeader(TypedDict):
+    header: str
+    value: str
+
+
+class RequestRepoResponse(TypedDict):
+    raw: str
+    headers: list[RequestRepoHeader]
+    status_code: int
+
+
 def write_basic_file(subdomain: str):
-    file_data = {
-        "headers": [
-            {"header":"Access-Control-Allow-Origin", "value":"*"},
-            {"header":"Content-Type", "value":"text/html"},
+    file_data = RequestRepoResponse(
+        headers=[
+            {"header": "Access-Control-Allow-Origin", "value": "*"},
+            {"header": "Content-Type", "value": "text/html"},
         ],
-        "status_code": 200,
-        "raw": "",
-    }
+        status_code=200,
+        raw="",
+    )
 
     if config.include_server_domain:
-        file_data["headers"].append({"header":"Server", "value": config.server_domain})
+        file_data["headers"].append(
+            {"header": "Server", "value": config.server_domain})
 
     with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
         json.dump(file_data, outfile)

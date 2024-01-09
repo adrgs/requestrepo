@@ -9,12 +9,19 @@ from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
 from dnslib.server import DNSServer
 from config import config
 from utils import get_subdomain
-from typing import Any
+from typing import Any, TypedDict
+import sys
 import json
 import redis
 import uuid
 import base64
 import ip2country
+
+
+if sys.version_info < (3, 11):
+    from typing_extensions import NotRequired
+else:
+    from typing import NotRequired
 
 
 EPOCH: datetime.datetime = datetime.datetime(1970, 1, 1)
@@ -68,6 +75,7 @@ class Record:
     def try_rr(self, q) -> RR | None:
         if q.qtype == QTYPE.ANY or q.qtype == self._rtype:
             return self.as_rr(q.qname)
+        return None
 
     def as_rr(self, alt_rname) -> RR:
         return RR(rname=self._rname or alt_rname, rtype=self._rtype, **self.kwargs)
@@ -83,19 +91,18 @@ class Record:
         return "{} {}".format(QTYPE[self._rtype], self.kwargs)
 
 
-def update_dns_record(domain: str, dtype: str, newval: str) -> None:
-    r = redis.Redis(host=config.redis_host, port=6379, db=0)
-
-    data = {"domain": domain, "type": dtype,
-            "value": newval, "_id": str(uuid.uuid4())}
-
-    result = r.get(f"dns:{dtype}:{domain}")
-
-    if result:
-        result = json.loads(result)
-        data["_id"] = result["_id"]
-
-    r.set(f"dns:{dtype}:{domain}", json.dumps(data))
+class DnsRequestLog(TypedDict):
+    type: str
+    date: int
+    ip: str
+    port: int
+    country: NotRequired[str]
+    dtype: str
+    name: str
+    uid: str
+    reply: str
+    raw: str
+    _id: str
 
 
 def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
@@ -105,27 +112,53 @@ def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
     if not uid:
         return
 
-    data = {
-        "type": "dns",
-        "date": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-        "ip": ip,
-        "port": port,
-        "dtype": QTYPE[reply.q.qtype],
-        "name": name,
-        "uid": uid,
-        "reply": str(reply),
-        "raw": base64.b64encode(raw).decode(),
-        "_id": str(uuid.uuid4()),
-    }
+    dns_log = DnsRequestLog(
+        type="dns",
+        date=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+        ip=ip,
+        port=port,
+        dtype=str(QTYPE[reply.q.qtype]),
+        name=name,
+        uid=uid,
+        reply=str(reply),
+        raw=base64.b64encode(raw).decode(),
+        _id=str(uuid.uuid4()),
+    )
 
     country = ip2country.ip_to_country(ip)
     if not country is None:
-        data["country"] = country
+        dns_log["country"] = country
 
-    insert_into_db(data)
+    insert_into_db(dns_log)
 
 
-def insert_into_db(value: dict[str, Any]) -> None:
+class DnsEntry(TypedDict):
+    domain: str
+    type: str
+    value: str
+    _id: str
+
+
+def update_dns_record(domain: str, dtype: str, newval: str) -> None:
+    r = redis.Redis(host=config.redis_host, port=6379, db=0)
+
+    dns_entry = DnsEntry(
+        domain=domain,
+        type=dtype,
+        value=newval,
+        _id=str(uuid.uuid4()),
+    )
+
+    result = r.get(f"dns:{dtype}:{domain}")
+
+    if result:
+        data = json.loads(result)
+        data["_id"] = data["_id"]
+
+    r.set(f"dns:{dtype}:{domain}", json.dumps(data))
+
+
+def insert_into_db(value: DnsRequestLog) -> None:
     r = redis.Redis(host=config.redis_host, port=6379, db=0)
 
     subdomain = value["uid"]
@@ -136,7 +169,7 @@ def insert_into_db(value: dict[str, Any]) -> None:
     r.set(f"request:{subdomain}:{value['_id']}", idx)
 
 
-def get_dns_record(domain: str, dtype: str) -> dict[str, Any] | None:
+def get_dns_record(domain: str, dtype: str) -> DnsEntry | None:
     r = redis.Redis(host=config.redis_host, port=6379, db=0)
 
     domain = domain.lower()
@@ -146,6 +179,8 @@ def get_dns_record(domain: str, dtype: str) -> dict[str, Any] | None:
     if result:
         return json.loads(result)
 
+    return None
+
 
 class Resolver:
     def __init__(self, server_ip: str, server_domain: str) -> None:
@@ -154,14 +189,14 @@ class Resolver:
 
     def resolve_cname(self, reply: DNSRecord) -> Record | None:
         data = get_dns_record(str(reply.q.qname), "CNAME")
-        if data == None:
+        if data is None:
             return Record(CNAME, self.server_domain)
         else:
             return Record(CNAME, data["value"])
 
     def resolve_txt(self, reply: DNSRecord) -> Record | None:
         data = get_dns_record(str(reply.q.qname), "TXT")
-        if data == None:
+        if data is None:
             return Record(TXT, os.getenv("TXT") or "Hello!")
         else:
             return Record(TXT, data["value"])
@@ -170,7 +205,7 @@ class Resolver:
         new_record: Record | None = None
         data = get_dns_record(str(reply.q.qname), dtype)
         try:
-            if data == None:
+            if data is None:
                 new_record = Record(
                     A if dtype == "A" else AAAA, self.server_ip)
             else:
@@ -179,21 +214,13 @@ class Resolver:
                     new_record = Record(A, ips)
                 else:
                     if "%" in ips:
-                        ips = ips.split("%")
-                        idx = random.randint(0, len(ips) - 1)
-                        if "/" in ips[idx]:
-                            new_ips = ips[idx].split("/")
-                            new_record = Record(A, new_ips[0])
-                            new_ips = "/".join(new_ips[1:] + [new_ips[0]])
-                            ips[idx] = new_ips
-                            ips = "%".join(ips)
-                            update_dns_record(data["domain"], "A", ips)
-                        else:
-                            new_record = Record(A, ips[idx])
+                        ips_list = ips.split("%")
+                        idx = random.randint(0, len(ips_list) - 1)
+                        new_record = Record(A, ips_list[idx])
                     else:
-                        ips = ips.split("/")
-                        new_record = Record(A, ips[0])
-                        ips = "/".join(ips[1:] + [ips[0]])
+                        ips_list = ips.split("/")
+                        new_record = Record(A, ips_list[0])
+                        ips = "/".join(ips_list[1:] + [ips_list[0]])
                         update_dns_record(data["domain"], "A", ips)
         except:
             pass

@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
+from contextlib import asynccontextmanager
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette import status
@@ -8,7 +9,7 @@ from utils import (
     get_random_subdomain,
     get_subdomain_from_path,
 )
-from aioredis import from_url
+from aioredis import from_url, Redis
 from config import config
 from pathlib import Path
 import base64
@@ -20,64 +21,103 @@ import jwt
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
 from pydantic import BaseModel
-from typing import List
+from typing import List, TypedDict
 import re
+import sys
 import ip2country
+from typing import AsyncIterator
+
+if sys.version_info < (3, 11):
+    from typing_extensions import NotRequired
+else:
+    from typing import NotRequired
 
 app = FastAPI(server_header=False)
 
-redis = None
+
+class RedisDependency:
+    def __init__(self, redis: Redis | None = None):
+        self.redis = redis
+
+    async def get_redis(self) -> Redis:
+        if self.redis is None:
+            self.redis = await from_url(
+                f"redis://{config.redis_host}", encoding="utf-8", decode_responses=True
+            )
+        return self.redis
 
 
-@app.on_event("startup")
-async def startup_event():
-    global redis
-    redis = await from_url(
-        f"redis://{config.redis_host}", encoding="utf-8", decode_responses=True
-    )
+redis_dependency = RedisDependency()
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    global redis
-    if redis is not None:
-        await redis.close()
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    redis = await redis_dependency.get_redis()
+
+    yield
+
+    await redis.close()
 
 
-async def log_request(request, subdomain):
-    dic = {}
+class HttpRequestLog(TypedDict):
+    _id: str
+    type: str
+    raw: str
+    uid: str
+    ip: str
+    country: NotRequired[str]
+    port: int
+    headers: dict[str, str]
+    method: str
+    protocol: str
+    path: str
+    fragment: str
+    query: str
+    url: str
+    date: int
+
+
+async def log_request(request: Request, subdomain: str) -> None:
+    redis: Redis = await redis_dependency.get_redis()
+    ip, port = (request.client.host, request.client.port) if request.client else (
+        "127.0.0.1", 1337)
+
     headers = dict(request.headers)
 
-    dic["_id"] = str(uuid.uuid4())
-    dic["type"] = "http"
-    dic["raw"] = base64.b64encode(await request.body()).decode()
-    dic["uid"] = subdomain
-    dic["ip"] = request.client.host
-    ip_country = ip2country.ip_to_country(request.client.host)
-    if ip_country is not None:
-        dic["country"] = ip_country
-    dic["port"] = request.client.port
-    dic["headers"] = headers
-    dic["method"] = request.method
-    dic["protocol"] = (
-        request.scope["scheme"].upper() + "/" + request.scope["http_version"]
-    )
-    dic["path"] = request.url.path
-    dic["fragment"] = "#" + request.url.fragment if request.url.fragment else ""
-    dic["query"] = "?" + request.url.query if request.url.query else ""
-    dic["url"] = str(request.url)
-    dic["date"] = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    request_log: HttpRequestLog = HttpRequestLog(
+        _id=str(uuid.uuid4()),
+        type="http",
+        raw=base64.b64encode(await request.body()).decode(),
+        uid=subdomain,
+        ip=ip,
+        port=port,
+        headers=headers,
+        method=request.method,
+        protocol=request.scope["scheme"].upper(
+        ) + "/" + request.scope["http_version"],
+        path=request.url.path,
+        fragment="#" + request.url.fragment if request.url.fragment else "",
+        query="?" + request.url.query if request.url.query else "",
+        url=str(request.url),
+        date=int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
 
-    data = json.dumps(dic)
+    ip_country = ip2country.ip_to_country(ip)
+    if ip_country is not None:
+        request_log["country"] = ip_country
+
+    data = json.dumps(request_log)
 
     await redis.publish(f"pubsub:{subdomain}", data)
     idx = await redis.rpush(f"requests:{subdomain}", data) - 1
-    await redis.set(f"request:{subdomain}:{dic['_id']}", idx)
+    await redis.set(f"request:{subdomain}:{request_log['_id']}", idx)
 
 
-def verify_jwt(token):
+def verify_jwt(token: str) -> str | None:
     try:
-        return jwt.decode(token, config.jwt_secret, algorithms=["HS256"])["subdomain"]
+        dic = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
+        if "subdomain" in dic and type(dic["subdomain"]) == str:
+            return dic["subdomain"]
+        return None
     except Exception:
         return None
 
@@ -99,7 +139,7 @@ def validation_error(msg):
 
 
 @app.post("/api/update_dns")
-async def update_dns(records: DnsRecords, token: str):
+async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(redis_dependency.get_redis)) -> Response:
     DNS_RECORDS = ["A", "AAAA", "CNAME", "TXT"]
 
     subdomain = verify_jwt(token)
@@ -155,7 +195,7 @@ async def update_dns(records: DnsRecords, token: str):
 
 
 @app.get("/api/get_dns")
-async def get_dns(token: str):
+async def get_dns(token: str, redis: Redis = Depends(redis_dependency.get_redis)) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -169,7 +209,7 @@ async def get_dns(token: str):
 
 
 @app.get("/api/get_file")
-async def get_file(token: str):
+async def get_file(token: str) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -198,7 +238,7 @@ class DeleteRequest(BaseModel):
 
 
 @app.post("/api/delete_request")
-async def delete_request(req: DeleteRequest, token: str):
+async def delete_request(req: DeleteRequest, token: str, redis: Redis = Depends(redis_dependency.get_redis)) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -215,7 +255,7 @@ async def delete_request(req: DeleteRequest, token: str):
 
 
 @app.post("/api/delete_all")
-async def delete_all(token: str):
+async def delete_all(token: str, redis: Redis = Depends(redis_dependency.get_redis)) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -234,7 +274,7 @@ async def delete_all(token: str):
 
 
 @app.post("/api/update_file")
-async def update_file(file: File, token: str):
+async def update_file(file: File, token: str) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -249,7 +289,7 @@ async def update_file(file: File, token: str):
 
 
 @app.post("/api/get_token")
-async def get_token():
+async def get_token(redis: Redis = Depends(redis_dependency.get_redis)) -> Response:
     subdomain = get_random_subdomain()
 
     while await redis.exists(f"subdomain:{subdomain}"):
@@ -271,7 +311,7 @@ async def get_token():
 
 
 @app.websocket("/api/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, redis: Redis = Depends(redis_dependency.get_redis)) -> None:
     await websocket.accept()
 
     token = await websocket.receive_text()
@@ -301,8 +341,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 return
 
 
-async def catch_all(request):
-    host = request.headers.get("host")
+class RequestRepoHeader(TypedDict):
+    header: str
+    value: str
+
+
+class RequestRepoResponse(TypedDict):
+    raw: str
+    headers: list[RequestRepoHeader]
+    status_code: int
+
+
+async def catch_all(request: Request) -> Response:
+    host = request.headers.get("host") or "requestrepo.com"
     subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
         request.url.path
     )
@@ -318,7 +369,7 @@ async def catch_all(request):
     if not subdomain_path.exists():
         write_basic_file(subdomain)
 
-    data = {"raw": "", "headers": {}, "status_code": 200}
+    data: RequestRepoResponse = {"raw": "", "headers": [], "status_code": 200}
 
     with open("pages/" + subdomain, "r") as json_file:
         try:

@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.11
 
 COPY ./dns/ /app/
 COPY ./ip2country/ /app/ip2country/
