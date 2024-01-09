@@ -19,9 +19,9 @@ import ip2country
 
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Required, NotRequired
+    from typing_extensions import NotRequired
 else:
-    from typing import Required, NotRequired
+    from typing import NotRequired
 
 
 EPOCH: datetime.datetime = datetime.datetime(1970, 1, 1)
@@ -216,16 +216,7 @@ class Resolver:
                     if "%" in ips:
                         ips_list = ips.split("%")
                         idx = random.randint(0, len(ips_list) - 1)
-                        if "/" in ips_list[idx]:
-                            new_ips_list = ips_list[idx].split("/")
-                            new_record = Record(A, new_ips_list[0])
-                            new_ips = "/".join(new_ips_list[1:] +
-                                               [new_ips_list[0]])
-                            ips_list[idx] = new_ips
-                            ips = "%".join(ips)
-                            update_dns_record(data["domain"], "A", ips)
-                        else:
-                            new_record = Record(A, ips_list[idx])
+                        new_record = Record(A, ips_list[idx])
                     else:
                         ips_list = ips.split("/")
                         new_record = Record(A, ips_list[0])
