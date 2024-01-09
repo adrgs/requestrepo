@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await redis.close()
 
 
-class RequestLog(TypedDict):
+class HttpRequestLog(TypedDict):
     _id: str
     type: str
     raw: str
@@ -84,7 +84,7 @@ async def log_request(request: Request, subdomain: str) -> None:
 
     headers = dict(request.headers)
 
-    request_log: RequestLog = RequestLog(
+    request_log: HttpRequestLog = HttpRequestLog(
         _id=str(uuid.uuid4()),
         type="http",
         raw=base64.b64encode(await request.body()).decode(),
