@@ -132,7 +132,7 @@ class DnsRecords(BaseModel):
     records: List[Record]
 
 
-def validation_error(msg):
+def validation_error(msg: str) -> Response:
     response = JSONResponse({"error": msg})
     response.status_code = 401
     return response
