@@ -28,9 +28,9 @@ import ip2country
 from typing import AsyncIterator
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Required, NotRequired
+    from typing_extensions import NotRequired
 else:
-    from typing import Required, NotRequired
+    from typing import NotRequired
 
 app = FastAPI(server_header=False)
 
