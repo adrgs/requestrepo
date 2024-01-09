@@ -216,7 +216,16 @@ class Resolver:
                     if "%" in ips:
                         ips_list = ips.split("%")
                         idx = random.randint(0, len(ips_list) - 1)
-                        new_record = Record(A, ips_list[idx])
+                        if "/" in ips_list[idx]:
+                            new_ips_list = ips_list[idx].split("/")
+                            new_record = Record(A, new_ips_list[0])
+                            new_ips = "/".join(new_ips_list[1:] +
+                                               [new_ips_list[0]])
+                            ips_list[idx] = new_ips
+                            ips = "%".join(ips)
+                            update_dns_record(data["domain"], "A", ips)
+                        else:
+                            new_record = Record(A, ips_list[idx])
                     else:
                         ips_list = ips.split("/")
                         new_record = Record(A, ips_list[0])
