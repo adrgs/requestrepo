@@ -8,6 +8,7 @@ from utils import (
     write_basic_file,
     get_random_subdomain,
     get_subdomain_from_path,
+    verify_jwt,
 )
 from aioredis import from_url, Redis
 from config import config
@@ -51,16 +52,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     await redis.close()
-
-
-def verify_jwt(token: str) -> str | None:
-    try:
-        dic = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
-        if "subdomain" in dic and type(dic["subdomain"]) == str:
-            return dic["subdomain"]
-        return None
-    except Exception:
-        return None
 
 
 def validation_error(msg: str) -> Response:
