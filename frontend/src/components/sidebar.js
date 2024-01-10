@@ -43,11 +43,18 @@ export class AppSidebar extends Component {
   }
 
   onCheckboxChange(event) {
-    if (event.value === "HTTP") {
-      this.state.http_filter = !this.state.http_filter;
-    } else if (event.value === "DNS") {
-      this.state.dns_filter = !this.state.dns_filter;
-    }
+    const { value } = event;
+
+    this.setState((prevState) => {
+      if (value === "HTTP") {
+        return { http_filter: !prevState.http_filter };
+      } else if (value === "DNS") {
+        return { dns_filter: !prevState.dns_filter };
+      }
+
+      // In case the event value doesn't match, return the unmodified state
+      return {};
+    });
   }
 
   convertUTCDateToLocalDate(date) {

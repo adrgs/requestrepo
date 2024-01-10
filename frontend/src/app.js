@@ -66,50 +66,66 @@ class App extends Component {
       ws_url = `${protocol}://localhost:21337/api/ws`;
     }
 
-    let user = this.user;
     let app = this;
 
     window.addEventListener("storage", (e) => {
       if (e.key === "visited") {
-        app.state.user.visited = JSON.parse(e.newValue);
-        for (const [key] of Object.entries(app.state.user.visited)) {
-          if (app.state.user.requests[key]) {
-            app.state.user.requests[key]["new"] = false;
-          }
-        }
-        if (e.newValue === "{}") {
-          app.state.user["httpRequests"] = [];
-          app.state.user["dnsRequests"] = [];
-          app.state.user["requests"] = {};
-        }
+        app.setState(
+          (prevState) => {
+            const newUser = JSON.parse(JSON.stringify(prevState.user));
+            newUser.visited = JSON.parse(e.newValue);
 
-        app.setState({ state: app.state });
-        app.forceUpdate();
-        app.updateTitle();
+            Object.entries(newUser.visited).forEach(([key]) => {
+              if (newUser.requests[key]) {
+                newUser.requests[key]["new"] = false;
+              }
+            });
+
+            if (e.newValue === "{}") {
+              newUser.httpRequests = [];
+              newUser.dnsRequests = [];
+              newUser.requests = {};
+            }
+
+            return { user: newUser };
+          },
+          () => {
+            app.updateTitle();
+            app.forceUpdate();
+          }
+        );
       } else if (e.key === "token") {
         document.location.reload();
       } else if (e.key === "lastSelectedRequest") {
-        let id = e.newValue;
-        if (app.state.user.requests[id] !== undefined) {
-          app.state.user.selectedRequest = id;
-          app.state.user.requests[id]["new"] = false;
-          app.setState({ state: app.state });
-        }
+        const id = e.newValue;
+
+        app.setState((prevState) => {
+          const newUser = JSON.parse(JSON.stringify(prevState.user));
+          if (newUser.requests[id] !== undefined) {
+            newUser.selectedRequest = id;
+            newUser.requests[id]["new"] = false;
+          }
+          return { user: newUser };
+        });
       } else if (e.key === "lastDeletedRequest") {
-        let id = e.newValue;
-        delete app.state.user.requests[id];
-        delete app.state.user.visited[id];
+        const id = e.newValue;
 
-        app.state.user.httpRequests = app.state.user.httpRequests.filter(function (value, index, arr) {
-          return value["_id"] !== id;
-        });
-        app.state.user.dnsRequests = app.state.user.dnsRequests.filter(function (value, index, arr) {
-          return value["_id"] !== id;
-        });
+        app.setState(
+          (prevState) => {
+            const newUser = JSON.parse(JSON.stringify(prevState.user));
+            delete newUser.requests[id];
+            delete newUser.visited[id];
 
-        app.setState({ state: app.state });
-        app.forceUpdate();
-        app.updateTitle();
+            newUser.httpRequests = newUser.httpRequests.filter((value) => value["_id"] !== id);
+            newUser.dnsRequests = newUser.dnsRequests.filter((value) => value["_id"] !== id);
+
+            return { user: newUser };
+          },
+          () => {
+            app.updateTitle();
+            app.forceUpdate();
+          }
+        );
       }
     });
 
@@ -127,41 +143,47 @@ class App extends Component {
       socket.onmessage = function (event) {
         event = JSON.parse(event.data);
         let cmd = event["cmd"];
-        if (cmd === "requests") {
-          let requests = event["data"].map((r) => JSON.parse(r));
 
-          let httpRequests = requests.filter((r) => r["type"] === "http");
-          if (httpRequests.length > 0) {
-            user["httpRequests"] = user["httpRequests"].concat(httpRequests);
+        if (cmd === "requests" || cmd === "request") {
+          app.setState(
+            (prevState) => {
+              // Deep copy the user object to avoid direct mutation
+              let newUser = JSON.parse(JSON.stringify(prevState.user));
 
-            for (let i = 0; i < user["httpRequests"].length; i++) {
-              user.requests[user["httpRequests"][i]["_id"]] = user["httpRequests"][i];
-              user["httpRequests"][i]["new"] = false;
+              if (cmd === "requests") {
+                let requests = event["data"].map((r) => JSON.parse(r));
+                let httpRequests = requests.filter((r) => r["type"] === "http");
+                let dnsRequests = requests.filter((r) => r["type"] === "dns");
+
+                httpRequests.forEach((httpRequest) => {
+                  newUser.httpRequests.push(httpRequest);
+                  newUser.requests[httpRequest["_id"]] = httpRequest;
+                  httpRequest["new"] = false;
+                });
+
+                dnsRequests.forEach((dnsRequest) => {
+                  newUser.dnsRequests.push(dnsRequest);
+                  newUser.requests[dnsRequest["_id"]] = dnsRequest;
+                  dnsRequest["new"] = false;
+                });
+              } else if (cmd === "request") {
+                let request = JSON.parse(event["data"]);
+                request["new"] = true;
+                if (request["type"] === "http") {
+                  newUser.httpRequests.push(request);
+                } else if (request["type"] === "dns") {
+                  newUser.dnsRequests.push(request);
+                }
+                newUser.requests[request["_id"]] = request;
+              }
+
+              // Return new state
+              return { user: newUser };
+            },
+            () => {
+              app.updateTitle();
             }
-          }
-
-          let dnsRequests = requests.filter((r) => r["type"] === "dns");
-          if (dnsRequests.length > 0) {
-            user["dnsRequests"] = user["dnsRequests"].concat(dnsRequests);
-            for (let i = 0; i < user["dnsRequests"].length; i++) {
-              user.requests[user["dnsRequests"][i]["_id"]] = user["dnsRequests"][i];
-              user["dnsRequests"][i]["new"] = false;
-            }
-          }
-
-          app.updateTitle();
-          app.setState({ state: app.state });
-        } else if (cmd === "request") {
-          let request = JSON.parse(event["data"]);
-          request["new"] = true;
-          if (request["type"] === "http") {
-            app.user["httpRequests"] = app.user["httpRequests"].concat([request]);
-          } else if (request["type"] === "dns") {
-            app.user["dnsRequests"] = app.user["dnsRequests"].concat([request]);
-          }
-          app.user.requests[request["_id"]] = request;
-          app.updateTitle();
-          app.setState({ state: app.state });
+          );
         }
       };
 
@@ -221,51 +243,71 @@ class App extends Component {
   }
 
   markAllAsVisited() {
-    let obj = {};
-    for (let [key] of Object.entries(this.state.user.requests)) {
-      this.state.user.requests[key]["new"] = false;
-      obj[key] = true;
+    const updatedRequests = {};
+    const visited = {};
+
+    // Copying the requests to a new object
+    for (const [key, value] of Object.entries(this.state.user.requests)) {
+      updatedRequests[key] = { ...value, new: false };
+      visited[key] = true;
     }
-    this.state.user.visited = obj;
-    localStorage.setItem("visited", JSON.stringify(obj));
-    this.updateTitle();
-    this.setState({ user: this.state.user });
-    this.forceUpdate();
+
+    // Updating the state with the new objects
+    this.setState(
+      (prevState) => ({
+        user: {
+          ...prevState.user,
+          requests: updatedRequests,
+          visited: visited,
+        },
+      }),
+      () => {
+        localStorage.setItem("visited", JSON.stringify(visited));
+        this.updateTitle();
+        this.forceUpdate();
+      }
+    );
   }
 
   clickRequestAction(action, id) {
-    if (action === "select") {
-      if (this.state.user.requests[id] !== undefined) {
-        this.state.user.selectedRequest = id;
-        this.state.user.requests[id]["new"] = false;
-        if (this.state.user.visited[id] === undefined) {
-          this.state.user.visited[id] = true;
-          localStorage.setItem("visited", JSON.stringify(this.state.user.visited));
+    this.setState(
+      (prevState) => {
+        // Deep copy the user object to avoid direct mutation
+        let newUser = JSON.parse(JSON.stringify(prevState.user));
+
+        if (action === "select") {
+          if (newUser.requests[id] !== undefined) {
+            newUser.selectedRequest = id;
+            newUser.requests[id]["new"] = false;
+            if (newUser.visited[id] === undefined) {
+              newUser.visited[id] = true;
+              localStorage.setItem("visited", JSON.stringify(newUser.visited));
+            }
+            localStorage.setItem("lastSelectedRequest", id);
+          }
+        } else if (action === "delete") {
+          delete newUser.requests[id];
+          delete newUser.visited[id];
+
+          newUser.httpRequests = newUser.httpRequests.filter((request) => request["_id"] !== id);
+          newUser.dnsRequests = newUser.dnsRequests.filter((request) => request["_id"] !== id);
+
+          Utils.deleteRequest(id).then((res) => {
+            localStorage.setItem("visited", JSON.stringify(newUser.visited));
+            localStorage.setItem("lastDeletedRequest", id);
+          });
+        } else if (action === "reset") {
+          newUser.selectedRequest = undefined;
+          localStorage.setItem("lastSelectedRequest", undefined);
         }
-        localStorage.setItem("lastSelectedRequest", id);
+
+        // Return new state
+        return { user: newUser };
+      },
+      () => {
+        this.updateTitle();
       }
-    } else if (action === "delete") {
-      delete this.state.user.requests[id];
-      delete this.state.user.visited[id];
-
-      this.state.user.httpRequests = this.state.user.httpRequests.filter(function (value, index, arr) {
-        return value["_id"] !== id;
-      });
-      this.state.user.dnsRequests = this.state.user.dnsRequests.filter(function (value, index, arr) {
-        return value["_id"] !== id;
-      });
-
-      this.setState({ user: this.state.user });
-
-      Utils.deleteRequest(id).then((res) => {
-        localStorage.setItem("visited", JSON.stringify(this.state.user.visited));
-        localStorage.setItem("lastDeletedRequest", id);
-      });
-    } else if (action === "reset") {
-      this.state.user.selectedRequest = undefined;
-      localStorage.setItem("lastSelectedRequest", undefined);
-    }
-    this.updateTitle();
+    );
   }
 
   isDesktop() {
@@ -283,8 +325,10 @@ class App extends Component {
   }
 
   updateSearchValue(val) {
-    this.state.searchValue = val;
-    this.setState({ state: this.state });
+    this.setState((prevState) => ({
+      ...prevState,
+      searchValue: val,
+    }));
   }
 
   copyUrl(e) {
