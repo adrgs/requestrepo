@@ -17,7 +17,7 @@ from typing import AsyncIterator
 from fastapi.responses import FileResponse, Response
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
-from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse
+from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse, DnsEntry
 import base64
 import json
 import datetime
@@ -109,7 +109,7 @@ async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(red
         new_value = record.value
         new_dtype = DNS_RECORDS[record.type]
 
-        new_record = {"domain": new_domain, "type": new_dtype,
+        new_record: DnsEntry = {"domain": new_domain, "type": new_dtype,
                       "value": new_value, "_id": str(uuid.uuid4())}
 
         await redis.set(f"dns:{new_record['type']}:{new_record['domain']}", json.dumps(new_record))

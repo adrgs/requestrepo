@@ -26,6 +26,13 @@ class HttpRequestLog(TypedDict):
     date: int
 
 
+class DnsEntry(TypedDict):
+    domain: str
+    type: str
+    value: str
+    _id: str
+
+
 class Header(BaseModel):
     header: str
     value: str
