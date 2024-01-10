@@ -20,10 +20,6 @@ export class AppSidebar extends Component {
     this.deleteAllRequests = this.deleteAllRequests.bind(this);
   }
 
-  componentWillReceiveProps({ someProp }) {
-    this.forceUpdate();
-    this.setState({ ...this.state, someProp });
-  }
 
   scrollToBottom() {
     this.messagesEnd.scrollIntoView({ behavior: "auto" });
@@ -187,20 +183,6 @@ export class AppSidebar extends Component {
     requests = requests.filter(function (item, index, arr) {
       return hasValue(user.requests[item.id], searchValue) && ((item.type === "DNS" && dns_filter) || (item.type === "HTTP" && http_filter));
     });
-    let good = false;
-    for (let i = 0; i < requests.length; i++) {
-      if (this.props.user.selectedRequest === requests[i].id) {
-        good = true;
-        break;
-      }
-    }
-    if (!good) {
-      if (requests.length > 0) {
-        this.props.clickRequestAction("select", requests[0].id);
-      } else {
-        this.props.clickRequestAction("reset", undefined);
-      }
-    }
     return (
       <div className={"layout-sidebar layout-sidebar-light"}>
         <div className={"layout-sidebar-header"}>

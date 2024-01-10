@@ -91,7 +91,6 @@ class App extends Component {
           },
           () => {
             app.updateTitle();
-            app.forceUpdate();
           }
         );
       } else if (e.key === "token") {
@@ -123,7 +122,6 @@ class App extends Component {
           },
           () => {
             app.updateTitle();
-            app.forceUpdate();
           }
         );
       }
@@ -264,7 +262,6 @@ class App extends Component {
       () => {
         localStorage.setItem("visited", JSON.stringify(visited));
         this.updateTitle();
-        this.forceUpdate();
       }
     );
   }
@@ -286,12 +283,34 @@ class App extends Component {
             localStorage.setItem("lastSelectedRequest", id);
           }
         } else if (action === "delete") {
+          // Combine httpRequests and dnsRequests to find the next or previous request ID
+          const combinedRequests = [...newUser.httpRequests, ...newUser.dnsRequests];
+        
+          // Find index of the request being deleted
+          const deleteIndex = combinedRequests.findIndex(request => request["_id"] === id);
+        
+          // Calculate the next index, or use the previous one if the deleted request is the last
+          let nextSelectedIndex = deleteIndex >= combinedRequests.length - 1 ? deleteIndex - 1 : deleteIndex + 1;
+        
+          // Ensure the index is within bounds
+          nextSelectedIndex = Math.max(0, Math.min(nextSelectedIndex, combinedRequests.length - 1));
+        
+          // Get the next selected request ID, or undefined if no requests are left
+          const nextSelectedId = combinedRequests.length > 0 ? combinedRequests[nextSelectedIndex]["_id"] : undefined;
+        
+          // Perform deletion
           delete newUser.requests[id];
           delete newUser.visited[id];
+        
+          newUser.httpRequests = newUser.httpRequests.filter(request => request["_id"] !== id);
+          newUser.dnsRequests = newUser.dnsRequests.filter(request => request["_id"] !== id);
 
-          newUser.httpRequests = newUser.httpRequests.filter((request) => request["_id"] !== id);
-          newUser.dnsRequests = newUser.dnsRequests.filter((request) => request["_id"] !== id);
-
+          // Set the next selected request
+          if (id === localStorage.getItem("lastSelectedRequest")) {
+            localStorage.setItem("lastSelectedRequest", nextSelectedId);
+            newUser.selectedRequest = nextSelectedId;
+          }
+        
           Utils.deleteRequest(id).then((res) => {
             localStorage.setItem("visited", JSON.stringify(newUser.visited));
             localStorage.setItem("lastDeletedRequest", id);
