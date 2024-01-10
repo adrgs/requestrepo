@@ -49,5 +49,5 @@
     ]
   },
   "allowedHosts": "all",
-  "proxy": "http://localhost:21337"
+  "proxy": "http://localhost:21337/"
 }
