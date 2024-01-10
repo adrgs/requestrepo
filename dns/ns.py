@@ -4,182 +4,18 @@ import os
 import random
 import threading
 
-from dnslib import DNSRecord, QTYPE, RD, RR
-from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
+from dnslib import DNSRecord, QTYPE
+from dnslib import A, AAAA, CNAME, TXT
 from dnslib.server import DNSServer
 from config import config
 from utils import get_subdomain
 from typing import Any, TypedDict
-import sys
+from models import DnsRequestLog, DnsEntry, Record
 import json
 import redis
 import uuid
 import base64
 import ip2country
-
-
-if sys.version_info < (3, 11):
-    from typing_extensions import NotRequired
-else:
-    from typing import NotRequired
-
-
-EPOCH: datetime.datetime = datetime.datetime(1970, 1, 1)
-SERIAL: int = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-
-TYPE_LOOKUP: dict[A | AAAA | CNAME | MX | NS | SOA | TXT, int] = {
-    A: QTYPE.A,
-    AAAA: QTYPE.AAAA,
-    CNAME: QTYPE.CNAME,
-    MX: QTYPE.MX,
-    NS: QTYPE.NS,
-    SOA: QTYPE.SOA,
-    TXT: QTYPE.TXT,
-}
-
-
-class Record:
-    def __init__(
-        self,
-        rdata_type: RD | A | AAAA | CNAME | MX | NS | SOA | TXT,
-        *args,
-        rtype=None,
-        rname=None,
-        ttl=None,
-        **kwargs,
-    ) -> None:
-        if isinstance(rdata_type, RD):
-            self._rtype = TYPE_LOOKUP[rdata_type.__class__]
-            rdata = rdata_type
-        else:
-            self._rtype = TYPE_LOOKUP[rdata_type]
-            if rdata_type == SOA and len(args) == 2:
-                args += (
-                    (
-                        SERIAL,  # serial number
-                        60 * 60 * 1,  # refresh
-                        60 * 60 * 3,  # retry
-                        60 * 60 * 24,  # expire
-                        60 * 60 * 1,  # minimum
-                    ),
-                )
-            rdata = rdata_type(*args)
-
-        if rtype:
-            self._rtype = rtype
-        self._rname = rname
-        self.kwargs = dict(
-            rdata=rdata, ttl=self.sensible_ttl() if ttl is None else ttl, **kwargs
-        )
-
-    def try_rr(self, q) -> RR | None:
-        if q.qtype == QTYPE.ANY or q.qtype == self._rtype:
-            return self.as_rr(q.qname)
-        return None
-
-    def as_rr(self, alt_rname) -> RR:
-        return RR(rname=self._rname or alt_rname, rtype=self._rtype, **self.kwargs)
-
-    def sensible_ttl(self) -> int:
-        return 1
-
-    @property
-    def is_soa(self) -> bool:
-        return self._rtype == QTYPE.SOA
-
-    def __str__(self) -> str:
-        return "{} {}".format(QTYPE[self._rtype], self.kwargs)
-
-
-class DnsRequestLog(TypedDict):
-    type: str
-    date: int
-    ip: str
-    port: int
-    country: NotRequired[str]
-    dtype: str
-    name: str
-    uid: str
-    reply: str
-    raw: str
-    _id: str
-
-
-def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
-    name = str(reply.q.qname)
-    uid = get_subdomain(name)
-
-    if not uid:
-        return
-
-    dns_log = DnsRequestLog(
-        type="dns",
-        date=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-        ip=ip,
-        port=port,
-        dtype=str(QTYPE[reply.q.qtype]),
-        name=name,
-        uid=uid,
-        reply=str(reply),
-        raw=base64.b64encode(raw).decode(),
-        _id=str(uuid.uuid4()),
-    )
-
-    country = ip2country.ip_to_country(ip)
-    if not country is None:
-        dns_log["country"] = country
-
-    insert_into_db(dns_log)
-
-
-class DnsEntry(TypedDict):
-    domain: str
-    type: str
-    value: str
-    _id: str
-
-
-def update_dns_record(domain: str, dtype: str, newval: str) -> None:
-    r = redis.Redis(host=config.redis_host, port=6379, db=0)
-
-    dns_entry = DnsEntry(
-        domain=domain,
-        type=dtype,
-        value=newval,
-        _id=str(uuid.uuid4()),
-    )
-
-    result = r.get(f"dns:{dtype}:{domain}")
-
-    if result:
-        data = json.loads(result)
-        data["_id"] = data["_id"]
-
-    r.set(f"dns:{dtype}:{domain}", json.dumps(data))
-
-
-def insert_into_db(value: DnsRequestLog) -> None:
-    r = redis.Redis(host=config.redis_host, port=6379, db=0)
-
-    subdomain = value["uid"]
-    data = json.dumps(value)
-
-    r.publish(f"pubsub:{subdomain}", data)
-    idx = r.rpush(f"requests:{subdomain}", data) - 1
-    r.set(f"request:{subdomain}:{value['_id']}", idx)
-
-
-def get_dns_record(domain: str, dtype: str) -> DnsEntry | None:
-    r = redis.Redis(host=config.redis_host, port=6379, db=0)
-
-    domain = domain.lower()
-
-    result = r.get(f"dns:{dtype}:{domain}")
-
-    if result:
-        return json.loads(result)
-
-    return None
 
 
 class Resolver:
@@ -255,6 +91,76 @@ class Resolver:
         )
 
         return reply
+
+
+def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
+    name = str(reply.q.qname)
+    uid = get_subdomain(name)
+
+    if not uid:
+        return
+
+    dns_log = DnsRequestLog(
+        type="dns",
+        date=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+        ip=ip,
+        port=port,
+        dtype=str(QTYPE[reply.q.qtype]),
+        name=name,
+        uid=uid,
+        reply=str(reply),
+        raw=base64.b64encode(raw).decode(),
+        _id=str(uuid.uuid4()),
+    )
+
+    country = ip2country.ip_to_country(ip)
+    if not country is None:
+        dns_log["country"] = country
+
+    insert_into_db(dns_log)
+
+
+def update_dns_record(domain: str, dtype: str, newval: str) -> None:
+    r = redis.Redis(host=config.redis_host, port=6379, db=0)
+
+    dns_entry = DnsEntry(
+        domain=domain,
+        type=dtype,
+        value=newval,
+        _id=str(uuid.uuid4()),
+    )
+
+    result = r.get(f"dns:{dtype}:{domain}")
+
+    if result:
+        data = json.loads(result)
+        dns_entry["_id"] = data["_id"]
+
+    r.set(f"dns:{dtype}:{domain}", json.dumps(dns_entry))
+
+
+def insert_into_db(value: DnsRequestLog) -> None:
+    r = redis.Redis(host=config.redis_host, port=6379, db=0)
+
+    subdomain = value["uid"]
+    data = json.dumps(value)
+
+    r.publish(f"pubsub:{subdomain}", data)
+    idx = r.rpush(f"requests:{subdomain}", data) - 1
+    r.set(f"request:{subdomain}:{value['_id']}", idx)
+
+
+def get_dns_record(domain: str, dtype: str) -> DnsEntry | None:
+    r = redis.Redis(host=config.redis_host, port=6379, db=0)
+
+    domain = domain.lower()
+
+    result = r.get(f"dns:{dtype}:{domain}")
+
+    if result:
+        return json.loads(result)
+
+    return None
 
 
 resolver = Resolver(config.server_ip, config.server_domain)

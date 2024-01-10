@@ -8,29 +8,24 @@ from utils import (
     write_basic_file,
     get_random_subdomain,
     get_subdomain_from_path,
+    verify_jwt,
 )
 from aioredis import from_url, Redis
 from config import config
 from pathlib import Path
-import base64
+from typing import AsyncIterator
 from fastapi.responses import FileResponse, Response
+from fastapi.websockets import WebSocket, WebSocketDisconnect
+from websockets.exceptions import ConnectionClosed
+from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse
+import base64
 import json
 import datetime
 import uuid
 import jwt
-from fastapi.websockets import WebSocket, WebSocketDisconnect
-from websockets.exceptions import ConnectionClosed
-from pydantic import BaseModel
-from typing import List, TypedDict
 import re
-import sys
 import ip2country
-from typing import AsyncIterator
 
-if sys.version_info < (3, 11):
-    from typing_extensions import NotRequired
-else:
-    from typing import NotRequired
 
 app = FastAPI(server_header=False)
 
@@ -59,80 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await redis.close()
 
 
-class HttpRequestLog(TypedDict):
-    _id: str
-    type: str
-    raw: str
-    uid: str
-    ip: str
-    country: NotRequired[str]
-    port: int
-    headers: dict[str, str]
-    method: str
-    protocol: str
-    path: str
-    fragment: str
-    query: str
-    url: str
-    date: int
-
-
-async def log_request(request: Request, subdomain: str) -> None:
-    redis: Redis = await redis_dependency.get_redis()
-    ip, port = (request.client.host, request.client.port) if request.client else (
-        "127.0.0.1", 1337)
-
-    headers = dict(request.headers)
-
-    request_log: HttpRequestLog = HttpRequestLog(
-        _id=str(uuid.uuid4()),
-        type="http",
-        raw=base64.b64encode(await request.body()).decode(),
-        uid=subdomain,
-        ip=ip,
-        port=port,
-        headers=headers,
-        method=request.method,
-        protocol=request.scope["scheme"].upper(
-        ) + "/" + request.scope["http_version"],
-        path=request.url.path,
-        fragment="#" + request.url.fragment if request.url.fragment else "",
-        query="?" + request.url.query if request.url.query else "",
-        url=str(request.url),
-        date=int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
-
-    ip_country = ip2country.ip_to_country(ip)
-    if ip_country is not None:
-        request_log["country"] = ip_country
-
-    data = json.dumps(request_log)
-
-    await redis.publish(f"pubsub:{subdomain}", data)
-    idx = await redis.rpush(f"requests:{subdomain}", data) - 1
-    await redis.set(f"request:{subdomain}:{request_log['_id']}", idx)
-
-
-def verify_jwt(token: str) -> str | None:
-    try:
-        dic = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
-        if "subdomain" in dic and type(dic["subdomain"]) == str:
-            return dic["subdomain"]
-        return None
-    except Exception:
-        return None
-
-
-class Record(BaseModel):
-    domain: str
-    type: int
-    value: str
-
-
-class DnsRecords(BaseModel):
-    records: List[Record]
-
-
-def validation_error(msg):
+def validation_error(msg: str) -> Response:
     response = JSONResponse({"error": msg})
     response.status_code = 401
     return response
@@ -146,14 +68,7 @@ async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(red
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
 
-    final_records = []
-
-    old_records = await redis.get(f"dns:{subdomain}")
-    if old_records:
-        old_records = json.loads(old_records)
-        for record in old_records:
-            await redis.delete(f"dns:{record['type']}:{record['domain']}")
-
+    # Validate entries
     for record in records.records:
         domain = record.domain.lower()
         value = record.value
@@ -163,29 +78,41 @@ async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(red
             continue
 
         if len(domain) > 63:
-            return validation_error("Domain name too long")
+            return validation_error(f"Domain name '{domain}' too long")
 
         if len(value) > 255:
-            return validation_error("Value too long")
+            return validation_error(f"Value '{value}' too long")
 
         if dtype < 0 or dtype >= len(DNS_RECORDS):
-            return validation_error("Invalid type")
+            return validation_error(f"Invalid type for domian {domain}")
 
         if not re.search("^[ -~]+$", value) and dtype != 3:
-            return validation_error("Invalid characters in value")
+            return validation_error(f"Invalid characters in value '{value}'")
 
         if not re.match(
             "^[A-Za-z0-9](?:[A-Za-z0-9\\-_\\.]{0,61}[A-Za-z0-9])?$", domain
         ):
-            return validation_error("Invalid characters in domain")
+            return validation_error(f"Invalid characters in domain '{domain}'")
 
-        domain = f'{domain}.{subdomain}.{config.server_domain}.'
-        dtype = DNS_RECORDS[dtype]
+    # Delete old entries
+    old_records = await redis.get(f"dns:{subdomain}")
+    if old_records:
+        old_records = json.loads(old_records)
+        for old_record in old_records:
+            await redis.delete(f"dns:{old_record['type']}:{old_record['domain']}")
 
-        record = {"domain": domain, "type": dtype,
-                  "value": value, "_id": str(uuid.uuid4())}
+    # Update if all entries are valid
+    final_records = []
 
-        await redis.set(f"dns:{record['type']}:{record['domain']}", json.dumps(record))
+    for record in records.records:
+        new_domain = f'{record.domain.lower()}.{subdomain}.{config.server_domain}.'
+        new_value = record.value
+        new_dtype = DNS_RECORDS[record.type]
+
+        new_record = {"domain": new_domain, "type": new_dtype,
+                      "value": new_value, "_id": str(uuid.uuid4())}
+
+        await redis.set(f"dns:{new_record['type']}:{new_record['domain']}", json.dumps(new_record))
 
         final_records.append(record)
 
@@ -220,21 +147,6 @@ async def get_file(token: str) -> Response:
 
     with open("pages/" + subdomain, "r") as json_file:
         return Response(json_file.read())
-
-
-class Header(BaseModel):
-    header: str
-    value: str
-
-
-class File(BaseModel):
-    raw: str
-    headers: List[Header]
-    status_code: int
-
-
-class DeleteRequest(BaseModel):
-    id: str
 
 
 @app.post("/api/delete_request")
@@ -341,17 +253,6 @@ async def websocket_endpoint(websocket: WebSocket, redis: Redis = Depends(redis_
                 return
 
 
-class RequestRepoHeader(TypedDict):
-    header: str
-    value: str
-
-
-class RequestRepoResponse(TypedDict):
-    raw: str
-    headers: list[RequestRepoHeader]
-    status_code: int
-
-
 async def catch_all(request: Request) -> Response:
     host = request.headers.get("host") or "requestrepo.com"
     subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
@@ -398,3 +299,38 @@ async def catch_all(request: Request) -> Response:
 
 catch_all_route = Route("/{path:path}", endpoint=catch_all, methods=[])
 app.router.routes.append(catch_all_route)
+
+
+async def log_request(request: Request, subdomain: str) -> None:
+    redis: Redis = await redis_dependency.get_redis()
+    ip, port = (request.client.host, request.client.port) if request.client else (
+        "127.0.0.1", 1337)
+
+    headers = dict(request.headers)
+
+    request_log: HttpRequestLog = HttpRequestLog(
+        _id=str(uuid.uuid4()),
+        type="http",
+        raw=base64.b64encode(await request.body()).decode(),
+        uid=subdomain,
+        ip=ip,
+        port=port,
+        headers=headers,
+        method=request.method,
+        protocol=request.scope["scheme"].upper(
+        ) + "/" + request.scope["http_version"],
+        path=request.url.path,
+        fragment="#" + request.url.fragment if request.url.fragment else "",
+        query="?" + request.url.query if request.url.query else "",
+        url=str(request.url),
+        date=int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
+
+    ip_country = ip2country.ip_to_country(ip)
+    if ip_country is not None:
+        request_log["country"] = ip_country
+
+    data = json.dumps(request_log)
+
+    await redis.publish(f"pubsub:{subdomain}", data)
+    idx = await redis.rpush(f"requests:{subdomain}", data) - 1
+    await redis.set(f"request:{subdomain}:{request_log['_id']}", idx)

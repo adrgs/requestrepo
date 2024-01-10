@@ -1,8 +1,19 @@
 import random
 import json
+import jwt
 from pathlib import Path
 from config import config
 from typing import TypedDict
+
+
+def verify_jwt(token: str) -> str | None:
+    try:
+        dic = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
+        if "subdomain" in dic and type(dic["subdomain"]) == str:
+            return dic["subdomain"]
+        return None
+    except Exception:
+        return None
 
 
 def get_random_subdomain(
