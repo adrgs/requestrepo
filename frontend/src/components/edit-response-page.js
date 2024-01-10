@@ -196,7 +196,6 @@ export class EditResponsePage extends Component {
               setOptions={{
                 enableBasicAutocompletion: true,
                 enableLiveAutocompletion: true,
-                enableEmmet: true,
                 enableMultiselect: true,
                 enableSnippets: true,
                 showLineNumbers: true,
