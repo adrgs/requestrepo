@@ -297,3 +297,5 @@ cython_debug/
 #.idea/
 
 ip2country/vendor/*
+backend/ip2country
+dns/ip2country

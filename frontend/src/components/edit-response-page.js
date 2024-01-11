@@ -9,6 +9,7 @@ import "ace-builds/src-min-noconflict/ext-searchbox";
 import "ace-builds/src-noconflict/theme-xcode";
 import "ace-builds/src-noconflict/theme-monokai";
 import "ace-builds/src-noconflict/mode-html";
+import 'ace-builds/webpack-resolver';
 import { HeaderInput } from "./header-input";
 import { Utils } from "../utils";
 
@@ -196,7 +197,6 @@ export class EditResponsePage extends Component {
               setOptions={{
                 enableBasicAutocompletion: true,
                 enableLiveAutocompletion: true,
-                enableEmmet: true,
                 enableMultiselect: true,
                 enableSnippets: true,
                 showLineNumbers: true,

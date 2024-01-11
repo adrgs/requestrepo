@@ -69,6 +69,14 @@ body.dark .p-inputtext:enabled:focus {
   box-shadow: 0 0 0 0rem #000;
 }
 
+object {
+  color-scheme: light;
+}
+
+html:has(> body.dark) {
+  color-scheme: dark;
+}
+
 /* Typography */
 h1 {
   font-weight: normal;
