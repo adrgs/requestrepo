@@ -9,7 +9,7 @@ from dnslib import A, AAAA, CNAME, TXT
 from dnslib.server import DNSServer
 from config import config
 from utils import get_subdomain
-from typing import Any, TypedDict
+from typing import Any
 from models import DnsRequestLog, DnsEntry, Record
 import json
 import redis
@@ -17,6 +17,8 @@ import uuid
 import base64
 import ip2country
 
+
+pool = redis.ConnectionPool(host=config.redis_host, port=6379, db=0)
 
 class Resolver:
   def __init__(self, server_ip: str, server_domain: str) -> None:
@@ -121,7 +123,7 @@ def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
 
 
 def update_dns_record(domain: str, dtype: str, newval: str) -> None:
-  r = redis.Redis(host=config.redis_host, port=6379, db=0)
+  r = redis.Redis(connection_pool=pool)
 
   dns_entry = DnsEntry(
     domain=domain,
@@ -140,7 +142,7 @@ def update_dns_record(domain: str, dtype: str, newval: str) -> None:
 
 
 def insert_into_db(value: DnsRequestLog) -> None:
-  r = redis.Redis(host=config.redis_host, port=6379, db=0)
+  r = redis.Redis(connection_pool=pool)
 
   subdomain = value["uid"]
   data = json.dumps(value)
@@ -151,7 +153,7 @@ def insert_into_db(value: DnsRequestLog) -> None:
 
 
 def get_dns_record(domain: str, dtype: str) -> DnsEntry | None:
-  r = redis.Redis(host=config.redis_host, port=6379, db=0)
+  r = redis.Redis(connection_pool=pool)
 
   domain = domain.lower()
 
