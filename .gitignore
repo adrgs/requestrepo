@@ -299,3 +299,5 @@ cython_debug/
 ip2country/vendor/*
 backend/ip2country
 dns/ip2country
+
+pyrightconfig.json
