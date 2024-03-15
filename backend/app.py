@@ -114,7 +114,7 @@ async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(red
 
     await redis.set(f"dns:{new_record['type']}:{new_record['domain']}", json.dumps(new_record))
 
-    final_records.append(record)
+    final_records.append(record.model_dump())
 
   await redis.set(f"dns:{subdomain}", json.dumps(final_records))
 
