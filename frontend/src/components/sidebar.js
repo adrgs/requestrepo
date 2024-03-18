@@ -20,7 +20,6 @@ export class AppSidebar extends Component {
     this.deleteAllRequests = this.deleteAllRequests.bind(this);
   }
 
-
   scrollToBottom() {
     this.messagesEnd.scrollIntoView({ behavior: "auto" });
   }
@@ -86,9 +85,15 @@ export class AppSidebar extends Component {
           dateB = parseInt(user.dnsRequests[j].date);
         }
 
-        if ((j >= user.dnsRequests.length || dateA < dateB) && i < user.httpRequests.length) {
+        if (
+          (j >= user.dnsRequests.length || dateA < dateB) &&
+          i < user.httpRequests.length
+        ) {
           let req = user.requests[user.httpRequests[i]["_id"]];
-          obj["title"] = req["path"] + (req["query"] ? req["query"] : "") + (req["fragment"] ? req["fragment"] : "");
+          obj["title"] =
+            req["path"] +
+            (req["query"] ? req["query"] : "") +
+            (req["fragment"] ? req["fragment"] : "");
           obj["method"] = req["method"];
           obj["time"] = this.convertUTCDateToLocalDate(dateA).toLocaleString();
           obj["detail"] = req["ip"];
@@ -124,14 +129,8 @@ export class AppSidebar extends Component {
   }
 
   deleteAllRequests() {
-    Utils.deleteAll().then((res) => {
-      this.props.user.httpRequests = [];
-      this.props.user.dnsRequests = [];
-      this.props.user.requests = {};
-      this.props.user.visited = {};
-      localStorage.visited = "{}";
-      localStorage.lastSelectedRequest = undefined;
-      this.props.doRerender();
+    Utils.deleteAll().then((_) => {
+      this.props.deleteAllRequests();
     });
   }
 
@@ -147,12 +146,16 @@ export class AppSidebar extends Component {
     for (let property in item) {
       let val = item[property];
       if (property === "raw") {
-        val = Utils.base64DecodeUnicode(item[property]).toString().toLowerCase();
+        val = Utils.base64DecodeUnicode(item[property])
+          .toString()
+          .toLowerCase();
         if (val.indexOf(needle) >= 0) return true;
         continue;
       }
       if (property === "date") {
-        val = this.convertUTCDateToLocalDate(parseInt(val)).toLocaleString().toLowerCase();
+        val = this.convertUTCDateToLocalDate(parseInt(val))
+          .toLocaleString()
+          .toLowerCase();
         if (val.indexOf(needle) >= 0) return true;
         continue;
       }
@@ -181,21 +184,44 @@ export class AppSidebar extends Component {
     let dns_filter = this.state.dns_filter;
     let http_filter = this.state.http_filter;
     requests = requests.filter(function (item, index, arr) {
-      return hasValue(user.requests[item.id], searchValue) && ((item.type === "DNS" && dns_filter) || (item.type === "HTTP" && http_filter));
+      return (
+        hasValue(user.requests[item.id], searchValue) &&
+        ((item.type === "DNS" && dns_filter) ||
+          (item.type === "HTTP" && http_filter))
+      );
     });
     return (
       <div className={"layout-sidebar layout-sidebar-light"}>
         <div className={"layout-sidebar-header"}>
           <div className={"layout-sidebar-subheader"}>
-            <Button label="Delete all requests" icon="pi pi-times" className="p-button-danger p-button-text" onClick={this.deleteAllRequests} />
+            <Button
+              label="Delete all requests"
+              icon="pi pi-times"
+              className="p-button-danger p-button-text"
+              onClick={this.deleteAllRequests}
+            />
           </div>
           <div style={{ padding: "0.85rem" }}>
             <b style={{ marginRight: "20px" }}>Requests ({requests.length})</b>
-            <Checkbox value="HTTP" inputId="cbHTTP" onChange={this.onCheckboxChange} checked={this.state.http_filter} />
-            <label style={{ marginRight: "15px" }} htmlFor="cbHTTP" className="p-checkbox-label">
+            <Checkbox
+              value="HTTP"
+              inputId="cbHTTP"
+              onChange={this.onCheckboxChange}
+              checked={this.state.http_filter}
+            />
+            <label
+              style={{ marginRight: "15px" }}
+              htmlFor="cbHTTP"
+              className="p-checkbox-label"
+            >
               HTTP
             </label>
-            <Checkbox value="DNS" inputId="cbDNS" onChange={this.onCheckboxChange} checked={this.state.dns_filter} />
+            <Checkbox
+              value="DNS"
+              inputId="cbDNS"
+              onChange={this.onCheckboxChange}
+              checked={this.state.dns_filter}
+            />
             <label htmlFor="cbDNS" className="p-checkbox-label">
               DNS
             </label>
@@ -226,7 +252,16 @@ export class AppSidebar extends Component {
             }}
           ></div>
         </div>
-        <div className="github-button" style={{ position: "absolute", bottom: "0", height: "100px", textAlign: "center", width: "100%" }}>
+        <div
+          className="github-button"
+          style={{
+            position: "absolute",
+            bottom: "0",
+            height: "100px",
+            textAlign: "center",
+            width: "100%",
+          }}
+        >
           <Button
             href="#/edit-response"
             label="Mark all as read"
