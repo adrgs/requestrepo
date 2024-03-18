@@ -54,7 +54,11 @@ class App extends Component {
 
     Utils.initTheme();
 
-    this.user.visited = JSON.parse(localStorage.getItem("visited") === null ? "{}" : localStorage.getItem("visited"));
+    this.user.visited = JSON.parse(
+      localStorage.getItem("visited") === null
+        ? "{}"
+        : localStorage.getItem("visited"),
+    );
 
     let protocol = "ws";
     if (document.location.protocol === "https:") {
@@ -62,18 +66,24 @@ class App extends Component {
     }
 
     let ws_url = `${protocol}://${document.location.host}/api/ws`;
-    if ((document.location.hostname === "localhost" || document.location.hostname === "127.0.0.1") && window.location.port === "3000") {
+    if (
+      (document.location.hostname === "localhost" ||
+        document.location.hostname === "127.0.0.1") &&
+      window.location.port === "3000"
+    ) {
       ws_url = `${protocol}://localhost:21337/api/ws`;
     }
 
     let app = this;
 
     window.addEventListener("storage", (e) => {
-      if (e.key === "visited") {
+      if (e.key === "visited" || e.key === "deleteAll") {
+        let newVisited = e.newValue;
+        if (e.key === "deleteAll") newVisited = "{}";
         app.setState(
           (prevState) => {
             const newUser = JSON.parse(JSON.stringify(prevState.user));
-            newUser.visited = JSON.parse(e.newValue);
+            newUser.visited = JSON.parse(newVisited);
 
             Object.entries(newUser.visited).forEach(([key]) => {
               if (newUser.requests[key]) {
@@ -81,17 +91,18 @@ class App extends Component {
               }
             });
 
-            if (e.newValue === "{}") {
+            if (newVisited === "{}") {
               newUser.httpRequests = [];
               newUser.dnsRequests = [];
               newUser.requests = {};
+              newUser.selectedRequest = undefined;
             }
 
             return { user: newUser };
           },
           () => {
             app.updateTitle();
-          }
+          },
         );
       } else if (e.key === "token") {
         document.location.reload();
@@ -115,14 +126,18 @@ class App extends Component {
             delete newUser.requests[id];
             delete newUser.visited[id];
 
-            newUser.httpRequests = newUser.httpRequests.filter((value) => value["_id"] !== id);
-            newUser.dnsRequests = newUser.dnsRequests.filter((value) => value["_id"] !== id);
+            newUser.httpRequests = newUser.httpRequests.filter(
+              (value) => value["_id"] !== id,
+            );
+            newUser.dnsRequests = newUser.dnsRequests.filter(
+              (value) => value["_id"] !== id,
+            );
 
             return { user: newUser };
           },
           () => {
             app.updateTitle();
-          }
+          },
         );
       }
     });
@@ -180,7 +195,7 @@ class App extends Component {
             },
             () => {
               app.updateTitle();
-            }
+            },
           );
         }
       };
@@ -236,7 +251,7 @@ class App extends Component {
     this.newUrl = this.newUrl.bind(this);
     this.updateTitle = this.updateTitle.bind(this);
     this.updateSearchValue = this.updateSearchValue.bind(this);
-    this.doRerender = this.doRerender.bind(this);
+    this.deleteAllRequests = this.deleteAllRequests.bind(this);
     this.markAllAsVisited = this.markAllAsVisited.bind(this);
   }
 
@@ -262,7 +277,7 @@ class App extends Component {
       () => {
         localStorage.setItem("visited", JSON.stringify(visited));
         this.updateTitle();
-      }
+      },
     );
   }
 
@@ -284,33 +299,51 @@ class App extends Component {
           }
         } else if (action === "delete") {
           // Combine httpRequests and dnsRequests to find the next or previous request ID
-          const combinedRequests = [...newUser.httpRequests, ...newUser.dnsRequests];
-        
+          const combinedRequests = [
+            ...newUser.httpRequests,
+            ...newUser.dnsRequests,
+          ];
+
           // Find index of the request being deleted
-          const deleteIndex = combinedRequests.findIndex(request => request["_id"] === id);
-        
+          const deleteIndex = combinedRequests.findIndex(
+            (request) => request["_id"] === id,
+          );
+
           // Calculate the next index, or use the previous one if the deleted request is the last
-          let nextSelectedIndex = deleteIndex >= combinedRequests.length - 1 ? deleteIndex - 1 : deleteIndex + 1;
-        
+          let nextSelectedIndex =
+            deleteIndex >= combinedRequests.length - 1
+              ? deleteIndex - 1
+              : deleteIndex + 1;
+
           // Ensure the index is within bounds
-          nextSelectedIndex = Math.max(0, Math.min(nextSelectedIndex, combinedRequests.length - 1));
-        
+          nextSelectedIndex = Math.max(
+            0,
+            Math.min(nextSelectedIndex, combinedRequests.length - 1),
+          );
+
           // Get the next selected request ID, or undefined if no requests are left
-          const nextSelectedId = combinedRequests.length > 0 ? combinedRequests[nextSelectedIndex]["_id"] : undefined;
-        
+          const nextSelectedId =
+            combinedRequests.length > 0
+              ? combinedRequests[nextSelectedIndex]["_id"]
+              : undefined;
+
           // Perform deletion
           delete newUser.requests[id];
           delete newUser.visited[id];
-        
-          newUser.httpRequests = newUser.httpRequests.filter(request => request["_id"] !== id);
-          newUser.dnsRequests = newUser.dnsRequests.filter(request => request["_id"] !== id);
+
+          newUser.httpRequests = newUser.httpRequests.filter(
+            (request) => request["_id"] !== id,
+          );
+          newUser.dnsRequests = newUser.dnsRequests.filter(
+            (request) => request["_id"] !== id,
+          );
 
           // Set the next selected request
           if (id === localStorage.getItem("lastSelectedRequest")) {
             localStorage.setItem("lastSelectedRequest", nextSelectedId);
             newUser.selectedRequest = nextSelectedId;
           }
-        
+
           Utils.deleteRequest(id).then((res) => {
             localStorage.setItem("visited", JSON.stringify(newUser.visited));
             localStorage.setItem("lastDeletedRequest", id);
@@ -325,7 +358,7 @@ class App extends Component {
       },
       () => {
         this.updateTitle();
-      }
+      },
     );
   }
 
@@ -334,7 +367,10 @@ class App extends Component {
   }
 
   updateTitle() {
-    let n = this.state.user.httpRequests.length + this.state.user.dnsRequests.length - Object.keys(this.state.user.visited).length;
+    let n =
+      this.state.user.httpRequests.length +
+      this.state.user.dnsRequests.length -
+      Object.keys(this.state.user.visited).length;
     let text = "Dashboard - " + Utils.siteUrl;
     if (n <= 0) {
       document.title = text;
@@ -378,28 +414,61 @@ class App extends Component {
   }
 
   componentDidUpdate() {
-    if (this.state.mobileMenuActive) this.addClass(document.body, "body-overflow-hidden");
+    if (this.state.mobileMenuActive)
+      this.addClass(document.body, "body-overflow-hidden");
     else this.removeClass(document.body, "body-overflow-hidden");
   }
 
-  doRerender() {
-    this.forceUpdate();
+  deleteAllRequests() {
+    this.setState(
+      {
+        user: {
+          ...this.state.user,
+          httpRequests: [],
+          dnsRequests: [],
+          requests: {},
+          visited: {},
+        },
+      },
+      () => {
+        const genRanHex = (size) =>
+          [...Array(size)]
+            .map(() => Math.floor(Math.random() * 16).toString(16))
+            .join("");
+
+        localStorage.setItem("visited", "{}");
+        localStorage.setItem("deleteAll", genRanHex(16));
+
+        this.updateTitle();
+      },
+    );
   }
 
   render() {
     const wrapperClass = classNames("layout-wrapper", {
       "layout-overlay": this.state.layoutMode === "overlay",
       "layout-static": this.state.layoutMode === "static",
-      "layout-static-sidebar-inactive": this.state.staticMenuInactive && this.state.layoutMode === "static",
-      "layout-overlay-sidebar-active": this.state.overlayMenuActive && this.state.layoutMode === "overlay",
+      "layout-static-sidebar-inactive":
+        this.state.staticMenuInactive && this.state.layoutMode === "static",
+      "layout-overlay-sidebar-active":
+        this.state.overlayMenuActive && this.state.layoutMode === "overlay",
       "layout-mobile-sidebar-active": this.state.mobileMenuActive,
     });
 
     return (
       <div className={wrapperClass} onClick={this.onWrapperClick}>
-        <AppTopbar onToggleMenu={this.onToggleMenu} updateSearchValue={this.updateSearchValue} />
+        <AppTopbar
+          onToggleMenu={this.onToggleMenu}
+          updateSearchValue={this.updateSearchValue}
+        />
 
-        <AppSidebar user={this.state.user} searchValue={this.state.searchValue} clickRequestAction={this.clickRequestAction} doRerender={this.doRerender} markAllAsVisited={this.markAllAsVisited} />
+        <AppSidebar
+          user={this.state.user}
+          searchValue={this.state.searchValue}
+          clickRequestAction={this.clickRequestAction}
+          deleteAllRequests={this.deleteAllRequests}
+          markAllAsVisited={this.markAllAsVisited}
+        />
 
         <div className="layout-main">
           <div className="grid">
@@ -409,27 +478,66 @@ class App extends Component {
                 left={
                   <div style={{ textAlign: "center" }}>
                     <a href="#/requests">
-                      <Button label="Requests" icon="pi pi-arrow-down" className="p-button-text p-button-secondary" style={{ marginRight: ".25em" }} />
+                      <Button
+                        label="Requests"
+                        icon="pi pi-arrow-down"
+                        className="p-button-text p-button-secondary"
+                        style={{ marginRight: ".25em" }}
+                      />
                     </a>
                     <a href="#/edit-response">
-                      <Button href="#/edit-response" label="Response" icon="pi pi-pencil" className="p-button-text p-button-secondary" style={{ marginRight: ".25em" }} />
+                      <Button
+                        href="#/edit-response"
+                        label="Response"
+                        icon="pi pi-pencil"
+                        className="p-button-text p-button-secondary"
+                        style={{ marginRight: ".25em" }}
+                      />
                     </a>
                     <a href="#/dns-settings">
-                      <Button href="#/dns-settings" label="DNS" icon="pi pi-home" className="p-button-text p-button-secondary" />
+                      <Button
+                        href="#/dns-settings"
+                        label="DNS"
+                        icon="pi pi-home"
+                        className="p-button-text p-button-secondary"
+                      />
                     </a>
                   </div>
                 }
                 right={
                   <div style={{ textAlign: "center" }}>
-                    <InputText type="text" placeholder="Your URL" value={this.state.user.url} style={{ width: "300px", marginRight: "1em" }} ref={(urlArea) => (this.urlArea = urlArea)} />
-                    <Button label="Copy URL" icon="pi pi-copy" className="p-button-success" style={{ marginRight: ".25em" }} onClick={this.copyUrl} />
-                    <Button label="New URL" icon="pi pi-refresh" onClick={this.newUrl} />
+                    <InputText
+                      type="text"
+                      placeholder="Your URL"
+                      value={this.state.user.url}
+                      style={{ width: "300px", marginRight: "1em" }}
+                      ref={(urlArea) => (this.urlArea = urlArea)}
+                    />
+                    <Button
+                      label="Copy URL"
+                      icon="pi pi-copy"
+                      className="p-button-success"
+                      style={{ marginRight: ".25em" }}
+                      onClick={this.copyUrl}
+                    />
+                    <Button
+                      label="New URL"
+                      icon="pi pi-refresh"
+                      onClick={this.newUrl}
+                    />
                   </div>
                 }
               />
               <Routes>
-                <Route exact path="/" element={<RequestsPage user={this.state.user} />} />
-                <Route path="/requests" element={<RequestsPage user={this.state.user} />} />
+                <Route
+                  exact
+                  path="/"
+                  element={<RequestsPage user={this.state.user} />}
+                />
+                <Route
+                  path="/requests"
+                  element={<RequestsPage user={this.state.user} />}
+                />
                 <Route
                   path="/edit-response"
                   element={
@@ -443,7 +551,17 @@ class App extends Component {
                     />
                   }
                 />
-                <Route path="/dns-settings" element={<DnsSettingsPage user={this.state.user} dnsRecords={this.state.dnsRecords} toast={toast} fetched={this.state.dnsFetched} />} />
+                <Route
+                  path="/dns-settings"
+                  element={
+                    <DnsSettingsPage
+                      user={this.state.user}
+                      dnsRecords={this.state.dnsRecords}
+                      toast={toast}
+                      fetched={this.state.dnsFetched}
+                    />
+                  }
+                />
               </Routes>
             </div>
           </div>
@@ -509,7 +627,14 @@ class App extends Component {
 
   removeClass(element, className) {
     if (element.classList) element.classList.remove(className);
-    else element.className = element.className.replace(new RegExp("(^|\\b)" + className.split(" ").join("|") + "(\\b|$)", "gi"), " ");
+    else
+      element.className = element.className.replace(
+        new RegExp(
+          "(^|\\b)" + className.split(" ").join("|") + "(\\b|$)",
+          "gi",
+        ),
+        " ",
+      );
   }
 }
 
