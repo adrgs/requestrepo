@@ -10,7 +10,7 @@ from utils import (
   get_subdomain_from_path,
   verify_jwt,
 )
-from aioredis import from_url, Redis
+from aioredis import Redis, ConnectionPool
 from config import config
 from pathlib import Path
 from typing import AsyncIterator
@@ -31,15 +31,11 @@ app = FastAPI(server_header=False)
 
 
 class RedisDependency:
-  def __init__(self, redis: Redis | None = None):
-    self.redis = redis
+  def __init__(self):
+    self.pool = ConnectionPool.from_url(f"redis://{config.redis_host}", encoding="utf-8", decode_responses=True, max_connections=1024)
 
   async def get_redis(self) -> Redis:
-    if self.redis is None:
-      self.redis = await from_url(
-        f"redis://{config.redis_host}", encoding="utf-8", decode_responses=True
-      )
-    return self.redis
+    return Redis(connection_pool=self.pool)
 
 
 redis_dependency = RedisDependency()
