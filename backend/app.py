@@ -32,7 +32,7 @@ app = FastAPI(server_header=False)
 
 class RedisDependency:
   def __init__(self):
-    self.pool = ConnectionPool.from_url(f"redis://{config.redis_host}", encoding="utf-8", decode_responses=True, max_connections=1024)
+    self.pool = ConnectionPool.from_url(f"redis://{config.redis_host}", encoding="utf-8", decode_responses=True, max_connections=1024*1024)
 
   async def get_redis(self) -> Redis:
     return Redis(connection_pool=self.pool)
