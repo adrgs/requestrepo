@@ -1,12 +1,10 @@
 # requestrepo.com
 
-
 <img src="https://svgshare.com/i/11Hr.svg" width="420">
 
 Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 
 ![requestrepo demo](https://i.imgur.com/pzn8O18.png)
-
 
 ## Getting Started
 
@@ -17,7 +15,6 @@ git clone https://github.com/adrgs/requestrepo.git
 cd requestrepo
 cp .env.example .env
 # modify .env as needed
-chmod 703 ./backend/pages
 docker-compose up --build
 ```
 
@@ -43,8 +40,8 @@ cd dns; python ns.py
 
 ## Built With
 
-* [React](https://reactjs.org/) - JavaScript library for building user interfaces
-* [FastAPI](https://fastapi.tiangolo.com/lo/) - FastAPI framework, high performance, easy to learn, fast to code, ready for production
+- [React](https://reactjs.org/) - JavaScript library for building user interfaces
+- [FastAPI](https://fastapi.tiangolo.com/lo/) - FastAPI framework, high performance, easy to learn, fast to code, ready for production
 
 ## Contributing
 
