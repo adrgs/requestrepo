@@ -32,7 +32,7 @@ def get_subdomain_from_path(
 
   path = path.lower()
 
-  if path[0] == "/":
+  while path.startswith("/"):
     path = path[1:]
 
   subdomain = path[:length]
