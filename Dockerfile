@@ -23,7 +23,7 @@ COPY ./ip2country /app/ip2country
 RUN cp -r /tmp/frontend/build/* /app/public/
 RUN rm -rf /tmp/frontend
 
-RUN chmod 703 /app/pages
+RUN chmod 777 /app/pages
 
 COPY start.sh /app/start.sh
 RUN chmod 755 /app/start.sh
