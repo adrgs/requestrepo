@@ -37,7 +37,7 @@ def get_subdomain_from_path(
 
   subdomain = path[:length]
 
-  if len(subdomain) != length or set(subdomain) - alphabet_set != set():
+  if len(subdomain) != length or set(subdomain) - alphabet_set != set() or subdomain in config.reserved_keywords:
     return None
 
   return subdomain
