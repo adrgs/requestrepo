@@ -137,7 +137,7 @@ async def get_file(token: str) -> Response:
   if subdomain is None:
     raise HTTPException(status_code=403, detail="Invalid token")
 
-  subdomain_path = Path(f"pages/") / Path(subdomain).name
+  subdomain_path = Path("pages/") / Path(subdomain).name
   if not subdomain_path.exists():
     write_basic_file(subdomain)
 
@@ -257,12 +257,12 @@ async def catch_all(request: Request) -> Response:
 
   if subdomain is None:
     path = Path(request.url.path)
-    path = Path(f"public/") / path.relative_to(path.anchor)
+    path = Path("public/") / path.relative_to(path.anchor)
     if not path.exists() or path.is_dir():
       return FileResponse("public/index.html")
     return FileResponse(path)
 
-  subdomain_path = Path(f"pages/") / Path(subdomain).name
+  subdomain_path = Path("pages/") / Path(subdomain).name
   if not subdomain_path.exists():
     write_basic_file(subdomain)
 
