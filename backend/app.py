@@ -259,8 +259,11 @@ async def catch_all(request: Request) -> Response:
     path = Path(request.url.path)
     path = Path("public/") / path.relative_to(path.anchor)
     if not path.exists() or path.is_dir():
-      return FileResponse("public/index.html")
-    return FileResponse(path)
+      response = FileResponse("public/index.html")
+    else:
+      response = FileResponse(path)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
   subdomain_path = Path("pages/") / Path(subdomain).name
   if not subdomain_path.exists():
