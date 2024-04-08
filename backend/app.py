@@ -187,7 +187,7 @@ async def update_file(file: File, token: str) -> Response:
   if subdomain is None:
     raise HTTPException(status_code=403, detail="Invalid token")
 
-  if len(file.raw) > 3_000_000:
+  if len(file.raw) > config.max_file_size:
     return JSONResponse({"error": "Response too large"})
 
   with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
