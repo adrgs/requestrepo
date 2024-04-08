@@ -2,7 +2,7 @@ version: "3"
 services:
   redisdb:
     image: redis:latest
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 8gb --maxclients 0
     container_name: redisdb
     restart: always
     volumes:
@@ -19,7 +19,7 @@ services:
     depends_on:
       - redisdb
     volumes:
-      - ./backend/pages:/app/pages
+      - pages_data:/app/pages
   dns:
     build:
       context: ./
@@ -35,3 +35,4 @@ services:
       - redisdb
 volumes:
   redis_data:
+  pages_data:
