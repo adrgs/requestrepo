@@ -1,6 +1,11 @@
 import React, { Component } from "react";
 import { RequestInfo } from "./request-info";
 import AceEditor from "react-ace";
+import "ace-builds/src-noconflict/theme-xcode";
+import "ace-builds/src-noconflict/theme-monokai";
+import "ace-builds/src-noconflict/mode-python";
+import "ace-builds/src-noconflict/snippets/python";
+import "ace-builds/webpack-resolver";
 import { Utils } from "../utils";
 
 export class RequestsPage extends Component {
