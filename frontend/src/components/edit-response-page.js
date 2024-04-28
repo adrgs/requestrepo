@@ -9,7 +9,8 @@ import "ace-builds/src-min-noconflict/ext-searchbox";
 import "ace-builds/src-noconflict/theme-xcode";
 import "ace-builds/src-noconflict/theme-monokai";
 import "ace-builds/src-noconflict/mode-html";
-import 'ace-builds/webpack-resolver';
+import "ace-builds/src-noconflict/snippets/html";
+import "ace-builds/webpack-resolver";
 import { HeaderInput } from "./header-input";
 import { Utils } from "../utils";
 
@@ -68,9 +69,12 @@ export class EditResponsePage extends Component {
     const reader = new FileReader();
     reader.onload = (e) => {
       // When file has been read, update state with its content
-      this.setState({ content: Utils.arrayBufferToString(e.target.result) }, () => {
-        this.saveChanges();
-      });
+      this.setState(
+        { content: Utils.arrayBufferToString(e.target.result) },
+        () => {
+          this.saveChanges();
+        },
+      );
     };
 
     // Read the content of the file (as text, for example)
@@ -163,7 +167,16 @@ export class EditResponsePage extends Component {
   render() {
     let headers = [];
     headers = this.state.headers.map((element, index) => {
-      return <HeaderInput key={index} index={index} header={element["header"]} value={element["value"]} handleHeaderInputChange={this.handleHeaderInputChange} headersData={this.state.headersData} />;
+      return (
+        <HeaderInput
+          key={index}
+          index={index}
+          header={element["header"]}
+          value={element["value"]}
+          handleHeaderInputChange={this.handleHeaderInputChange}
+          headersData={this.state.headersData}
+        />
+      );
     });
     return (
       <div className="card card-w-title card-body">
@@ -174,9 +187,27 @@ export class EditResponsePage extends Component {
                 <h1>Edit Response</h1>
               </div>
               <div className="col-6">
-                <Button label="Save changes" icon="pi pi-save" className="p-button-text p-button-success" style={{ float: "right" }} onClick={this.saveChanges} />
-                <Button label="Upload file" icon="pi pi-upload" className="p-button-text" style={{ float: "right" }} onClick={this.handleFileUpload} />
-                <input type="file" id="file" ref={this.fileInput} onChange={this.handleFileChange} style={{ display: "none" }} />
+                <Button
+                  label="Save changes"
+                  icon="pi pi-save"
+                  className="p-button-text p-button-success"
+                  style={{ float: "right" }}
+                  onClick={this.saveChanges}
+                />
+                <Button
+                  label="Upload file"
+                  icon="pi pi-upload"
+                  className="p-button-text"
+                  style={{ float: "right" }}
+                  onClick={this.handleFileUpload}
+                />
+                <input
+                  type="file"
+                  id="file"
+                  ref={this.fileInput}
+                  onChange={this.handleFileChange}
+                  style={{ display: "none" }}
+                />
               </div>
             </div>
             <AceEditor
@@ -201,13 +232,17 @@ export class EditResponsePage extends Component {
                 enableSnippets: true,
                 showLineNumbers: true,
                 tabSize: 2,
+                useWorker: false,
               }}
             />
             <h1>Status Code</h1>
             <InputText
               value={this.state.statusCode}
               onChange={(e) => {
-                if (e.target.value.length < 10 && /^[0-9]*$/.test(e.target.value)) {
+                if (
+                  e.target.value.length < 10 &&
+                  /^[0-9]*$/.test(e.target.value)
+                ) {
                   this.setState({ statusCode: e.target.value });
                 }
               }}
@@ -219,7 +254,13 @@ export class EditResponsePage extends Component {
                 <h1>Response HTTP Headers </h1>
               </div>
               <div className="col-6">
-                <Button label="Add header" onClick={this.add} icon="pi pi-plus" className="p-button-text" style={{ float: "right", top: "-3px" }} />
+                <Button
+                  label="Add header"
+                  onClick={this.add}
+                  icon="pi pi-plus"
+                  className="p-button-text"
+                  style={{ float: "right", top: "-3px" }}
+                />
               </div>
             </div>
             <div>{headers}</div>
