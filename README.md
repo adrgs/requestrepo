@@ -6,13 +6,13 @@ Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for testing purposes.
+Quick-start using git and docker compose:
 
 ```sh
 git clone https://github.com/adrgs/requestrepo.git
 cd requestrepo
 cp .env.example .env # modify .env as needed
-docker-compose up --build
+docker compose up --build
 ```
 
 This will setup a production-ready environment with the following services:
