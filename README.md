@@ -15,6 +15,8 @@ cp .env.example .env # modify .env as needed
 docker compose up --build
 ```
 
+**Don't forget to edit .env**
+
 This will setup a production-ready environment with the following services:
  - HTTP/S server on ports 80 and 443
  - DNS server on port 53
