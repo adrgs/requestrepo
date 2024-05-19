@@ -4,8 +4,6 @@
 
 Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 
-![requestrepo demo](https://i.imgur.com/pzn8O18.png)
-
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for testing purposes.
@@ -13,12 +11,26 @@ These instructions will get you a copy of the project up and running on your loc
 ```sh
 git clone https://github.com/adrgs/requestrepo.git
 cd requestrepo
-cp .env.example .env
-# modify .env as needed
+cp .env.example .env # modify .env as needed
 docker-compose up --build
 ```
 
-You can access your instance on localhost HTTP port 80, HTTPS port 443, DNS on port 53 and the Python app directly on port 21337.
+This will setup a production-ready environment with the following services:
+ - HTTP/S server on ports 80 and 443
+ - DNS server on port 53
+
+
+## Setting up DNS nameservers
+
+In order for DNS logging to work, the public IP of the DNS service must be set up as the authoritative nameserver for the domain.
+
+If the domain registrar does not allow setting up IPs directly as nameservers, a workaround is to use a service like [traefik.me](https://traefik.me/)
+
+## Enabling ip2country feature
+
+To enable the ip2country feature, you need to download the free IP to Country Lite database from [db-ip](https://db-ip.com/db/download/ip-to-country-lite).
+
+The csv file must be placed in `ip2country/vendor/dbip-country-lite.csv.gz`
 
 ## Development
 
@@ -37,6 +49,10 @@ cd frontend; npm run start
 # start the dns server
 cd dns; python ns.py
 ```
+
+## Interface
+
+![requestrepo demo](https://i.imgur.com/pzn8O18.png)
 
 ## Built With
 
