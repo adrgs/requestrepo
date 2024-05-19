@@ -58,8 +58,10 @@ export class Utils {
   static getRandomSubdomain() {
     let reqUrl = this.apiUrl + this.subdomainEndpoint;
     return axios.post(reqUrl, null, { withCredentials: true }).then(function (response) {
+      let theme = localStorage.getItem("theme");
       localStorage.clear();
       localStorage.setItem("token", response.data.token);
+      if (theme) localStorage.setItem("theme", theme);
       window.location.reload();
     });
   }
