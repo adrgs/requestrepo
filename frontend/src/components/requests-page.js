@@ -22,7 +22,7 @@ client = Requestrepo(token="${localStorage.getItem("token")}")
 print(client.subdomain) # ${this.props.user.subdomain}
 print(client.domain) # ${this.props.user.subdomain}.${this.props.user.domain}
 
-client.update_response(raw=b"hello world")
+client.update_http(raw=b"hello world")
 
 # Get the latest request (blocks until one is received)
 new_request = client.get_request()
