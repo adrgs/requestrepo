@@ -11,13 +11,14 @@ from utils import (
   verify_jwt,
 )
 from aioredis import Redis, ConnectionPool
+from collections import defaultdict
 from config import config
 from pathlib import Path
 from typing import AsyncIterator
 from fastapi.responses import FileResponse, Response
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
-from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse, DnsEntry
+from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse
 import base64
 import json
 import datetime
@@ -25,7 +26,10 @@ import uuid
 import jwt
 import re
 import ip2country
-
+from fastapi_utils.tasks import repeat_every
+from renewer import is_certificate_expiring_or_untrusted, get_certificate
+import logging
+import time
 
 app = FastAPI(server_header=False)
 
@@ -39,6 +43,35 @@ class RedisDependency:
 
 
 redis_dependency = RedisDependency()
+logger = logging.getLogger("uvicorn.error")
+
+@app.on_event("startup")
+@repeat_every(seconds=6 * 60 * 60) # 6 hours
+async def renewer() -> None:
+  redis = await redis_dependency.get_redis()
+  lock = redis.lock("renewer_lock", timeout=3600)  # Lock timeout is 1 hour
+  if not await lock.acquire(blocking=False):
+    return
+
+  logger.info("Acquired lock for renewer")
+  try:
+    if not is_certificate_expiring_or_untrusted("/app/cert/fullchain.pem", config.server_domain):
+      logger.info("Certificate is valid")
+      return
+
+    logger.info("Renewing certificate")
+
+    async def update_dns(domain, tokens):
+      key = f"dns:TXT:{domain}."
+      await redis.set(key, json.dumps(tokens))
+      logger.info(f"Updated DNS for {domain} with tokens {tokens}")
+
+    await get_certificate(config.server_domain, "./cert/", update_dns)
+  except Exception as e:
+    logger.error(f"Error in renewer: {e}")
+  finally:
+    await lock.release()
+    logger.info("Released lock for renewer")
 
 
 @asynccontextmanager
@@ -54,7 +87,6 @@ def validation_error(msg: str) -> Response:
   response = JSONResponse({"error": msg})
   response.status_code = 401
   return response
-
 
 @app.post("/api/update_dns")
 async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(redis_dependency.get_redis)) -> Response:
@@ -100,17 +132,22 @@ async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(red
   # Update if all entries are valid
   final_records = []
 
+  values = defaultdict(list)
+
   for record in records.records:
     new_domain = f'{record.domain.lower()}.{subdomain}.{config.server_domain}.'
     new_value = record.value
     new_dtype = DNS_RECORDS[record.type]
 
-    new_record: DnsEntry = {"domain": new_domain, "type": new_dtype,
-                "value": new_value, "_id": str(uuid.uuid4())}
+    key = f"dns:{new_dtype}:{new_domain}"
 
-    await redis.set(f"dns:{new_record['type']}:{new_record['domain']}", json.dumps(new_record))
+    new_record = {"domain": new_domain, "type": new_dtype, "value": new_value}
+    final_records.append(new_record)
 
-    final_records.append(record.model_dump())
+    values[key].append(new_value)
+
+  for key, value in values.items():
+    await redis.set(key, json.dumps(value))
 
   await redis.set(f"dns:{subdomain}", json.dumps(final_records))
 

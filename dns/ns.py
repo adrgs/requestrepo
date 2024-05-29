@@ -25,65 +25,68 @@ class Resolver:
     self.server_ip: str = server_ip
     self.server_domain: str = server_domain + "."
 
-  def resolve_cname(self, reply: DNSRecord) -> Record | None:
+  def resolve_cname(self, reply: DNSRecord) -> list[Record]:
     data = get_dns_record(str(reply.q.qname), "CNAME")
+    records = []
     if data is None:
-      return Record(CNAME, self.server_domain)
+      return [Record(CNAME, self.server_domain)]
     else:
-      return Record(CNAME, data["value"])
+      for value in data:
+        records.append(Record(CNAME, value))
+    return records
 
-  def resolve_txt(self, reply: DNSRecord) -> Record | None:
+  def resolve_txt(self, reply: DNSRecord) -> list[Record]:
     data = get_dns_record(str(reply.q.qname), "TXT")
+    records = []
     if data is None:
-      return Record(TXT, os.getenv("TXT") or "Hello!")
+      return [Record(TXT, os.getenv("TXT") or "Hello!")]
     else:
-      return Record(TXT, data["value"])
+      for value in data:
+        records.append(Record(TXT, value))
+    return records
 
-  def resolve_ip(self, reply: DNSRecord, dtype: str) -> Record | None:
-    new_record: Record | None = None
+  def resolve_ip(self, reply: DNSRecord, dtype: str) -> list[Record]:
+    new_records: list[Record] = []
     data = get_dns_record(str(reply.q.qname), dtype)
     try:
       if data is None:
-        new_record = Record(
-          A if dtype == "A" else AAAA, self.server_ip)
+        new_records = [Record(
+          A if dtype == "A" else AAAA, self.server_ip)]
       else:
-        ips = data["value"]
-        if "/" not in ips and "%" not in ips:
-          new_record = Record(A, ips)
-        else:
-          if "%" in ips:
+        new_records = []
+        for ips in data:
+          if "%" not in ips:
+            new_record = Record(A, ips)
+          else:
             ips_list = ips.split("%")
             idx = random.randint(0, len(ips_list) - 1)
             new_record = Record(A, ips_list[idx])
-          else:
-            ips_list = ips.split("/")
-            new_record = Record(A, ips_list[0])
-            ips = "/".join(ips_list[1:] + [ips_list[0]])
-            update_dns_record(data["domain"], "A", ips)
+          new_records.append(new_record)
     except:
       pass
 
-    return new_record
+    return new_records
 
   def resolve(self, request: DNSRecord, handler: Any) -> DNSRecord:
     reply: DNSRecord = request.reply()
 
     # We assume that the data in the DB is correct (using server side checks)
-    new_record: Record | None = None
+    new_records: list[Record] = []
 
     if QTYPE[reply.q.qtype] == "CNAME":
-      new_record = self.resolve_cname(reply)
+      new_records = self.resolve_cname(reply)
     elif QTYPE[reply.q.qtype] == "TXT":
-      new_record = self.resolve_txt(reply)
+      new_records = self.resolve_txt(reply)
     elif QTYPE[reply.q.qtype] == "A":
-      new_record = self.resolve_ip(reply, "A")
+      new_records = self.resolve_ip(reply, "A")
     elif QTYPE[reply.q.qtype] == "AAAA":
-      new_record = self.resolve_ip(reply, "AAAA")
+      new_records = self.resolve_ip(reply, "AAAA")
     else:
       return reply
 
-    if not new_record is None:
-      reply.add_answer(new_record.try_rr(request.q))
+    if new_records:
+      for record in new_records:
+        reply.add_answer(record.try_rr(request.q))
 
     save_into_db(
       reply,
@@ -152,7 +155,7 @@ def insert_into_db(value: DnsRequestLog) -> None:
   r.set(f"request:{subdomain}:{value['_id']}", idx)
 
 
-def get_dns_record(domain: str, dtype: str) -> DnsEntry | None:
+def get_dns_record(domain: str, dtype: str) -> list[str] | None:
   r = redis.Redis(connection_pool=pool)
 
   domain = domain.lower()

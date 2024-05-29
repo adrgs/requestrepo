@@ -7,8 +7,13 @@ RUN npm install npm@9.2.0 -g && \
     npm install n -g && \
     n latest
 
+ARG DOMAIN
+ENV DOMAIN=${DOMAIN}
+
 COPY ./frontend /tmp/frontend
 WORKDIR /tmp/frontend
+
+RUN find . -type f -exec sed -i "s/requestrepo\.com/${DOMAIN}/g" {} +
 
 RUN npm install --force
 RUN npm run build
@@ -27,12 +32,6 @@ RUN chmod 777 /app/pages
 
 COPY start.sh /app/start.sh
 RUN chmod 755 /app/start.sh
-
-COPY privkey.pem /etc/privkey.pem
-COPY fullchain.pem /etc/fullchain.pem
-
-RUN chmod 644 /etc/privkey.pem
-RUN chmod 644 /etc/fullchain.pem
 
 RUN useradd -ms /bin/bash app
 USER app

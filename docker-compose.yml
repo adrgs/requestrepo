@@ -8,7 +8,10 @@ services:
     volumes:
       - redis_data:/data
   backend:
-    build: .
+    build:
+      context: .
+      args:
+        - DOMAIN=${DOMAIN:-requestrepo.com}
     container_name: backend
     restart: always
     ports:
@@ -20,6 +23,7 @@ services:
       - redisdb
     volumes:
       - pages_data:/app/pages
+      - ./backend/cert:/app/cert
   dns:
     build:
       context: ./
