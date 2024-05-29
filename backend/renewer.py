@@ -24,9 +24,9 @@ async def get_certificate(subject: str, cert_path: str, update_dns) -> str:
   if client.check_dns_propagation(timeout=1200):
     client.request_certificate()
     with open(cert_path + "fullchain.pem", "wb") as f:
-      f.write(client.certificate_pem)
+      f.write(client.certificate)
     with open(cert_path + "privkey.pem", "wb") as f:
-      f.write(client.private_key_pem)
+      f.write(client.private_key)
   else:
     client.deactivate_account()
 
