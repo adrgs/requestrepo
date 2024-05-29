@@ -7,8 +7,13 @@ RUN npm install npm@9.2.0 -g && \
     npm install n -g && \
     n latest
 
+ARG DOMAIN
+ENV DOMAIN=${DOMAIN}
+
 COPY ./frontend /tmp/frontend
 WORKDIR /tmp/frontend
+
+RUN find . -type f -exec sed -i "s/requestrepo\.com/${DOMAIN}/g" {} +
 
 RUN npm install --force
 RUN npm run build
