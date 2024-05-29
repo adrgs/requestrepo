@@ -26,7 +26,10 @@ import uuid
 import jwt
 import re
 import ip2country
-
+from fastapi_utils.tasks import repeat_every
+from renewer import is_certificate_expiring_or_untrusted, get_certificate
+import logging
+import time
 
 app = FastAPI(server_header=False)
 
@@ -40,6 +43,35 @@ class RedisDependency:
 
 
 redis_dependency = RedisDependency()
+logger = logging.getLogger("uvicorn.error")
+
+@app.on_event("startup")
+@repeat_every(seconds=6 * 60 * 60) # 6 hours
+async def renewer() -> None:
+  redis = await redis_dependency.get_redis()
+  lock = redis.lock("renewer_lock", timeout=3600)  # Lock timeout is 1 hour
+  if not await lock.acquire(blocking=False):
+    return
+
+  logger.info("Acquired lock for renewer")
+  try:
+    if not is_certificate_expiring_or_untrusted("/app/cert/fullchain.pem", config.server_domain):
+      logger.info("Certificate is valid")
+      return
+
+    logger.info("Renewing certificate")
+
+    async def update_dns(domain, tokens):
+      key = f"dns:TXT:{domain}."
+      await redis.set(key, json.dumps(tokens))
+      logger.info(f"Updated DNS for {domain} with tokens {tokens}")
+
+    await get_certificate(config.server_domain, "./cert/", update_dns)
+  except Exception as e:
+    logger.error(f"Error in renewer: {e}")
+  finally:
+    await lock.release()
+    logger.info("Released lock for renewer")
 
 
 @asynccontextmanager
@@ -55,7 +87,6 @@ def validation_error(msg: str) -> Response:
   response = JSONResponse({"error": msg})
   response.status_code = 401
   return response
-
 
 @app.post("/api/update_dns")
 async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(redis_dependency.get_redis)) -> Response:

@@ -8,18 +8,27 @@ from datetime import datetime, timedelta
 import simple_acme_dns
 
 
-def get_certificate(subject: str, cert_path: str, update_dns) -> str:
+async def get_certificate(subject: str, cert_path: str, update_dns) -> str:
   client = simple_acme_dns.ACMEClient(
       domains=[subject, "*." + subject],
       email="user@" + subject,
-      directory="https://acme-staging-v02.api.letsencrypt.org/directory",
+      directory="https://acme-v02.api.letsencrypt.org/directory",
       nameservers=["8.8.8.8", "1.1.1.1"],    # Set the nameservers to query when checking DNS propagation
       new_account=True,    # Register a new ACME account upon creation of our object
       generate_csr=True    # Generate a new private key and CSR upon creation of our object
   )
 
   for domain, tokens in client.request_verification_tokens().items():
-    print(f"{ domain } -> {tokens}")
+    await update_dns(domain, tokens)
+
+  if client.check_dns_propagation(timeout=1200):
+    client.request_certificate()
+    with open(cert_path + "fullchain.pem", "wb") as f:
+      f.write(client.certificate_pem)
+    with open(cert_path + "privkey.pem", "wb") as f:
+      f.write(client.private_key_pem)
+  else:
+    client.deactivate_account()
 
 
 def is_certificate_expiring_or_untrusted(cert_path: str, subject: str) -> bool:
@@ -39,9 +48,9 @@ def is_certificate_expiring_or_untrusted(cert_path: str, subject: str) -> bool:
   try:
     verifier.verify(peer, untrusted_intermediates)
   except VerificationError:
-    return False
+    return True
 
   if peer.not_valid_after < datetime.now() + timedelta(days=14):
-    return False
+    return True
 
-  return True
+  return False

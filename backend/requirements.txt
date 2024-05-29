@@ -6,3 +6,5 @@ PyJWT
 simple_acme_dns
 certifi
 cryptography
+fastapi-utils
+typing_inspect
