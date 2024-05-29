@@ -40,3 +40,4 @@ services:
 volumes:
   redis_data:
   pages_data:
+  backend_cert:
