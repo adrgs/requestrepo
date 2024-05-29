@@ -66,7 +66,7 @@ async def renewer() -> None:
       await redis.set(key, json.dumps(tokens))
       logger.info(f"Updated DNS for {domain} with tokens {tokens}")
 
-    await get_certificate(config.server_domain, "./cert/", update_dns)
+    await get_certificate(config.server_domain, "/app/cert/", update_dns)
   except Exception as e:
     logger.error(f"Error in renewer: {e}")
   finally:
