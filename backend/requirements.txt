@@ -3,3 +3,6 @@ fastapi
 aioredis
 gunicorn
 PyJWT
+simple_acme_dns
+certifi
+cryptography
