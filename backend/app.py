@@ -11,13 +11,14 @@ from utils import (
   verify_jwt,
 )
 from aioredis import Redis, ConnectionPool
+from collections import defaultdict
 from config import config
 from pathlib import Path
 from typing import AsyncIterator
 from fastapi.responses import FileResponse, Response
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
-from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse, DnsEntry
+from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse
 import base64
 import json
 import datetime
@@ -100,17 +101,22 @@ async def update_dns(records: DnsRecords, token: str, redis: Redis = Depends(red
   # Update if all entries are valid
   final_records = []
 
+  values = defaultdict(list)
+
   for record in records.records:
     new_domain = f'{record.domain.lower()}.{subdomain}.{config.server_domain}.'
     new_value = record.value
     new_dtype = DNS_RECORDS[record.type]
 
-    new_record: DnsEntry = {"domain": new_domain, "type": new_dtype,
-                "value": new_value, "_id": str(uuid.uuid4())}
+    key = f"dns:{new_dtype}:{new_domain}"
 
-    await redis.set(f"dns:{new_record['type']}:{new_record['domain']}", json.dumps(new_record))
+    new_record = {"domain": new_domain, "type": new_dtype, "value": new_value}
+    final_records.append(new_record)
 
-    final_records.append(record.model_dump())
+    values[key].append(new_value)
+
+  for key, value in values.items():
+    await redis.set(key, json.dumps(value))
 
   await redis.set(f"dns:{subdomain}", json.dumps(final_records))
 
