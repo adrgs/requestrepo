@@ -28,12 +28,6 @@ RUN chmod 777 /app/pages
 COPY start.sh /app/start.sh
 RUN chmod 755 /app/start.sh
 
-COPY privkey.pem /etc/privkey.pem
-COPY fullchain.pem /etc/fullchain.pem
-
-RUN chmod 644 /etc/privkey.pem
-RUN chmod 644 /etc/fullchain.pem
-
 RUN useradd -ms /bin/bash app
 USER app
 
