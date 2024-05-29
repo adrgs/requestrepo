@@ -45,9 +45,8 @@ class RedisDependency:
 redis_dependency = RedisDependency()
 logger = logging.getLogger("uvicorn.error")
 
-@app.on_event("startup")
 @repeat_every(seconds=6 * 60 * 60) # 6 hours
-async def renewer() -> None:
+async def renew_certificate() -> None:
   redis = await redis_dependency.get_redis()
   lock = redis.lock("renewer_lock", timeout=3600)  # Lock timeout is 1 hour
   if not await lock.acquire(blocking=False):
@@ -73,10 +72,10 @@ async def renewer() -> None:
     await lock.release()
     logger.info("Released lock for renewer")
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
   redis = await redis_dependency.get_redis()
+  await renew_certificate()
 
   yield
 
