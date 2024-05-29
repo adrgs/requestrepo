@@ -34,6 +34,9 @@ COPY start.sh /app/start.sh
 RUN chmod 755 /app/start.sh
 
 RUN useradd -ms /bin/bash app
+
+RUN chown -R app:app /app/cert/
+
 USER app
 
 EXPOSE 80
