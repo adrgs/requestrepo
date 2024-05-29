@@ -20,6 +20,7 @@ services:
       - redisdb
     volumes:
       - pages_data:/app/pages
+      - ./backend/cert:/app/cert
   dns:
     build:
       context: ./
