@@ -56,11 +56,11 @@ class Resolver:
         new_records = []
         for ips in data:
           if "%" not in ips:
-            new_record = Record(A, ips)
+            new_record = Record(A if dtype == "A" else AAAA, ips)
           else:
             ips_list = ips.split("%")
             idx = random.randint(0, len(ips_list) - 1)
-            new_record = Record(A, ips_list[idx])
+            new_record = Record(A if dtype == "A" else AAAA, ips_list[idx])
           new_records.append(new_record)
     except:
       pass
