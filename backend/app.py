@@ -343,10 +343,16 @@ async def log_request(request: Request, subdomain: str) -> None:
 
   headers = dict(request.headers)
 
+  body = b''
+  async for chunk in request.stream():
+    body += chunk
+    if len(body) > config.max_request_size:
+      break
+
   request_log: HttpRequestLog = HttpRequestLog(
     _id=str(uuid.uuid4()),
     type="http",
-    raw=base64.b64encode(await request.body()).decode(),
+    raw=base64.b64encode(body).decode(),
     uid=subdomain,
     ip=ip,
     port=port,

@@ -11,6 +11,7 @@ class Config:
   subdomain_alphabet_set: set = set(subdomain_alphabet)
   jwt_secret: str = os.getenv('JWT_SECRET') or "secret"
   max_file_size: int = int(os.environ.get("MAX_FILE_SIZE", 1024 * 1024 * 2))
+  max_request_size: int = int(os.environ.get("MAX_REQUEST_SIZE", 1024 * 1024 * 10))
   reserved_keywords: set = set(keyword.lower() for keyword in os.environ.get("RESERVED_KEYWORDS", "public,static,api,manifest,logo,favicon,assets").split(","))
 
 
