@@ -39,7 +39,7 @@ class Resolver:
     data = get_dns_record(str(reply.q.qname), "TXT")
     records = []
     if data is None:
-      return [Record(TXT, os.getenv("TXT") or "Hello!")]
+      return [Record(TXT, val) for val in os.getenv("TXT", "Hello!").split(",")]
     else:
       for value in data:
         records.append(Record(TXT, value))
