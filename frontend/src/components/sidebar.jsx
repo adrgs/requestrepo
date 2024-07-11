@@ -33,7 +33,7 @@ export class AppSidebar extends Component {
     this.lastNumberOfReqs = this.numberOfReqs;
   }
 
-  shouldComponentUpdate(nextProps, nextState, nextContext) {
+  shouldComponentUpdate() {
     return true;
   }
 
@@ -129,7 +129,7 @@ export class AppSidebar extends Component {
   }
 
   deleteAllRequests() {
-    Utils.deleteAll().then((_) => {
+    Utils.deleteAll().then(() => {
       this.props.deleteAllRequests();
     });
   }
@@ -183,7 +183,7 @@ export class AppSidebar extends Component {
     let searchValue = this.props.searchValue;
     let dns_filter = this.state.dns_filter;
     let http_filter = this.state.http_filter;
-    requests = requests.filter(function (item, index, arr) {
+    requests = requests.filter(function (item) {
       return (
         hasValue(user.requests[item.id], searchValue) &&
         ((item.type === "DNS" && dns_filter) ||
@@ -228,7 +228,7 @@ export class AppSidebar extends Component {
           </div>
         </div>
         <div className="requests-box">
-          {requests.map((item, index) => {
+          {requests.map((item) => {
             return (
               <RequestCard
                 active={this.props.user.selectedRequest === item.id}

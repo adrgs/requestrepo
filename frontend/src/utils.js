@@ -1,7 +1,10 @@
 import axios from "axios";
 
 export class Utils {
-  static siteUrl = process.env.REACT_APP_DOMAIN || "requestrepo.com";
+  static siteUrl = import.meta.env.DEV
+    ? "localhost:21337"
+    : import.meta.env.VITE_DOMAIN || "requestrepo.com";
+  static domain = this.siteUrl.split(":")[0];
   static apiUrl = "";
   static requestsEndpoint = "/api/get_requests";
   static subdomainEndpoint = "/api/get_token";
@@ -15,25 +18,33 @@ export class Utils {
 
   static async getDNSRecords() {
     let reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
-    let res = await axios.get(reqUrl, { params: { token: localStorage.getItem("token") } });
+    let res = await axios.get(reqUrl, {
+      params: { token: localStorage.getItem("token") },
+    });
     return res.data;
   }
 
   static async updateDNSRecords(data) {
     let reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
-    let res = await axios.post(reqUrl, data, { params: { token: localStorage.getItem("token") } });
+    let res = await axios.post(reqUrl, data, {
+      params: { token: localStorage.getItem("token") },
+    });
     return res.data;
   }
 
   static async getFile() {
     let reqUrl = this.apiUrl + this.fileEndpoint;
-    let res = await axios.get(reqUrl, { params: { token: localStorage.getItem("token") } });
+    let res = await axios.get(reqUrl, {
+      params: { token: localStorage.getItem("token") },
+    });
     return res.data;
   }
 
   static async updateFile(data) {
     let reqUrl = this.apiUrl + this.updateFileEndpoint;
-    let res = await axios.post(reqUrl, data, { params: { token: localStorage.getItem("token") } });
+    let res = await axios.post(reqUrl, data, {
+      params: { token: localStorage.getItem("token") },
+    });
     return res.data;
   }
 
@@ -57,23 +68,31 @@ export class Utils {
   }
   static getRandomSubdomain() {
     let reqUrl = this.apiUrl + this.subdomainEndpoint;
-    return axios.post(reqUrl, null, { withCredentials: true }).then(function (response) {
-      let theme = localStorage.getItem("theme");
-      localStorage.clear();
-      localStorage.setItem("token", response.data.token);
-      if (theme) localStorage.setItem("theme", theme);
-      window.location.reload();
-    });
+    return axios
+      .post(reqUrl, null, { withCredentials: true })
+      .then(function (response) {
+        let theme = localStorage.getItem("theme");
+        localStorage.clear();
+        localStorage.setItem("token", response.data.token);
+        if (theme) localStorage.setItem("theme", theme);
+        window.location.reload();
+      });
   }
 
   static deleteRequest(id) {
     let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
-    return axios.post(reqUrl, { id: id }, { params: { token: localStorage.getItem("token") } });
+    return axios.post(
+      reqUrl,
+      { id: id },
+      { params: { token: localStorage.getItem("token") } },
+    );
   }
 
-  static deleteAll(id, type) {
+  static deleteAll() {
     let reqUrl = this.apiUrl + this.deleteAllEndpoint;
-    return axios.post(reqUrl, null, { params: { token: localStorage.getItem("token") } });
+    return axios.post(reqUrl, null, {
+      params: { token: localStorage.getItem("token") },
+    });
   }
 
   static base64EncodeUnicode(str) {
@@ -103,7 +122,7 @@ export class Utils {
     }
     return binary;
   }
- 
+
   static base64EncodeRaw(str) {
     // Base64 encode the string
     return btoa(str);
@@ -115,7 +134,7 @@ export class Utils {
   }
 
   static base64EncodeLatin1(str) {
-    return this.arrayBufferToBase64(new TextEncoder().encode(str));  
+    return this.arrayBufferToBase64(new TextEncoder().encode(str));
   }
 
   static base64DecodeUnicode(str) {
@@ -140,9 +159,15 @@ export class Utils {
   }
 
   static initTheme() {
-    if (localStorage.getItem("theme") !== "dark" && localStorage.getItem("theme") !== "light") {
+    if (
+      localStorage.getItem("theme") !== "dark" &&
+      localStorage.getItem("theme") !== "light"
+    ) {
       // get system theme
-      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      if (
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches
+      ) {
         localStorage.setItem("theme", "dark");
       } else {
         localStorage.setItem("theme", "light");
@@ -162,9 +187,13 @@ export class Utils {
       document.body.classList.add("dark");
       localStorage.setItem("theme", "dark");
     }
+
+    // Dispatch a custom event to notify components of the theme change
+    window.dispatchEvent(new Event("themeChange"));
   }
 
   static getTheme() {
+    this.initTheme();
     if (document.body.classList.contains("dark")) {
       return "dark";
     }
