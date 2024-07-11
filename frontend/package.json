@@ -3,10 +3,10 @@
   "version": "0.2.0",
   "private": true,
   "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
-    "ace-builds": "^1.33.1",
     "axios": "^1.2.1",
     "classnames": "^2.3.2",
     "flag-icons": "^7.1.0",
@@ -14,22 +14,19 @@
     "primeicons": "^6.0.1",
     "primereact": "^8.7.3",
     "react": "^18.2.0",
-    "react-ace": "^10.1.0",
     "react-dom": "^18.2.0",
     "react-github-btn": "^1.4.0",
     "react-hex-editor": "^0.3.0",
     "react-router-dom": "^6.6.1",
-    "react-scripts": "5.0.1",
     "react-toastify": "^9.1.1",
     "sass": "^1.57.1",
     "styled-components": "^5.3.6",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
   },
   "eslintConfig": {
     "extends": [
@@ -50,5 +47,15 @@
     ]
   },
   "allowedHosts": "all",
-  "proxy": "http://localhost:21337/"
+  "proxy": "http://localhost:21337/",
+  "devDependencies": {
+    "@eslint/js": "^9.6.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "^8.57.0",
+    "eslint-config-react-app": "^7.0.1",
+    "eslint-plugin-react": "^7.34.3",
+    "globals": "^15.8.0",
+    "vite": "^5.3.3",
+    "vite-plugin-eslint": "^1.8.1"
+  }
 }

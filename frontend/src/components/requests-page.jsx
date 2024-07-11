@@ -1,12 +1,6 @@
 import React, { Component } from "react";
 import { RequestInfo } from "./request-info";
-import AceEditor from "react-ace";
-import "ace-builds/src-noconflict/theme-xcode";
-import "ace-builds/src-noconflict/theme-monokai";
-import "ace-builds/src-noconflict/mode-python";
-import "ace-builds/src-noconflict/snippets/python";
-import "ace-builds/webpack-resolver";
-import { Utils } from "../utils";
+import { EditorComponent } from "./editor";
 
 export class RequestsPage extends Component {
   constructor(props) {
@@ -77,27 +71,12 @@ print("Latest Request:", new_request)`;
                   </a>{" "}
                   Python library:
                 </p>
-                <AceEditor
-                  placeholder=""
-                  mode="python"
-                  theme={Utils.getTheme() === "dark" ? "monokai" : "xcode"}
-                  fontSize={14}
-                  showPrintMargin={true}
-                  showGutter={true}
-                  highlightActiveLine={true}
-                  width={"50%"}
-                  height={"250px"}
-                  style={{ border: "1px solid black" }}
-                  value={content}
-                  setOptions={{
-                    enableBasicAutocompletion: true,
-                    enableLiveAutocompletion: true,
-                    enableMultiselect: true,
-                    enableSnippets: true,
-                    showLineNumbers: true,
-                    tabSize: 2,
-                  }}
-                />
+                <EditorComponent
+                    value={content}
+                    onChange={() => {}}
+                    commands={[]}
+                    language={"python"}
+                  />
               </div>
             </div>
           )}

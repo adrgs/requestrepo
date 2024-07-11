@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export class Utils {
-  static siteUrl = process.env.REACT_APP_DOMAIN || "requestrepo.com";
+  static siteUrl = "requestrepo.com";
   static apiUrl = "";
   static requestsEndpoint = "/api/get_requests";
   static subdomainEndpoint = "/api/get_token";
@@ -162,9 +162,13 @@ export class Utils {
       document.body.classList.add("dark");
       localStorage.setItem("theme", "dark");
     }
+  
+    // Dispatch a custom event to notify components of the theme change
+    window.dispatchEvent(new Event('themeChange'));
   }
 
   static getTheme() {
+    this.initTheme();
     if (document.body.classList.contains("dark")) {
       return "dark";
     }
