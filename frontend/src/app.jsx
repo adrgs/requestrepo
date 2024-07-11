@@ -17,8 +17,15 @@ import "primeflex/primeflex.css";
 import "react-toastify/dist/ReactToastify.css";
 import "./app.scss";
 
+
+const genRanHex = (size) =>
+  [...Array(size)]
+    .map(() => Math.floor(Math.random() * 16).toString(16))
+    .join("");
+
+
 // Custom hook for WebSocket with reconnection logic
-function useWebSocket(ws_url, onUpdate) {
+function useWebSocket(ws_url, onUpdate, onOpen) {
   const websocketRef = useRef(null);
 
   useEffect(() => {
@@ -28,6 +35,7 @@ function useWebSocket(ws_url, onUpdate) {
 
       socket.onmessage = (event) => onUpdate(event);
       socket.onopen = () => {
+        onOpen();
         socket.send(localStorage.getItem("token"));
       };
       socket.onclose = () => {
@@ -121,8 +129,13 @@ const App = () => {
   const protocol = document.location.protocol === "https:" ? "wss" : "ws";
   const ws_url = `${protocol}://${document.location.host}/api/ws`;
 
+  const onOpen = () => {
+    const newUser = { ...state.user, httpRequests: [], dnsRequests: [], requests: {}};
+    setState((prevState) => ({ ...prevState, user: newUser }));
+  }
+
   // Use custom WebSocket hook
-  useWebSocket(ws_url, handleMessage);
+  useWebSocket(ws_url, handleMessage, onOpen);
 
   useEffect(() => {
     const { user } = state;
@@ -207,14 +220,13 @@ const App = () => {
       visited[key] = true;
     });
 
+    localStorage.setItem("visited", JSON.stringify(visited));
+
     setState(
       (prevState) => ({
         ...prevState,
         user: { ...prevState.user, requests: updatedRequests, visited },
-      }),
-      () => {
-        localStorage.setItem("visited", JSON.stringify(visited));
-      },
+      })
     );
   };
 
@@ -309,11 +321,6 @@ const App = () => {
   // Use effect to handle side effects after deleteAllRequests
   useEffect(() => {
     if (state.deleteFlag) {
-      const genRanHex = (size) =>
-        [...Array(size)]
-          .map(() => Math.floor(Math.random() * 16).toString(16))
-          .join("");
-
       localStorage.setItem("visited", "{}");
       localStorage.setItem("deleteAll", genRanHex(16));
     }
