@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Route, Routes } from "react-router-dom";
 import { AppTopbar } from "./components/topbar";
 import { AppSidebar } from "./components/sidebar";
-import { Route, Routes } from "react-router-dom";
 import { RequestsPage } from "./components/requests-page";
 import { EditResponsePage } from "./components/edit-response-page";
 import { DnsSettingsPage } from "./components/dns-settings-page";
@@ -17,9 +17,46 @@ import "primeflex/primeflex.css";
 import "react-toastify/dist/ReactToastify.css";
 import "./app.scss";
 
-const App = () => {
-  const urlArea = useRef(null);
+// Custom hook for WebSocket with reconnection logic
+function useWebSocket(ws_url, onUpdate) {
   const websocketRef = useRef(null);
+
+  useEffect(() => {
+    const connectWebSocket = () => {
+      const socket = new WebSocket(ws_url);
+      websocketRef.current = socket;
+
+      socket.onmessage = (event) => onUpdate(event);
+      socket.onopen = () => {
+        socket.send(localStorage.getItem("token"));
+      };
+      socket.onclose = () => {
+        setTimeout(connectWebSocket, 1000); // Reconnect after 1 second
+      };
+
+      return () => {
+        socket.close();
+      };
+    };
+
+    if (websocketRef.current === null) {
+      connectWebSocket();
+    }
+
+    return () => {
+      if (websocketRef.current) {
+        websocketRef.current.close();
+      }
+    };
+  }, [ws_url, onUpdate]);
+}
+
+const App = () => {
+  if (!Utils.userHasSubdomain()) {
+    Utils.getRandomSubdomain();
+  }
+
+  const urlArea = useRef(null);
   const [state, setState] = useState({
     layoutMode: "static",
     layoutColorMode: "light",
@@ -43,7 +80,50 @@ const App = () => {
     dnsFetched: false,
   });
 
-  const updateTitle = useCallback(() => {
+  // Moved to a custom hook
+  const handleMessage = useCallback((event) => {
+    const data = JSON.parse(event.data);
+    const { cmd } = data;
+    handleWebSocketData(cmd, data);
+  }, []);
+
+  // Function to handle WebSocket data separately
+  const handleWebSocketData = (cmd, data) => {
+    setState((prevState) => {
+      const newUser = { ...prevState.user };
+      if (cmd === "requests") {
+        const requests = data["data"].map(JSON.parse);
+        requests.forEach((request) => {
+          const key = request["_id"];
+          newUser.requests[key] = request;
+          if (request["type"] === "http") {
+            newUser.httpRequests.push(request);
+          } else if (request["type"] === "dns") {
+            newUser.dnsRequests.push(request);
+          }
+        });
+      } else if (cmd === "request") {
+        const request = JSON.parse(data["data"]);
+        const key = request["_id"];
+        newUser.requests[key] = request;
+        if (request["type"] === "http") {
+          newUser.httpRequests.push(request);
+        } else if (request["type"] === "dns") {
+          newUser.dnsRequests.push(request);
+        }
+      }
+      return { ...prevState, user: newUser };
+    });
+  };
+
+  // URL for WebSocket based on protocol
+  const protocol = document.location.protocol === "https:" ? "wss" : "ws";
+  const ws_url = `${protocol}://${document.location.host}/api/ws`;
+
+  // Use custom WebSocket hook
+  useWebSocket(ws_url, handleMessage);
+
+  const updateTitle = () => {
     const { user } = state;
     const n =
       user.httpRequests.length +
@@ -51,84 +131,9 @@ const App = () => {
       Object.keys(user.visited).length;
     const text = `Dashboard - ${Utils.siteUrl}`;
     document.title = n <= 0 ? text : `(${n}) ${text}`;
-  }, [state]);
-
-  const initWebSocket = useCallback(
-    (ws_url) => {
-      if (websocketRef.current) {
-        return; // If WebSocket is already initialized, return
-      }
-
-      const socket = new WebSocket(ws_url);
-      websocketRef.current = socket;
-
-      socket.onopen = () => {
-        const user = state.user;
-        user.httpRequests = [];
-        user.dnsRequests = [];
-        user.requests = {};
-        socket.send(localStorage.getItem("token"));
-      };
-
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        const cmd = data["cmd"];
-        if (cmd === "requests" || cmd === "request") {
-          setState((prevState) => {
-            const newUser = { ...prevState.user };
-            if (cmd === "requests") {
-              const requests = data["data"].map((r) => JSON.parse(r));
-              const httpRequests = requests.filter((r) => r["type"] === "http");
-              const dnsRequests = requests.filter((r) => r["type"] === "dns");
-
-              httpRequests.forEach((httpRequest) => {
-                newUser.httpRequests.push(httpRequest);
-                newUser.requests[httpRequest["_id"]] = httpRequest;
-                httpRequest["new"] = false;
-              });
-
-              dnsRequests.forEach((dnsRequest) => {
-                newUser.dnsRequests.push(dnsRequest);
-                newUser.requests[dnsRequest["_id"]] = dnsRequest;
-                dnsRequest["new"] = false;
-              });
-            } else if (cmd === "request") {
-              const request = JSON.parse(data["data"]);
-              request["new"] = true;
-              if (request["type"] === "http") {
-                newUser.httpRequests.push(request);
-              } else if (request["type"] === "dns") {
-                newUser.dnsRequests.push(request);
-              }
-              newUser.requests[request["_id"]] = request;
-            }
-
-            return { ...prevState, user: newUser };
-          });
-        }
-      };
-
-      socket.onclose = () => {
-        websocketRef.current = null; // Reset the WebSocket ref
-        setTimeout(() => {
-          initWebSocket(ws_url);
-        }, 1000);
-      };
-
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        socket.close();
-      };
-    },
-    [state],
-  );
+  };
 
   useEffect(() => {
-    if (!Utils.userHasSubdomain()) {
-      Utils.getRandomSubdomain();
-      return;
-    }
-
     Utils.initTheme();
 
     const handleStorageChange = (e) => {
@@ -190,21 +195,7 @@ const App = () => {
     return () => {
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, [updateTitle]);
-
-  // WebSocket connection effect
-  useEffect(() => {
-    const protocol = document.location.protocol === "https:" ? "wss" : "ws";
-    const ws_url = `${protocol}://${document.location.host}/api/ws`;
-
-    initWebSocket(ws_url);
-
-    return () => {
-      if (websocketRef.current) {
-        websocketRef.current.close();
-      }
-    };
-  }, [initWebSocket]);
+  }, []);
 
   const markAllAsVisited = () => {
     const updatedRequests = {};
@@ -315,30 +306,33 @@ const App = () => {
     Utils.getRandomSubdomain();
   };
 
-  const deleteAllRequests = () => {
-    setState(
-      {
-        ...state,
-        user: {
-          ...state.user,
-          httpRequests: [],
-          dnsRequests: [],
-          requests: {},
-          visited: {},
-        },
-      },
-      () => {
+  // Use effect to handle side effects after deleteAllRequests
+  useEffect(() => {
+      if (state.deleteFlag) {
         const genRanHex = (size) =>
           [...Array(size)]
             .map(() => Math.floor(Math.random() * 16).toString(16))
             .join("");
-
+  
         localStorage.setItem("visited", "{}");
         localStorage.setItem("deleteAll", genRanHex(16));
-
+  
         updateTitle();
+      }
+    }, [state.deleteFlag]);
+
+  const deleteAllRequests = () => {
+    setState((prevState) => ({
+      ...prevState,
+      user: {
+        ...prevState.user,
+        httpRequests: [],
+        dnsRequests: [],
+        requests: {},
+        visited: {},
       },
-    );
+      deleteFlag: !prevState.deleteFlag // toggle flag to trigger useEffect
+    }));
   };
 
   const onToggleMenu = (event) => {
@@ -363,6 +357,7 @@ const App = () => {
     });
   };
 
+  // Component rendering logic
   return (
     <div className="layout-wrapper layout-static">
       <AppTopbar

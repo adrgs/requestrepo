@@ -8,7 +8,7 @@ LINT_PATHS := $(FRONTEND_DIR) $(BACKEND_DIR)
 
 # Commands
 FRONTEND_START_CMD := npm run dev
-BACKEND_START_CMD := uvicorn app:app --port 21337 --no-server-header --reload
+BACKEND_START_CMD := REDIS_HOST=localhost uvicorn app:app --port 21337 --no-server-header --reload
 FRONTEND_LINT_CMD := npm run lint
 PYTHON_LINT_CMD := ruff check
 FORMAT_PYTHON := ruff format

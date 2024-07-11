@@ -66,7 +66,7 @@ export const EditResponsePage = ({
 
     const fetchHeaders = async () => {
       try {
-        const data = await HeaderService.getHeaders();
+        const data = await new HeaderService().getHeaders();
         setHeadersData(data);
       } catch (error) {
         console.error("Failed to fetch headers");
