@@ -71,7 +71,7 @@ export class Utils {
     return axios.post(reqUrl, { id: id }, { params: { token: localStorage.getItem("token") } });
   }
 
-  static deleteAll(id, type) {
+  static deleteAll() {
     let reqUrl = this.apiUrl + this.deleteAllEndpoint;
     return axios.post(reqUrl, null, { params: { token: localStorage.getItem("token") } });
   }

@@ -37,7 +37,9 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
         setHeaders(res["headers"]);
         try {
           setContent(Utils.base64DecodeUnicode(res["raw"]));
-        } catch {}
+        } catch {
+            console.error("Failed to decode base64 content");
+        }
         setStatusCode(res["status_code"]);
         setFetched(true);
       } catch (error) {
@@ -61,6 +63,7 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
         const data = await HeaderService.getHeaders();
         setHeadersData(data);
       } catch (error) {
+        console.error("Failed to fetch headers");
       }
     };
 
@@ -123,7 +126,9 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
           setHeaders(res["headers"]);
           try {
             setContent(Utils.base64DecodeUnicode(res["raw"]));
-          } catch {}
+          } catch {
+            console.error("Failed to decode base64 content");
+          }
           setStatusCode(res["status_code"]);
           setFetched(true);
         });

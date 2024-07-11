@@ -87,7 +87,7 @@ export class RequestInfo extends Component {
                   <tr>
                     <td className="req-table-a">Country</td>
                     <td className="req-table-b">
-                      <span class={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
+                      <span className={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
                     </td>
                   </tr>
                 )}
@@ -195,7 +195,7 @@ export class RequestInfo extends Component {
                   <tr>
                     <td className="req-table-a">Country</td>
                     <td className="req-table-b">
-                      <span class={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
+                      <span className={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
                     </td>
                   </tr>
                 )}

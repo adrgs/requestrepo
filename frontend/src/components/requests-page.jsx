@@ -9,7 +9,7 @@ export class RequestsPage extends Component {
   }
 
   render() {
-    let content = `from requestrepo import Requestrepo # pip install requestrepo
+    const content = `from requestrepo import Requestrepo # pip install requestrepo
 
 client = Requestrepo(token="${localStorage.getItem("token")}")
 

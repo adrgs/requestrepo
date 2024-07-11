@@ -31,7 +31,7 @@ export class RecordInput extends Component {
     }
   }
 
-  componentWillReceiveProps(newProps) {
+  UNSAFE_componentWillReceiveProps(newProps) {
     this.setState({
       domain: newProps.domain,
       type: newProps.type,

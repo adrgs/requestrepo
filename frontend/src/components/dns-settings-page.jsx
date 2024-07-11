@@ -80,7 +80,9 @@ export const DnsSettingsPage = ({ dnsRecords: propDnsRecords = [], fetched = fal
       if (element.domain.lastIndexOf(user.subdomain + "." + Utils.siteUrl) >= 0) {
         element.domain = element.domain.substr(0, element.domain.lastIndexOf(user.subdomain + "." + Utils.siteUrl) - 1);
       }
-    } catch {}
+    } catch {
+        console.error("Error parsing DNS record");
+    }
     return (
       <RecordInput
         key={index}

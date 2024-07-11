@@ -9,15 +9,15 @@ export class RequestCard extends Component {
     this.delete = this.delete.bind(this);
   }
 
-  shouldComponentUpdate(nextProps, nextState, nextContext) {
+  shouldComponentUpdate() {
     return true;
   }
 
-  click(event) {
+  click() {
     this.props.clickRequestAction("select", this.props.id);
   }
 
-  delete(event) {
+  delete() {
     this.props.clickRequestAction("delete", this.props.id);
   }
 
@@ -33,7 +33,7 @@ export class RequestCard extends Component {
           X
         </span>
         <span className="detail">
-          {this.props.country && <span style={{ marginRight: "5px" }} class={"fi fi-" + this.props.country.toLowerCase()}></span>}
+          {this.props.country && <span style={{ marginRight: "5px" }} className={"fi fi-" + this.props.country.toLowerCase()}></span>}
           {this.props.detail}
           <span style={{ float: "right" }}>{this.props.time}</span>
         </span>

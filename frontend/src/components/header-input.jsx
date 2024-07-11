@@ -27,7 +27,7 @@ export class HeaderInput extends Component {
     }
   };
 
-  componentWillReceiveProps(newProps) {
+  UNSAFE_componentWillReceiveProps(newProps) {
     this.setState({
       header: newProps.header,
       value: newProps.value,
