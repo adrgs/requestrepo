@@ -6,14 +6,20 @@ import { Utils } from "../utils";
 export class AppTopbar extends Component {
   constructor(props) {
     super(props);
-    this.state = { ...props };
-    this.state.searchValue = "";
+    this.state = {
+      ...props,
+      searchValue: "",
+      themeToggler: false,
+    };
     this.handleSearchValueChange = this.handleSearchValueChange.bind(this);
     this.toggleTheme = this.toggleTheme.bind(this);
   }
 
   toggleTheme() {
     Utils.toggleTheme();
+    this.setState((prevState) => ({
+      themeToggler: !prevState.themeToggler,
+    }));
   }
 
   static defaultProps = {};
