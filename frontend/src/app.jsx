@@ -31,7 +31,7 @@ function useWebSocket(ws_url, onUpdate) {
         socket.send(localStorage.getItem("token"));
       };
       socket.onclose = () => {
-        setTimeout(connectWebSocket, 1000); // Reconnect after 1 second
+        setTimeout(connectWebSocket, 2500); // Reconnect after 2.5 seconds
       };
 
       return () => {
@@ -124,7 +124,7 @@ const App = () => {
   // Use custom WebSocket hook
   useWebSocket(ws_url, handleMessage);
 
-  const updateTitle = () => {
+  useEffect(() => {
     const { user } = state;
     const n =
       user.httpRequests.length +
@@ -132,7 +132,7 @@ const App = () => {
       Object.keys(user.visited).length;
     const text = `Dashboard - ${Utils.siteUrl}`;
     document.title = n <= 0 ? text : `(${n}) ${text}`;
-  };
+  }, [state]);
 
   useEffect(() => {
     Utils.initTheme();
@@ -160,7 +160,7 @@ const App = () => {
           }
 
           return { ...prevState, user: newUser };
-        }, updateTitle);
+        });
       } else if (e.key === "token") {
         document.location.reload();
       } else if (e.key === "lastSelectedRequest") {
@@ -188,7 +188,7 @@ const App = () => {
           );
 
           return { ...prevState, user: newUser };
-        }, updateTitle);
+        });
       }
     };
 
@@ -214,7 +214,6 @@ const App = () => {
       }),
       () => {
         localStorage.setItem("visited", JSON.stringify(visited));
-        updateTitle();
       },
     );
   };
@@ -279,7 +278,7 @@ const App = () => {
       }
 
       return { ...prevState, user: newUser };
-    }, updateTitle);
+    });
   };
 
   const updateSearchValue = (val) => {
@@ -318,7 +317,6 @@ const App = () => {
       localStorage.setItem("visited", "{}");
       localStorage.setItem("deleteAll", genRanHex(16));
 
-      updateTitle();
     }
   }, [state.deleteFlag]);
 

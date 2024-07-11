@@ -25,8 +25,7 @@ export const EditResponsePage = ({
     {
       name: "save",
       exec: () => {
-        console.log("Save command executed");
-        // Your save logic here
+        saveChanges();
       },
     },
   ];
