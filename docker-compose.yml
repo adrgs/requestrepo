@@ -3,7 +3,7 @@ services:
   redisdb:
     image: redis:latest
     command: redis-server --appendonly yes --maxmemory 8gb --maxclients 1048576
-    container_name: redisdb
+    container_name: requestrepo_redisdb
     restart: always
     volumes:
       - redis_data:/data
@@ -12,13 +12,15 @@ services:
       context: .
       args:
         - DOMAIN=${DOMAIN:-requestrepo.com}
-    container_name: backend
+    container_name: requestrepo_backend
     restart: always
     ports:
       - 80:80
       - 443:443
     env_file:
       - .env
+    environment:
+      - REDIS_HOST=requestrepo_redisdb
     depends_on:
       - redisdb
     volumes:
@@ -28,13 +30,15 @@ services:
     build:
       context: ./
       dockerfile: ./dns/Dockerfile
-    container_name: dns
+    container_name: requestrepo_dns
     restart: always
     ports:
       - "53:53/tcp"
       - "53:53/udp"
     env_file:
       - .env
+    environment:
+      - REDIS_HOST=requestrepo_redisdb
     depends_on:
       - redisdb
 volumes:

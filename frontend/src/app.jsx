@@ -316,7 +316,6 @@ const App = () => {
 
       localStorage.setItem("visited", "{}");
       localStorage.setItem("deleteAll", genRanHex(16));
-
     }
   }, [state.deleteFlag]);
 

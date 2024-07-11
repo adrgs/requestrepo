@@ -2,7 +2,7 @@ import os
 
 
 class Config:
-    redis_host: str = os.environ.get("REDIS_HOST", "localhost:21337")
+    redis_host: str = os.environ.get("REDIS_HOST", "localhost")
     server_ip: str = os.environ.get("SERVER_IP", "127.0.0.1")
     server_domain: str = os.environ.get("DOMAIN", "localhost").lower()
     include_server_domain: bool = (

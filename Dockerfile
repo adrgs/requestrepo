@@ -1,17 +1,17 @@
 # Stage 1: Build frontend
 FROM node:20 AS frontend-build
 
+# Cache npm install
+WORKDIR /frontend
+COPY ./frontend/package.json ./
+RUN npm install
+
+COPY ./frontend /frontend
+
 # Set environment variable for Vite
 ARG DOMAIN
 ENV VITE_DOMAIN=${DOMAIN}
 
-# Copy frontend source code
-COPY ./frontend /frontend
-
-WORKDIR /frontend
-
-# Install dependencies and build the frontend
-RUN npm install
 RUN npm run build
 
 FROM python:3.10
