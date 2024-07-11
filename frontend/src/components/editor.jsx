@@ -1,23 +1,25 @@
-import React, { useEffect, useRef, useState } from 'react';
-import MonacoEditor from '@monaco-editor/react';
-import { Utils } from '../utils';
+import React, { useEffect, useRef, useState } from "react";
+import MonacoEditor from "@monaco-editor/react";
+import { Utils } from "../utils";
 
 export const EditorComponent = ({ value, onChange, commands, language }) => {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
-  const [theme, setTheme] = useState(Utils.getTheme() === 'dark' ? 'vs-dark' : 'vs-light');
+  const [theme, setTheme] = useState(
+    Utils.getTheme() === "dark" ? "vs-dark" : "vs-light",
+  );
 
   useEffect(() => {
     const handleThemeChange = () => {
-      setTheme(Utils.getTheme() === 'dark' ? 'vs-dark' : 'vs-light');
+      setTheme(Utils.getTheme() === "dark" ? "vs-dark" : "vs-light");
     };
 
     // Assume there's an event or method to detect theme changes
     // You need to implement this part based on how your application handles theme changes
-    window.addEventListener('themeChange', handleThemeChange);
+    window.addEventListener("themeChange", handleThemeChange);
 
     return () => {
-      window.removeEventListener('themeChange', handleThemeChange);
+      window.removeEventListener("themeChange", handleThemeChange);
     };
   }, []);
 
@@ -27,8 +29,11 @@ export const EditorComponent = ({ value, onChange, commands, language }) => {
       const monaco = monacoRef.current;
 
       // Register commands
-      commands.forEach(command => {
-        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, command.exec);
+      commands.forEach((command) => {
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+          command.exec,
+        );
       });
     }
   }, [commands]);

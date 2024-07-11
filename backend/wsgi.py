@@ -1,4 +1,3 @@
-from app import app
 from uvicorn.workers import UvicornWorker
 
 

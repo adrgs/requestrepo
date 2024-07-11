@@ -18,16 +18,40 @@ export class RecordInput extends Component {
 
   changeEvent(event, action) {
     if (action === "domain") {
-      this.props.handleRecordInputChange(this.props.index, event.target.value || "", this.state.type, this.state.value, false);
+      this.props.handleRecordInputChange(
+        this.props.index,
+        event.target.value || "",
+        this.state.type,
+        this.state.value,
+        false,
+      );
       this.setState({ domain: event.target.value || "" });
     } else if (action === "type") {
-      this.props.handleRecordInputChange(this.props.index, this.state.domain, event.value, this.state.value, false);
+      this.props.handleRecordInputChange(
+        this.props.index,
+        this.state.domain,
+        event.value,
+        this.state.value,
+        false,
+      );
       this.setState({ type: event.value });
     } else if (action === "value") {
-      this.props.handleRecordInputChange(this.props.index, this.state.domain, this.state.type, event.target.value || "", false);
+      this.props.handleRecordInputChange(
+        this.props.index,
+        this.state.domain,
+        this.state.type,
+        event.target.value || "",
+        false,
+      );
       this.setState({ value: event.target.value || "" });
     } else if (action === "delete") {
-      this.props.handleRecordInputChange(this.props.index, this.state.domain, this.state.type, this.state.value, true);
+      this.props.handleRecordInputChange(
+        this.props.index,
+        this.state.domain,
+        this.state.type,
+        this.state.value,
+        true,
+      );
     }
   }
 
@@ -41,7 +65,12 @@ export class RecordInput extends Component {
   }
 
   shouldComponentUpdate(nextProps) {
-    return this.state.domain !== nextProps.domain || this.state.type !== nextProps.type || this.state.value !== nextProps.value || this.state.index !== nextProps.index;
+    return (
+      this.state.domain !== nextProps.domain ||
+      this.state.type !== nextProps.type ||
+      this.state.value !== nextProps.value ||
+      this.state.index !== nextProps.index
+    );
   }
 
   render() {
@@ -81,10 +110,18 @@ export class RecordInput extends Component {
             style={{ maxWidth: "50%" }}
             value={this.state.value || ""}
             onChange={(e) => {
-              if (e.target.value.length < 256 && /^[ -~]+$/.test(e.target.value)) this.changeEvent(e, "value");
+              if (
+                e.target.value.length < 256 &&
+                /^[ -~]+$/.test(e.target.value)
+              )
+                this.changeEvent(e, "value");
             }}
           />
-          <Button icon="pi pi-times" className="p-button-danger p-button-rounded p-button-text p-button-icon" onClick={(event) => this.changeEvent(event, "delete")} />
+          <Button
+            icon="pi pi-times"
+            className="p-button-danger p-button-rounded p-button-text p-button-icon"
+            onClick={(event) => this.changeEvent(event, "delete")}
+          />
         </div>
       </div>
     );

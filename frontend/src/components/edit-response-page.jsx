@@ -5,9 +5,15 @@ import { HeaderInput } from "./header-input";
 import { Utils } from "../utils";
 import { EditorComponent } from "./editor";
 import { HeaderService } from "../header-service";
-import "react-toastify/dist/ReactToastify.css"
+import "react-toastify/dist/ReactToastify.css";
 
-export const EditResponsePage = ({ headers: propHeaders = [], content: propContent = "", fetched: propFetched = false, statusCode: propStatusCode = 200, toast }) => {
+export const EditResponsePage = ({
+  headers: propHeaders = [],
+  content: propContent = "",
+  fetched: propFetched = false,
+  statusCode: propStatusCode = 200,
+  toast,
+}) => {
   const [headers, setHeaders] = useState(propHeaders);
   const [content, setContent] = useState(propContent);
   const [fetched, setFetched] = useState(propFetched);
@@ -17,12 +23,12 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
 
   const commands = [
     {
-      name: 'save',
+      name: "save",
       exec: () => {
-        console.log('Save command executed');
+        console.log("Save command executed");
         // Your save logic here
-      }
-    }
+      },
+    },
   ];
 
   const handleEditorChange = useCallback((value) => {
@@ -38,7 +44,7 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
         try {
           setContent(Utils.base64DecodeUnicode(res["raw"]));
         } catch {
-            console.error("Failed to decode base64 content");
+          console.error("Failed to decode base64 content");
         }
         setStatusCode(res["status_code"]);
         setFetched(true);
@@ -53,7 +59,7 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
         });
       }
     };
-  
+
     if (!fetched) {
       fetchData();
     }
@@ -72,7 +78,7 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
     const handleResize = () => {
       // Handle resize
     };
-  
+
     window.addEventListener("resize", handleResize);
     return () => {
       window.removeEventListener("resize", handleResize);
@@ -192,7 +198,10 @@ export const EditResponsePage = ({ headers: propHeaders = [], content: propConte
           <InputText
             value={statusCode}
             onChange={(e) => {
-              if (e.target.value.length < 10 && /^[0-9]*$/.test(e.target.value)) {
+              if (
+                e.target.value.length < 10 &&
+                /^[0-9]*$/.test(e.target.value)
+              ) {
                 setStatusCode(e.target.value);
               }
             }}

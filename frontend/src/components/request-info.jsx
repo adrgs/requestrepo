@@ -37,7 +37,13 @@ export class RequestInfo extends Component {
     if (request.headers) headerKeys = Object.keys(request.headers);
 
     if (request.name === undefined) {
-      data = request.method + " " + request.path + " " + request.protocol.replace("HTTPS", "HTTP") + "\r\n";
+      data =
+        request.method +
+        " " +
+        request.path +
+        " " +
+        request.protocol.replace("HTTPS", "HTTP") +
+        "\r\n";
       data += "host: " + request.headers["host"] + "\r\n";
       headerKeys.map((item) => {
         if (item !== "host") {
@@ -63,10 +69,16 @@ export class RequestInfo extends Component {
                 <tr>
                   <td className="req-table-a">Request Type</td>
                   <td>
-                    <span style={{ position: "static" }} className="count other">
+                    <span
+                      style={{ position: "static" }}
+                      className="count other"
+                    >
                       {request.protocol}
                     </span>
-                    <span style={{ position: "static" }} className={"count " + request.method.toLowerCase()}>
+                    <span
+                      style={{ position: "static" }}
+                      className={"count " + request.method.toLowerCase()}
+                    >
                       {request.method}
                     </span>
                   </td>
@@ -87,13 +99,21 @@ export class RequestInfo extends Component {
                   <tr>
                     <td className="req-table-a">Country</td>
                     <td className="req-table-b">
-                      <span className={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
+                      <span
+                        className={"fi fi-" + request.country.toLowerCase()}
+                      ></span>{" "}
+                      {request.country} (
+                      <a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
                     </td>
                   </tr>
                 )}
                 <tr>
                   <td className="req-table-a">Date</td>
-                  <td className="req-table-b">{this.convertUTCDateToLocalDate(request.date).toLocaleString()}</td>
+                  <td className="req-table-b">
+                    {this.convertUTCDateToLocalDate(
+                      request.date,
+                    ).toLocaleString()}
+                  </td>
                 </tr>
                 <tr>
                   <td className="req-table-a">Path</td>
@@ -150,9 +170,15 @@ export class RequestInfo extends Component {
             <h1>Form Data</h1>
             {request.raw ? (
               <div>
-                <InputText type="text" style={{ width: "100%" }} value={request.raw} />
+                <InputText
+                  type="text"
+                  style={{ width: "100%" }}
+                  value={request.raw}
+                />
                 <br />
-                <pre style={{ maxHeight: "400px", overflowY: "scroll" }}>{Utils.base64DecodeUnicode(request.raw)}</pre>
+                <pre style={{ maxHeight: "400px", overflowY: "scroll" }}>
+                  {Utils.base64DecodeUnicode(request.raw)}
+                </pre>
               </div>
             ) : (
               <p>(empty)</p>
@@ -160,9 +186,15 @@ export class RequestInfo extends Component {
           </div>
           <div className="col-12 raw-req">
             <h1>Raw request</h1>
-            <InputText type="text" style={{ width: "100%" }} value={Utils.base64EncodeUnicode(data)} />
+            <InputText
+              type="text"
+              style={{ width: "100%" }}
+              value={Utils.base64EncodeUnicode(data)}
+            />
             <br />
-            <pre style={{ overflowWrap: "break-word", padding: "10px" }}>{data}</pre>
+            <pre style={{ overflowWrap: "break-word", padding: "10px" }}>
+              {data}
+            </pre>
           </div>
         </div>
       );
@@ -195,13 +227,21 @@ export class RequestInfo extends Component {
                   <tr>
                     <td className="req-table-a">Country</td>
                     <td className="req-table-b">
-                      <span className={"fi fi-" + request.country.toLowerCase()}></span> {request.country} (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
+                      <span
+                        className={"fi fi-" + request.country.toLowerCase()}
+                      ></span>{" "}
+                      {request.country} (
+                      <a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
                     </td>
                   </tr>
                 )}
                 <tr>
                   <td className="req-table-a">Date</td>
-                  <td className="req-table-b">{this.convertUTCDateToLocalDate(request.date).toLocaleString()}</td>
+                  <td className="req-table-b">
+                    {this.convertUTCDateToLocalDate(
+                      request.date,
+                    ).toLocaleString()}
+                  </td>
                 </tr>
                 <tr>
                   <td className="req-table-a">Type</td>
@@ -216,9 +256,15 @@ export class RequestInfo extends Component {
           </div>
           <div className="col-12 raw-req">
             <h1>Raw request</h1>
-            <InputText type="text" style={{ width: "100%" }} value={request.raw} />
+            <InputText
+              type="text"
+              style={{ width: "100%" }}
+              value={request.raw}
+            />
             <br />
-            <pre style={{ overflowWrap: "break-word", padding: "10px" }}>{data}</pre>
+            <pre style={{ overflowWrap: "break-word", padding: "10px" }}>
+              {data}
+            </pre>
           </div>
         </div>
       );

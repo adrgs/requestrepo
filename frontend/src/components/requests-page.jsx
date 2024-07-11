@@ -72,11 +72,11 @@ print("Latest Request:", new_request)`;
                   Python library:
                 </p>
                 <EditorComponent
-                    value={content}
-                    onChange={() => {}}
-                    commands={[]}
-                    language={"python"}
-                  />
+                  value={content}
+                  onChange={() => {}}
+                  commands={[]}
+                  language={"python"}
+                />
               </div>
             </div>
           )}

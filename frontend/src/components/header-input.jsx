@@ -18,7 +18,9 @@ export class HeaderInput extends Component {
     if (this.props.headersData) {
       let results = this.props.headersData
         .filter((header) => {
-          return header.name.toLowerCase().indexOf(event.query.toLowerCase()) >= 0;
+          return (
+            header.name.toLowerCase().indexOf(event.query.toLowerCase()) >= 0
+          );
         })
         .map(function (header) {
           return header.name;
@@ -40,13 +42,28 @@ export class HeaderInput extends Component {
 
   changeEvent(event, header) {
     if (header === true) {
-      this.props.handleHeaderInputChange(this.props.index, event.value, this.state.value, false);
+      this.props.handleHeaderInputChange(
+        this.props.index,
+        event.value,
+        this.state.value,
+        false,
+      );
       this.setState({ header: event.value, filteredHeaders: null });
     } else if (header === false) {
-      this.props.handleHeaderInputChange(this.props.index, this.state.header, event.value, false);
+      this.props.handleHeaderInputChange(
+        this.props.index,
+        this.state.header,
+        event.value,
+        false,
+      );
       this.setState({ value: event.value });
     } else if (header === "delete") {
-      this.props.handleHeaderInputChange(this.props.index, this.state.header, this.state.value, true);
+      this.props.handleHeaderInputChange(
+        this.props.index,
+        this.state.header,
+        this.state.value,
+        true,
+      );
     }
   }
 
@@ -73,10 +90,20 @@ export class HeaderInput extends Component {
               />
             </div>
             <div className="col-5">
-              <AutoComplete width={"100%"} minLength={1} placeholder="Value" value={this.state.value} onChange={(event) => this.changeEvent(event, false)} />
+              <AutoComplete
+                width={"100%"}
+                minLength={1}
+                placeholder="Value"
+                value={this.state.value}
+                onChange={(event) => this.changeEvent(event, false)}
+              />
             </div>
             <div className="col-2">
-              <Button icon="pi pi-times" className="p-button-danger p-button-rounded p-button-text p-button-icon" onClick={(event) => this.changeEvent(event, "delete")} />
+              <Button
+                icon="pi pi-times"
+                className="p-button-danger p-button-rounded p-button-text p-button-icon"
+                onClick={(event) => this.changeEvent(event, "delete")}
+              />
             </div>
           </div>
         </div>

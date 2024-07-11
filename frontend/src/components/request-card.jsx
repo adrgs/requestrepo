@@ -23,17 +23,32 @@ export class RequestCard extends Component {
 
   render() {
     let annotation = null;
-    if (this.props.new === true) annotation = <span className="count delete">NEW!</span>;
+    if (this.props.new === true)
+      annotation = <span className="count delete">NEW!</span>;
     return (
-      <div className={"card request summary " + (this.props.active ? "active " : "") + (this.props.visited ? "visited " : "")} onClick={this.click}>
+      <div
+        className={
+          "card request summary " +
+          (this.props.active ? "active " : "") +
+          (this.props.visited ? "visited " : "")
+        }
+        onClick={this.click}
+      >
         {annotation}
-        <span className={"count " + this.props.method.toLowerCase()}>{this.props.method}</span>
+        <span className={"count " + this.props.method.toLowerCase()}>
+          {this.props.method}
+        </span>
         <span className="title">{this.props.title}</span>
         <span className="count bigx" onClick={this.delete}>
           X
         </span>
         <span className="detail">
-          {this.props.country && <span style={{ marginRight: "5px" }} className={"fi fi-" + this.props.country.toLowerCase()}></span>}
+          {this.props.country && (
+            <span
+              style={{ marginRight: "5px" }}
+              className={"fi fi-" + this.props.country.toLowerCase()}
+            ></span>
+          )}
           {this.props.detail}
           <span style={{ float: "right" }}>{this.props.time}</span>
         </span>

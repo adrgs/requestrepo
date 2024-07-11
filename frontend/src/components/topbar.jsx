@@ -30,20 +30,38 @@ export class AppTopbar extends Component {
       <div className="layout-topbar clearfix">
         <div style={{ float: "left" }}>
           <a href="/#">
-            <object data="/logo.svg" type="image/svg+xml" style={{ height: "30px" }}>requestrepo</object>
+            <object
+              data="/logo.svg"
+              type="image/svg+xml"
+              style={{ height: "30px" }}
+            >
+              requestrepo
+            </object>
           </a>
         </div>
         <div className="layout-topbar-icons" style={{ maxWidth: "23%" }}>
-          <span style={{ marginTop: "8px", width: "100%" }} className="layout-topbar-search">
-            <InputText style={{ width: "100%" }} type="text" placeholder="Search" value={this.state.searchValue} onChange={this.handleSearchValueChange} />
+          <span
+            style={{ marginTop: "8px", width: "100%" }}
+            className="layout-topbar-search"
+          >
+            <InputText
+              style={{ width: "100%" }}
+              type="text"
+              placeholder="Search"
+              value={this.state.searchValue}
+              onChange={this.handleSearchValueChange}
+            />
             <span className="layout-topbar-search-icon pi pi-search" />
           </span>
         </div>
         <div style={{ float: "right", marginLeft: "1rem" }}>
-        <Button
-            icon={"pi pi-" + (document.body.classList.contains("dark") ?  "sun" : "moon")}
+          <Button
+            icon={
+              "pi pi-" +
+              (document.body.classList.contains("dark") ? "sun" : "moon")
+            }
             className="p-button-text p-button-secondary"
-            style={{"padding": "5px 10px 5px 10px", "marginRight": "20px"}}
+            style={{ padding: "5px 10px 5px 10px", marginRight: "20px" }}
             onClick={this.toggleTheme}
           />
         </div>
