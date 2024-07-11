@@ -36,19 +36,24 @@ The csv file must be placed in `ip2country/vendor/dbip-country-lite.csv.gz`
 
 ## Development
 
-For development, it is recommended to start each service individually for the best developer experience
+For development, it is recommended to use the Makefile to start the services for the best developer experience.
+
+### Starting the Services
 
 ```sh
-# start the redis instance
-docker run -d --name my-redis -p 6379:6379 redis
+# Start the backend service
+make start-backend
 
-# start the backend service
-cd backend; uvicorn app:app --port 21337 --no-server-header
+# Start the frontend service
+make start-frontend
+```
 
-# start the frontend service
-cd frontend; npm run start
+### Starting the DNS Server
 
-# start the dns server
+The DNS server needs to be started manually:
+
+```sh
+# Start the DNS server
 cd dns; python ns.py
 ```
 

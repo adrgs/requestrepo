@@ -16,10 +16,6 @@ FORMAT_JS_CMD := prettier --write --log-level silent
 REDIS_CONTAINER_NAME := my-redis
 REDIS_PORT := 6379
 
-# Default target
-.PHONY: run
-run: start-frontend start-backend
-
 # Start the backend server
 .PHONY: start-backend
 start-backend: start-redis
