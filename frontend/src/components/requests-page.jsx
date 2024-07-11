@@ -35,7 +35,7 @@ print("Latest Request:", new_request)`;
                 <br />
                 <br />
                 <code>
-                  curl http://{this.props.user.domain}/
+                  curl http://{this.props.user.domain}/r/
                   {this.props.user.subdomain}/
                 </code>
                 <br />

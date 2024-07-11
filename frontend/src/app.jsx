@@ -308,18 +308,18 @@ const App = () => {
 
   // Use effect to handle side effects after deleteAllRequests
   useEffect(() => {
-      if (state.deleteFlag) {
-        const genRanHex = (size) =>
-          [...Array(size)]
-            .map(() => Math.floor(Math.random() * 16).toString(16))
-            .join("");
-  
-        localStorage.setItem("visited", "{}");
-        localStorage.setItem("deleteAll", genRanHex(16));
-  
-        updateTitle();
-      }
-    }, [state.deleteFlag]);
+    if (state.deleteFlag) {
+      const genRanHex = (size) =>
+        [...Array(size)]
+          .map(() => Math.floor(Math.random() * 16).toString(16))
+          .join("");
+
+      localStorage.setItem("visited", "{}");
+      localStorage.setItem("deleteAll", genRanHex(16));
+
+      updateTitle();
+    }
+  }, [state.deleteFlag]);
 
   const deleteAllRequests = () => {
     setState((prevState) => ({
@@ -331,7 +331,7 @@ const App = () => {
         requests: {},
         visited: {},
       },
-      deleteFlag: !prevState.deleteFlag // toggle flag to trigger useEffect
+      deleteFlag: !prevState.deleteFlag, // toggle flag to trigger useEffect
     }));
   };
 

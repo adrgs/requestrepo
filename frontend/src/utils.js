@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export class Utils {
-  static siteUrl = "requestrepo.com";
+  static siteUrl = import.meta.env.DEV ? "localhost:21337" : (import.meta.env.VITE_DOMAIN || "requestrepo.com");
   static apiUrl = "";
   static requestsEndpoint = "/api/get_requests";
   static subdomainEndpoint = "/api/get_token";

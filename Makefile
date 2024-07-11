@@ -8,7 +8,7 @@ LINT_PATHS := $(FRONTEND_DIR) $(BACKEND_DIR)
 
 # Commands
 FRONTEND_START_CMD := npm run dev
-BACKEND_START_CMD := REDIS_HOST=localhost uvicorn app:app --port 21337 --no-server-header --reload
+BACKEND_START_CMD := uvicorn app:app --port 21337 --no-server-header --reload
 FRONTEND_LINT_CMD := npm run lint
 PYTHON_LINT_CMD := ruff check
 FORMAT_PYTHON := ruff format
@@ -23,6 +23,7 @@ run: start-frontend start-backend
 # Start the backend server
 .PHONY: start-backend
 start-backend: start-redis
+	if [ ! -f .env ]; then cp .env.example .env; fi
 	cd $(BACKEND_DIR) && $(BACKEND_START_CMD)
 
 # Start the Redis container

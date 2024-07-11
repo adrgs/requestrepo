@@ -19,7 +19,6 @@ def verify_jwt(
             isinstance(subdomain, str)
             and len(subdomain) == length
             and set(subdomain).issubset(alphabet_set)
-            and subdomain not in config.reserved_keywords
         ):
             return subdomain
     except Exception:
@@ -44,16 +43,14 @@ def get_subdomain_from_path(
 
     path = path.lower()
 
-    while path.startswith("/"):
-        path = path[1:]
+    path = path.lstrip("/")
+    if not path.startswith("r/"):
+        return None
+    path = path[2:].lstrip("/")
 
     subdomain = path[:length]
 
-    if (
-        len(subdomain) != length
-        or set(subdomain) - alphabet_set != set()
-        or subdomain in config.reserved_keywords
-    ):
+    if len(subdomain) != length or set(subdomain) - alphabet_set != set():
         return None
 
     return subdomain
