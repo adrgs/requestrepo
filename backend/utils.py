@@ -68,6 +68,9 @@ def get_subdomain_from_hostname(
     host = host.lower()
 
     r_index = host.rfind(domain)
+    if r_index < length + 1:
+        return None
+
     subdomain = host[r_index - 1 - length : r_index - 1]
 
     if (

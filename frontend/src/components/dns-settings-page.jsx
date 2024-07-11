@@ -88,11 +88,11 @@ export const DnsSettingsPage = ({
         element.type = ["A", "AAAA", "CNAME", "TXT"].indexOf(element.type);
       }
       if (
-        element.domain.lastIndexOf(user.subdomain + "." + Utils.siteUrl) >= 0
+        element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) >= 0
       ) {
         element.domain = element.domain.substr(
           0,
-          element.domain.lastIndexOf(user.subdomain + "." + Utils.siteUrl) - 1,
+          element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) - 1,
         );
       }
     } catch {
@@ -139,7 +139,7 @@ export const DnsSettingsPage = ({
         <div className="col-12">
           <Button
             label="Add record"
-            onClick={add}
+            onClick={() => add()}
             icon="pi pi-plus"
             className="p-button-text"
             style={{ float: "right" }}

@@ -1,22 +1,20 @@
-FROM python:3.10
+# Stage 1: Build frontend
+FROM node:20 AS frontend-build
 
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    npm
-RUN npm install npm@9.2.0 -g && \
-    npm install n -g && \
-    n latest
-
+# Set environment variable for Vite
 ARG DOMAIN
-ENV DOMAIN=${DOMAIN}
+ENV VITE_DOMAIN=${DOMAIN}
 
-COPY ./frontend /tmp/frontend
-WORKDIR /tmp/frontend
+# Copy frontend source code
+COPY ./frontend /frontend
 
-RUN find . -type f -exec sed -i "s/requestrepo\.com/${DOMAIN}/g" {} +
+WORKDIR /frontend
 
-RUN npm install --force
+# Install dependencies and build the frontend
+RUN npm install
 RUN npm run build
+
+FROM python:3.10
 
 COPY ./backend/requirements.txt /app/requirements.txt
 
@@ -25,8 +23,8 @@ RUN pip install -r requirements.txt
 
 COPY ./backend /app
 COPY ./ip2country /app/ip2country
-RUN cp -r /tmp/frontend/build/* /app/public/
-RUN rm -rf /tmp/frontend
+# Copy built frontend assets from the first stage
+COPY --from=frontend-build /frontend/dist /app/public
 
 RUN chmod 777 /app/pages
 

@@ -102,7 +102,7 @@ export class RecordInput extends Component {
               if (e.target.value.length < 64) this.changeEvent(e, "domain");
             }}
           />
-          .{this.props.subdomain}.{Utils.siteUrl}
+          .{this.props.subdomain}.{Utils.domain}
         </div>
         <div className="col">
           <label>Value: </label>

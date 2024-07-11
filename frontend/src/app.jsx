@@ -105,6 +105,7 @@ const App = () => {
       } else if (cmd === "request") {
         const request = JSON.parse(data["data"]);
         const key = request["_id"];
+        request["new"] = true;
         newUser.requests[key] = request;
         if (request["type"] === "http") {
           newUser.httpRequests.push(request);
