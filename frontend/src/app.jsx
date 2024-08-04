@@ -99,7 +99,11 @@ const App = () => {
   const handleWebSocketData = (cmd, data) => {
     setState((prevState) => {
       const newUser = { ...prevState.user };
-      if (cmd === "requests") {
+      if (cmd === "invalid_token") {
+        localStorage.removeItem("token");
+        window.location.reload();
+      }
+      else if (cmd === "requests") {
         const requests = data["data"].map(JSON.parse);
         requests.forEach((request) => {
           const key = request["_id"];

@@ -19,7 +19,11 @@ export const DnsSettingsPage = ({
         setDnsRecords(res);
         setHasFetched(true); // Update the state to indicate fetching is complete
       } catch (error) {
-        toast.error("Failed to fetch DNS records", {
+        let msg = "Failed to fetch DNS records";
+        if (error.response.status === 403) {
+          msg = "Your session token is invalid. Please request a new URL";
+        }
+        toast.error(msg, {
           position: "bottom-center",
           autoClose: 4000,
           hideProgressBar: false,

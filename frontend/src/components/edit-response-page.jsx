@@ -48,7 +48,11 @@ export const EditResponsePage = ({
         setStatusCode(res["status_code"]);
         setFetched(true);
       } catch (error) {
-        toast.error("Failed to fetch file", {
+        let msg = "Failed to fetch file";
+        if (error.response.status === 403) {
+          msg = "Your session token is invalid. Please request a new URL";
+        }
+        toast.error(msg, {
           position: "bottom-center",
           autoClose: 4000,
           hideProgressBar: false,
@@ -56,7 +60,7 @@ export const EditResponsePage = ({
           pauseOnHover: true,
           draggable: true,
         });
-      }
+    }
     };
 
     if (!fetched) {

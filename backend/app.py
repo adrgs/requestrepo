@@ -281,6 +281,7 @@ async def websocket_endpoint(
     subdomain = verify_jwt(token)
 
     if subdomain is None:
+        await websocket.send_json({"cmd": "invalid_token"})
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
