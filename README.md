@@ -66,6 +66,14 @@ cd dns; python ns.py
 - [React](https://reactjs.org/) - JavaScript library for building user interfaces
 - [FastAPI](https://fastapi.tiangolo.com/lo/) - FastAPI framework, high performance, easy to learn, fast to code, ready for production
 
+## Hall of Fame
+
+Thank you for reporting a security issue in requestrepo:
+
+- [debsec](https://x.com/deb_security) - LFI via improper path handling
+- [JaGoTu](https://infosec.exchange/@jagotu) - DoS via unrestricted file upload
+- [m0z](https://x.com/LooseSecurity) - LFI via session subdomain
+
 ## Contributing
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests.
