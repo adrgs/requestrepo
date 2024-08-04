@@ -312,8 +312,9 @@ async def catch_all(request: Request) -> Response:
 
     if subdomain is None:
         path = Path(request.url.path)
-        path = Path("public/") / path.relative_to(path.anchor)
-        if not path.exists() or path.is_dir():
+        public = Path("public/").resolve()
+        path = (public / path.relative_to(path.anchor)).resolve()
+        if not path.exists() or path.is_dir() or not path.is_relative_to(public):
             response = FileResponse("public/index.html")
         else:
             response = FileResponse(path)
