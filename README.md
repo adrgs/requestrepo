@@ -61,11 +61,6 @@ cd dns; python ns.py
 
 ![requestrepo demo](https://i.imgur.com/pzn8O18.png)
 
-## Built With
-
-- [React](https://reactjs.org/) - JavaScript library for building user interfaces
-- [FastAPI](https://fastapi.tiangolo.com/lo/) - FastAPI framework, high performance, easy to learn, fast to code, ready for production
-
 ## Hall of Fame
 
 Thank you for reporting a security issue in requestrepo:
