@@ -29,6 +29,7 @@ import ip2country
 from fastapi_utils.tasks import repeat_every
 from renewer import is_certificate_expiring_or_untrusted, get_certificate
 import logging
+import aiofiles
 
 app = FastAPI(server_header=False)
 
@@ -190,8 +191,9 @@ async def get_file(token: str) -> Response:
     if not subdomain_path.exists():
         write_basic_file(subdomain)
 
-    with open("pages/" + subdomain, "r") as json_file:
-        return Response(json_file.read())
+    async with aiofiles.open("pages/" + subdomain, "r") as json_file:
+        data = await json_file.read()
+        return Response(data)
 
 
 @app.post("/api/delete_request")
@@ -243,8 +245,8 @@ async def update_file(file: File, token: str) -> Response:
     if len(file.raw) > config.max_file_size:
         return JSONResponse({"error": "Response too large"})
 
-    with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
-        outfile.write(file.model_dump_json())
+    async with aiofiles.open(Path("pages/") / Path(subdomain).name, "w") as outfile:
+        await outfile.write(file.model_dump_json())
 
     return JSONResponse({"msg": "Updated response"})
 
@@ -328,9 +330,10 @@ async def catch_all(request: Request) -> Response:
 
     data: RequestRepoResponse = {"raw": "", "headers": [], "status_code": 200}
 
-    with open("pages/" + subdomain, "r") as json_file:
+    async with aiofiles.open("pages/" + subdomain, "r") as json_file:
         try:
-            data = json.load(json_file)
+            data = await json_file.read()
+            data = json.loads(data)
         except Exception:
             pass
     try:
