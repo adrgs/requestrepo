@@ -56,6 +56,7 @@ export const EditorComponent = ({ value, onChange, commands, language }) => {
         minimap: { enabled: false },
         automaticLayout: true,
         tabSize: 2,
+        wordWrap: "on",
       }}
       onChange={onChange}
       onMount={handleEditorDidMount}
