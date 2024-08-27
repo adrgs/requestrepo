@@ -1,3 +1,4 @@
+import aiofiles
 import random
 import json
 import jwt
@@ -94,7 +95,7 @@ class RequestRepoResponse(TypedDict):
     status_code: int
 
 
-def write_basic_file(subdomain: str):
+async def write_basic_file(subdomain: str):
     file_data = RequestRepoResponse(
         headers=[
             {"header": "Access-Control-Allow-Origin", "value": "*"},
@@ -107,5 +108,5 @@ def write_basic_file(subdomain: str):
     if config.include_server_domain:
         file_data["headers"].append({"header": "Server", "value": config.server_domain})
 
-    with open(Path("pages/") / Path(subdomain).name, "w") as outfile:
-        json.dump(file_data, outfile)
+    async with aiofiles.open(Path("pages/") / Path(subdomain).name, "w") as outfile:
+        await outfile.write(json.dumps(file_data))

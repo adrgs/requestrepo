@@ -189,7 +189,7 @@ async def get_file(token: str) -> Response:
 
     subdomain_path = Path("pages/") / Path(subdomain).name
     if not subdomain_path.exists():
-        write_basic_file(subdomain)
+        await write_basic_file(subdomain)
 
     async with aiofiles.open("pages/" + subdomain, "r") as json_file:
         data = await json_file.read()
@@ -260,7 +260,7 @@ async def get_token(redis: Redis = Depends(redis_dependency.get_redis)) -> Respo
 
     await redis.set(f"subdomain:{subdomain}", 1)
 
-    write_basic_file(subdomain)
+    await write_basic_file(subdomain)
 
     payload = {
         "iat": datetime.datetime.utcnow(),
@@ -328,7 +328,7 @@ async def catch_all(request: Request) -> Response:
 
     subdomain_path = Path("pages/") / Path(subdomain).name
     if not subdomain_path.exists():
-        write_basic_file(subdomain)
+        await write_basic_file(subdomain)
 
     data: RequestRepoResponse = {"raw": "", "headers": [], "status_code": 200}
 
