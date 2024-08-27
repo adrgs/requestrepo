@@ -30,7 +30,7 @@ export class RequestsPage extends Component {
     // parse url into host:port
     const url = new URL("http://" + this.props.user.domain + "/");
     let port = url.port;
-    if (!port) port = location.protocol === "https:"? 443 : 80;
+    if (!port) port = window.location.protocol === "https:"? 443 : 80;
 
     const content = `from requestrepo import Requestrepo # pip install requestrepo
 
