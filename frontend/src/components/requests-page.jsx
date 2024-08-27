@@ -32,7 +32,7 @@ export class RequestsPage extends Component {
 
     const content = `from requestrepo import Requestrepo # pip install requestrepo
 
-client = Requestrepo(token="${token}", host="${url.hostname}", port=${port}, protocol="${url.port === 443 ? "https" : "http"}")
+client = Requestrepo(token="${token}", host="${url.hostname}", port=${port}, protocol="${port === 443 ? "https" : "http"}")
 
 print(client.subdomain) # ${this.props.user.subdomain}
 print(client.domain) # ${this.props.user.subdomain}.${this.props.user.domain}
