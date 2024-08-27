@@ -28,11 +28,13 @@ export class RequestsPage extends Component {
       : "********";
 
     // parse url into host:port
-    const url = new URL("http://" + this.props.user.url + "/");
+    const url = new URL("http://" + this.props.user.domain + "/");
+    let port = url.port;
+    if (!port) port = location.protocol === "https:"? 443 : 80;
 
     const content = `from requestrepo import Requestrepo # pip install requestrepo
 
-client = Requestrepo(token="${token}", host="${url.hostname}", port=${url.port}, protocol="${url.port === 443 ? "https" : "http"}")
+client = Requestrepo(token="${token}", host="${url.hostname}", port=${port}, protocol="${url.port === 443 ? "https" : "http"}")
 
 print(client.subdomain) # ${this.props.user.subdomain}
 print(client.domain) # ${this.props.user.subdomain}.${this.props.user.domain}
