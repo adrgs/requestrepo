@@ -1,17 +1,38 @@
 import React, { Component } from "react";
 import { RequestInfo } from "./request-info";
 import { EditorComponent } from "./editor";
+import { Button } from "primereact/button";
+import { toast } from "react-toastify";
+import { Utils } from "../utils";
 
 export class RequestsPage extends Component {
   constructor(props) {
     super(props);
-    this.state = { ...props };
+    this.state = {
+      ...props,
+      isEditorFocused: false,
+    };
+  }
+
+  handleEditorFocus = () => {
+    this.setState({ isEditorFocused: true });
+  }
+
+  handleEditorBlur = () => {
+    this.setState({ isEditorFocused: false });
   }
 
   render() {
+    const token = this.state.isEditorFocused
+      ? localStorage.getItem("token")
+      : "********";
+
+    // parse url into host:port
+    const url = new URL("http://" + this.props.user.url + "/");
+
     const content = `from requestrepo import Requestrepo # pip install requestrepo
 
-client = Requestrepo(token="${localStorage.getItem("token")}")
+client = Requestrepo(token="${token}", host="${url.hostname}", port=${url.port}, protocol="${url.port === 443 ? "https" : "http"}")
 
 print(client.subdomain) # ${this.props.user.subdomain}
 print(client.domain) # ${this.props.user.subdomain}.${this.props.user.domain}
@@ -21,6 +42,7 @@ client.update_http(raw=b"hello world")
 # Get the latest request (blocks until one is received)
 new_request = client.get_request()
 print("Latest Request:", new_request)`;
+
     return (
       <div className="card card-w-title card-body">
         {this.props.user !== null &&
@@ -71,11 +93,14 @@ print("Latest Request:", new_request)`;
                   </a>{" "}
                   Python library:
                 </p>
+                <CopyButton text={content.replace("********", localStorage.getItem("token"))} />
                 <EditorComponent
                   value={content}
                   onChange={() => {}}
                   commands={[]}
                   language={"python"}
+                  onFocus={this.handleEditorFocus}
+                  onBlur={this.handleEditorBlur}
                 />
               </div>
             </div>
@@ -94,3 +119,39 @@ print("Latest Request:", new_request)`;
     );
   }
 }
+
+export const CopyButton = ({ text }) => {
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text)
+      .then(() => toast.info("Python code copied to clipboard!", {
+        position: "bottom-center",
+        autoClose: 2500,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        dark: Utils.isDarkTheme(),
+      }))
+      .catch(() => 
+        toast.error("Failed to copy Python code to clipboard!", {
+          position: "bottom-center",
+          autoClose: 2500,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          dark: Utils.isDarkTheme(),
+        })
+      );
+  };
+
+  return (
+    <Button
+      label="Copy"
+      className="p-button-outlined p-button-secondary"
+      style={{padding: "0.5rem", marginBottom: "1rem"}}
+      icon="pi pi-copy"
+      onClick={handleCopy}
+    />
+  );
+};

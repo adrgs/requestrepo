@@ -30,6 +30,7 @@ export const DnsSettingsPage = ({
           closeOnClick: true,
           pauseOnHover: true,
           draggable: true,
+          dark: Utils.isDarkTheme(),
         });
       }
     };
@@ -72,6 +73,7 @@ export const DnsSettingsPage = ({
           closeOnClick: true,
           pauseOnHover: true,
           draggable: true,
+          dark: Utils.isDarkTheme(),
         });
       } else {
         toast.success(res.msg, {
@@ -81,6 +83,7 @@ export const DnsSettingsPage = ({
           closeOnClick: true,
           pauseOnHover: true,
           draggable: true,
+          dark: Utils.isDarkTheme(),
         });
       }
     });

@@ -315,6 +315,7 @@ const App = () => {
       closeOnClick: true,
       pauseOnHover: true,
       draggable: true,
+      dark: Utils.isDarkTheme(),
     });
   };
 

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import { Utils } from "../utils";
 
-export const EditorComponent = ({ value, onChange, commands, language }) => {
+export const EditorComponent = ({ value, onChange, commands, language, onFocus, onBlur }) => {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const [theme, setTheme] = useState(
@@ -23,24 +23,29 @@ export const EditorComponent = ({ value, onChange, commands, language }) => {
     };
   }, []);
 
-  useEffect(() => {
-    if (editorRef.current && monacoRef.current) {
-      const editor = editorRef.current;
-      const monaco = monacoRef.current;
-
-      // Register commands
-      commands.forEach((command) => {
-        editor.addCommand(
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-          command.exec,
-        );
-      });
-    }
-  }, [commands]);
-
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    // Register commands
+    commands.forEach((command) => {
+      editor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+        command.exec,
+      );
+    });
+
+    // Implement focus and blur events
+    if (onFocus) {
+      editor.onDidFocusEditorWidget(() => {
+        onFocus();
+      });
+    }
+
+    if (onBlur) {
+      editor.onDidBlurEditorWidget(() => {
+        onBlur();
+      });
+    }
   };
 
   return (

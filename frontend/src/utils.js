@@ -42,10 +42,9 @@ export class Utils {
 
   static async updateFile(data) {
     let reqUrl = this.apiUrl + this.updateFileEndpoint;
-    let res = await axios.post(reqUrl, data, {
+    return await axios.post(reqUrl, data, {
       params: { token: localStorage.getItem("token") },
     });
-    return res.data;
   }
 
   static getUserURL() {
@@ -198,5 +197,13 @@ export class Utils {
       return "dark";
     }
     return "light";
+  }
+
+  static isDarkTheme() {
+    return this.getTheme() === "dark";
+  }
+
+  static isLightTheme() {
+    return this.getTheme() === "light";
   }
 }

@@ -59,6 +59,7 @@ export const EditResponsePage = ({
           closeOnClick: true,
           pauseOnHover: true,
           draggable: true,
+          dark: Utils.isDarkTheme(),
         });
     }
     };
@@ -104,7 +105,7 @@ export const EditResponsePage = ({
     reader.readAsArrayBuffer(file);
   };
 
-  const saveChanges = useCallback(() => {
+  const saveChanges = () => {
     const filteredHeaders = headers.filter((value) => value.header.length > 0);
     const obj = {
       headers: filteredHeaders,
@@ -121,6 +122,7 @@ export const EditResponsePage = ({
           closeOnClick: true,
           pauseOnHover: true,
           draggable: true,
+          dark: Utils.isDarkTheme(),
         });
       } else {
         toast.success(res.msg, {
@@ -130,6 +132,7 @@ export const EditResponsePage = ({
           closeOnClick: true,
           pauseOnHover: true,
           draggable: true,
+          dark: Utils.isDarkTheme(),
         });
         Utils.getFile().then((res) => {
           setHeaders(res["headers"]);
@@ -142,8 +145,19 @@ export const EditResponsePage = ({
           setFetched(true);
         });
       }
+    }).catch((error) => {
+      console.error("Error saving file:", error);
+      toast.error("Failed to save file.", {
+        position: "bottom-center",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        dark: Utils.isDarkTheme(),
+      });
     });
-  }, [content, headers, statusCode, toast]);
+  }
 
   const addHeader = () => {
     setHeaders([...headers, { header: "", value: "" }]);
