@@ -26,7 +26,7 @@ export class RequestInfo extends Component {
   }
 
   isDesktop() {
-    return window.innerWidth > 1024;
+    return window.innerWidth > 768;
   }
 
   render() {

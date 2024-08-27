@@ -347,7 +347,7 @@ const App = () => {
   const onToggleMenu = (event) => {
     event.preventDefault();
     setState((prevState) => {
-      const isDesktop = window.innerWidth > 1024;
+      const isDesktop = window.innerWidth > 768;
       if (isDesktop) {
         if (prevState.layoutMode === "overlay") {
           return {
