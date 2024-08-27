@@ -5,9 +5,7 @@ import { Utils } from "../utils";
 export const EditorComponent = ({ value, onChange, commands, language, onFocus, onBlur }) => {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
-  const [theme, setTheme] = useState(
-    Utils.getTheme() === "dark" ? "vs-dark" : "vs-light",
-  );
+  const [theme, setTheme] = useState(Utils.getTheme() === "dark" ? "vs-dark" : "vs-light");
 
   useEffect(() => {
     const handleThemeChange = () => {
@@ -23,16 +21,18 @@ export const EditorComponent = ({ value, onChange, commands, language, onFocus, 
     };
   }, []);
 
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    commands.forEach((command) => {
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, command.exec);
+    });
+  }, [commands]);
+
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    // Register commands
-    commands.forEach((command) => {
-      editor.addCommand(
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-        command.exec,
-      );
-    });
 
     // Implement focus and blur events
     if (onFocus) {
