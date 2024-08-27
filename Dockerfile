@@ -25,6 +25,7 @@ COPY ./backend /app
 COPY ./ip2country /app/ip2country
 # Copy built frontend assets from the first stage
 COPY --from=frontend-build /frontend/dist /app/public
+COPY --from=frontend-build /frontend/assets /app/public/assets
 
 RUN chmod 777 /app/pages
 
