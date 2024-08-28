@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
 from contextlib import asynccontextmanager
 from starlette.responses import JSONResponse
+from starlette.requests import ClientDisconnect
 from starlette.routing import Route
 from starlette import status
 from utils import (
@@ -373,10 +374,13 @@ async def log_request(request: Request, subdomain: str) -> None:
     headers = dict(request.headers)
 
     body = b""
-    async for chunk in request.stream():
-        body += chunk
-        if len(body) > config.max_request_size:
-            break
+    try:
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > config.max_request_size:
+                break
+    except ClientDisconnect:
+        pass
 
     request_log: HttpRequestLog = HttpRequestLog(
         _id=str(uuid.uuid4()),
