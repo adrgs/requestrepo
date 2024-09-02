@@ -1,9 +1,8 @@
 import axios from "axios";
+import { Base64 } from "js-base64";
 
 export class Utils {
-  static siteUrl = import.meta.env.DEV
-    ? "localhost:21337"
-    : import.meta.env.VITE_DOMAIN || "requestrepo.com";
+  static siteUrl = import.meta.env.DEV ? "localhost:21337" : import.meta.env.VITE_DOMAIN || "requestrepo.com";
   static domain = this.siteUrl.split(":")[0];
   static apiUrl = "";
   static requestsEndpoint = "/api/get_requests";
@@ -59,7 +58,7 @@ export class Utils {
       cookie = cookie.split(".");
       if (cookie.length < 2) return false;
       cookie = cookie[1];
-      let jsonToken = JSON.parse(Utils.base64DecodeUnicode(cookie));
+      let jsonToken = JSON.parse(Utils.base64Decode(cookie));
       if (jsonToken["subdomain"] !== undefined) {
         this.subdomain = jsonToken["subdomain"];
       }
@@ -68,24 +67,18 @@ export class Utils {
   }
   static getRandomSubdomain() {
     let reqUrl = this.apiUrl + this.subdomainEndpoint;
-    return axios
-      .post(reqUrl, null, { withCredentials: true })
-      .then(function (response) {
-        let theme = localStorage.getItem("theme");
-        localStorage.clear();
-        localStorage.setItem("token", response.data.token);
-        if (theme) localStorage.setItem("theme", theme);
-        window.location.reload();
-      });
+    return axios.post(reqUrl, null, { withCredentials: true }).then(function (response) {
+      let theme = localStorage.getItem("theme");
+      localStorage.clear();
+      localStorage.setItem("token", response.data.token);
+      if (theme) localStorage.setItem("theme", theme);
+      window.location.reload();
+    });
   }
 
   static deleteRequest(id) {
     let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
-    return axios.post(
-      reqUrl,
-      { id: id },
-      { params: { token: localStorage.getItem("token") } },
-    );
+    return axios.post(reqUrl, { id: id }, { params: { token: localStorage.getItem("token") } });
   }
 
   static deleteAll() {
@@ -95,79 +88,59 @@ export class Utils {
     });
   }
 
-  static base64EncodeUnicode(str) {
-    // Convert each character to Latin1 or URL-encoded
-    var latin1OrEncodedStr = Array.from(str)
-      .map(function (c) {
-        var code = c.charCodeAt(0);
-        // Latin1 characters are in the range of 0 to 255
-        return code >= 0 && code <= 255 ? c : encodeURIComponent(c);
-      })
-      .join("");
+  static isValidUTF8(input) {
+    try {
+      let buf = new ArrayBuffer(input.length);
+      let bufView = new Uint8Array(buf);
+      for (var i=0, strLen=input.length; i<strLen; i++) {
+        const val = input.charCodeAt(i);
+        if (val > 255) return true;
+        bufView[i] = val;
+      }
 
-    // Base64 encode the modified string
-    return btoa(latin1OrEncodedStr);
+      const decoder = new TextDecoder("utf-8", { fatal: true });
+      decoder.decode(buf);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
-  static arrayBufferToBase64(buffer) {
-    return btoa(this.arrayBufferToString(buffer));
+  static base64Decode(str) {
+    const raw = Base64.atob(str);
+    if (Utils.isValidUTF8(raw)) {
+      return Base64.decode(str);
+    } else {
+      return raw;
+    }
+  }
+
+  static base64Encode(str) {
+    if (Utils.isValidUTF8(str)) {
+      return Base64.encode(str);
+    } else {
+      return Base64.btoa(str);
+    }
   }
 
   static arrayBufferToString(buffer) {
-    var binary = "";
-    var bytes = new Uint8Array(buffer);
-    var len = bytes.byteLength;
-    for (var i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return binary;
-  }
-
-  static base64EncodeRaw(str) {
-    // Base64 encode the string
-    return btoa(str);
-  }
-
-  static base64DecodeRaw(str) {
-    // Base64 encode the string
-    return atob(str);
-  }
-
-  static base64EncodeLatin1(str) {
-    return this.arrayBufferToBase64(new TextEncoder().encode(str));
-  }
-
-  static base64DecodeUnicode(str) {
-    // Decode from base64
-    var binaryString = atob(str);
-
     try {
-      // Convert binary string to a percent-encoded string
-      var percentEncodedStr = binaryString
-        .split("")
-        .map(function (c) {
-          return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-        })
-        .join("");
-
-      // Attempt to decode as UTF-8
-      return decodeURIComponent(percentEncodedStr);
-    } catch (e) {
-      // If UTF-8 decoding fails, return the binary string (Latin1)
-      return binaryString;
+      const decoder = new TextDecoder("utf-8", { fatal: true });
+      return decoder.decode(buffer);
+    } catch {
+      const view = new Uint8Array(buffer);
+      let output = '';
+      for (let i = 0; i < buffer.byteLength; i++) {
+        output += String.fromCharCode(view[i]);
+      }
+      return output;
     }
   }
 
   static initTheme() {
-    if (
-      localStorage.getItem("theme") !== "dark" &&
-      localStorage.getItem("theme") !== "light"
-    ) {
+    if (localStorage.getItem("theme") !== "dark" && localStorage.getItem("theme") !== "light") {
       // get system theme
-      if (
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches
-      ) {
+      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
         localStorage.setItem("theme", "dark");
       } else {
         localStorage.setItem("theme", "light");

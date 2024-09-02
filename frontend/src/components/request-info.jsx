@@ -31,7 +31,7 @@ export class RequestInfo extends Component {
 
   render() {
     let request = this.props.request;
-    let data = Utils.base64DecodeUnicode(request.raw);
+    let data = Utils.base64Decode(request.raw);
 
     let headerKeys;
     if (request.headers) headerKeys = Object.keys(request.headers);
@@ -53,7 +53,7 @@ export class RequestInfo extends Component {
       });
       data += "\r\n";
       if (request.raw) {
-        data += Utils.base64DecodeUnicode(request.raw) + "\r\n";
+        data += Utils.base64Decode(request.raw) + "\r\n";
       }
     }
 
@@ -177,7 +177,7 @@ export class RequestInfo extends Component {
                 />
                 <br />
                 <pre style={{ maxHeight: "400px", overflowY: "scroll" }}>
-                  {Utils.base64DecodeUnicode(request.raw)}
+                  {Utils.base64Decode(request.raw)}
                 </pre>
               </div>
             ) : (
@@ -189,7 +189,7 @@ export class RequestInfo extends Component {
             <InputText
               type="text"
               style={{ width: "100%" }}
-              value={Utils.base64EncodeUnicode(data)}
+              value={Utils.base64Encode(data)}
             />
             <br />
             <pre style={{ overflowWrap: "break-word", padding: "10px" }}>

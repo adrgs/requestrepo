@@ -5,6 +5,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
     "axios": "^1.2.1",
+    "js-base64": "^3.7.7",
     "primeflex": "^3.3.0",
     "primeicons": "^6.0.1",
     "primereact": "^8.7.3",

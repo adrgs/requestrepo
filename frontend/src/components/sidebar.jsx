@@ -146,7 +146,7 @@ export class AppSidebar extends Component {
     for (let property in item) {
       let val = item[property];
       if (property === "raw") {
-        val = Utils.base64DecodeUnicode(item[property])
+        val = Utils.base64Decode(item[property])
           .toString()
           .toLowerCase();
         if (val.indexOf(needle) >= 0) return true;

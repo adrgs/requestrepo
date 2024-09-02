@@ -30,9 +30,10 @@ export const EditResponsePage = ({
     },
   ];
 
-  const handleEditorChange = useCallback((value) => {
+  const handleEditorChange = (value) => {
+    console.log("EDITOR CHANGE");
     setContent(value);
-  }, []);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -41,7 +42,7 @@ export const EditResponsePage = ({
         if (!("headers" in res)) throw new Error("Invalid response");
         setHeaders(res["headers"]);
         try {
-          setContent(Utils.base64DecodeUnicode(res["raw"]));
+          setContent(Utils.base64Decode(res["raw"]));
         } catch {
           console.error("Failed to decode base64 content");
         }
@@ -78,15 +79,6 @@ export const EditResponsePage = ({
     };
 
     fetchHeaders();
-
-    const handleResize = () => {
-      // Handle resize
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
   }, [fetched, toast]);
 
   const handleFileUpload = () => {
@@ -100,7 +92,6 @@ export const EditResponsePage = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       setContent(Utils.arrayBufferToString(e.target.result));
-      saveChanges();
     };
     reader.readAsArrayBuffer(file);
   };
@@ -110,7 +101,7 @@ export const EditResponsePage = ({
     const obj = {
       headers: filteredHeaders,
       status_code: statusCode,
-      raw: Utils.base64EncodeRaw(content) || Utils.base64EncodeLatin1(content),
+      raw: Utils.base64Encode(content),
     };
 
     Utils.updateFile(obj).then((res) => {
@@ -137,7 +128,7 @@ export const EditResponsePage = ({
         Utils.getFile().then((res) => {
           setHeaders(res["headers"]);
           try {
-            setContent(Utils.base64DecodeUnicode(res["raw"]));
+            setContent(Utils.base64Decode(res["raw"]));
           } catch {
             console.error("Failed to decode base64 content");
           }
