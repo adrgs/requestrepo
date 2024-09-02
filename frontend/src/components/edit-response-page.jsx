@@ -31,7 +31,6 @@ export const EditResponsePage = ({
   ];
 
   const handleEditorChange = (value) => {
-    console.log("EDITOR CHANGE");
     setContent(value);
   };
 
