@@ -13,7 +13,7 @@ FRONTEND_LINT_CMD := npm run lint
 PYTHON_LINT_CMD := ruff check
 FORMAT_PYTHON := ruff format
 FORMAT_JS_CMD := prettier --write --log-level silent
-REDIS_CONTAINER_NAME := my-redis
+REDIS_CONTAINER_NAME := redis-requestrepo-dev
 REDIS_PORT := 6379
 
 # Start the backend server
@@ -25,10 +25,14 @@ start-backend: start-redis
 # Start the Redis container
 .PHONY: start-redis
 start-redis:
-	@if [ $$(docker ps -aq -f name=$(REDIS_CONTAINER_NAME)) ]; then \
+	@if [ `docker ps -q -f name=$(REDIS_CONTAINER_NAME)` ]; then \
 		echo "$(REDIS_CONTAINER_NAME) is already running"; \
 	else \
-		docker run -d --name $(REDIS_CONTAINER_NAME) -p $(REDIS_PORT):6379 redis; \
+		if [ `docker ps -aq -f name=$(REDIS_CONTAINER_NAME)` ]; then \
+			docker start $(REDIS_CONTAINER_NAME); \
+		else \
+			docker run -d --name $(REDIS_CONTAINER_NAME) -p $(REDIS_PORT):6379 redis; \
+		fi \
 	fi
 
 # Start the frontend application
