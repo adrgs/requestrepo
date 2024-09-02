@@ -99,7 +99,7 @@ async def write_basic_file(subdomain: str):
     file_data = RequestRepoResponse(
         headers=[
             {"header": "Access-Control-Allow-Origin", "value": "*"},
-            {"header": "Content-Type", "value": "text/html"},
+            {"header": "Content-Type", "value": "text/html; charset=utf-8"},
         ],
         status_code=200,
         raw="",
