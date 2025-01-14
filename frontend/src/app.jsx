@@ -302,13 +302,32 @@ const App = () => {
   };
 
   const copyUrl = () => {
+    const fullUrl = `${window.location.protocol}//${urlArea.current.value}/`;
+    if (!navigator.clipboard) {
+      urlArea.current.select();
+      document.execCommand("copy");
+    } else {
+      navigator.clipboard.writeText(fullUrl);
+    }
+    toast.info("URL copied to clipboard!", {
+      position: "bottom-center",
+      autoClose: 2500,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+      dark: Utils.isDarkTheme(),
+    });
+  };
+
+  const copyDomain = () => {
     if (!navigator.clipboard) {
       urlArea.current.select();
       document.execCommand("copy");
     } else {
       navigator.clipboard.writeText(urlArea.current.value);
     }
-    toast.info("URL copied to clipboard!", {
+    toast.info("Domain copied to clipboard!", {
       position: "bottom-center",
       autoClose: 2500,
       hideProgressBar: false,
@@ -423,6 +442,7 @@ const App = () => {
                     value={state.user.url}
                     style={{ width: "300px", marginRight: "1em" }}
                     ref={urlArea}
+                    onClick={copyDomain}
                   />
                   <Button
                     label="Copy URL"
