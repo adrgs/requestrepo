@@ -1,8 +1,6 @@
-import aiofiles
 import random
 import json
 import jwt
-from pathlib import Path
 from backend.config import config
 from typing import TypedDict
 from redis import asyncio as aioredis
@@ -103,10 +101,10 @@ async def write_basic_file(subdomain: str, redis: aioredis.Redis) -> None:
             {"header": "Content-Type", "value": "text/html; charset=utf-8"},
         ],
         "status_code": 200,
-        "raw": ""
+        "raw": "",
     }
-    
+
     if config.include_server_domain:
         file_data["headers"].append({"header": "Server", "value": config.server_domain})
-        
+
     await redis.set(f"page:{subdomain}", json.dumps(file_data))

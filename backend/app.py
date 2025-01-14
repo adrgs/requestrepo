@@ -19,7 +19,12 @@ from typing import AsyncIterator
 from fastapi.responses import FileResponse, Response
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
-from backend.models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse
+from backend.models import (
+    HttpRequestLog,
+    File,
+    DeleteRequest,
+    DnsRecords,
+)
 import base64
 import json
 import datetime
@@ -29,7 +34,6 @@ import re
 import ip2country
 from fastapi_utils.tasks import repeat_every
 import logging
-import aiofiles
 
 app = FastAPI(server_header=False)
 
@@ -101,7 +105,9 @@ def validation_error(msg: str) -> Response:
 
 @app.post("/api/update_dns")
 async def update_dns(
-    records: DnsRecords, token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+    records: DnsRecords,
+    token: str,
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
 ) -> Response:
     DNS_RECORDS = ["A", "AAAA", "CNAME", "TXT"]
 
@@ -184,7 +190,9 @@ async def get_dns(
 
 
 @app.get("/api/get_file")
-async def get_file(token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)) -> Response:
+async def get_file(
+    token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -199,7 +207,9 @@ async def get_file(token: str, redis: aioredis.Redis = Depends(redis_dependency.
 
 @app.post("/api/delete_request")
 async def delete_request(
-    req: DeleteRequest, token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+    req: DeleteRequest,
+    token: str,
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
 ) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
@@ -238,7 +248,9 @@ async def delete_all(
 
 
 @app.post("/api/update_file")
-async def update_file(file: File, token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)) -> Response:
+async def update_file(
+    file: File, token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -253,7 +265,9 @@ async def update_file(file: File, token: str, redis: aioredis.Redis = Depends(re
 
 
 @app.post("/api/get_token")
-async def get_token(redis: aioredis.Redis = Depends(redis_dependency.get_redis)) -> Response:
+async def get_token(
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
+) -> Response:
     subdomain = get_random_subdomain()
 
     while await redis.exists(f"subdomain:{subdomain}"):
@@ -305,9 +319,8 @@ async def websocket_endpoint(
         pass
     finally:
         # Perform any necessary cleanup
-        if 'pubsub' in locals():
+        if "pubsub" in locals():
             await pubsub.unsubscribe(f"pubsub:{subdomain}")
-
 
 
 async def catch_all(request: Request) -> Response:
@@ -407,7 +420,5 @@ async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -
     await redis.publish(f"pubsub:{subdomain}", data)
     idx = await redis.rpush(f"requests:{subdomain}", data) - 1
     await redis.set(
-        f"request:{subdomain}:{request_log['_id']}", 
-        idx,
-        ex=config.redis_ttl
+        f"request:{subdomain}:{request_log['_id']}", idx, ex=config.redis_ttl
     )

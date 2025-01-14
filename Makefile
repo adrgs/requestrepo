@@ -8,10 +8,10 @@ LINT_PATHS := $(FRONTEND_DIR) $(BACKEND_DIR)
 
 # Commands
 FRONTEND_START_CMD := npm run dev
-BACKEND_START_CMD := uvicorn app:app --port 21337 --no-server-header --reload
+BACKEND_START_CMD := poetry run uvicorn app:app --port 21337 --no-server-header --reload
 FRONTEND_LINT_CMD := npm run lint
-PYTHON_LINT_CMD := ruff check
-FORMAT_PYTHON := ruff format
+PYTHON_LINT_CMD := poetry run ruff check
+FORMAT_PYTHON := poetry run ruff format
 FORMAT_JS_CMD := prettier --write --log-level silent
 REDIS_CONTAINER_NAME := redis-requestrepo-dev
 REDIS_PORT := 6379

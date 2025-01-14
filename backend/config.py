@@ -16,7 +16,9 @@ class Config:
     jwt_secret: str = os.getenv("JWT_SECRET") or "secret"
     max_file_size: int = int(os.environ.get("MAX_FILE_SIZE", 1024 * 1024 * 2))
     max_request_size: int = int(os.environ.get("MAX_REQUEST_SIZE", 1024 * 1024 * 10))
-    redis_ttl: int = int(os.environ.get("REDIS_TTL_DAYS", 7)) * 24 * 60 * 60  # Convert days to seconds
+    redis_ttl: int = (
+        int(os.environ.get("REDIS_TTL_DAYS", 7)) * 24 * 60 * 60
+    )  # Convert days to seconds
 
 
 config = Config()
