@@ -141,7 +141,11 @@ def update_dns_record(domain: str, dtype: str, newval: str) -> None:
     data = json.loads(result)
     dns_entry["_id"] = data["_id"]
 
-  r.set(f"dns:{dtype}:{domain}", json.dumps(dns_entry))
+  r.set(
+    f"dns:{dtype}:{domain}", 
+    json.dumps(dns_entry),
+    ex=config.redis_ttl
+  )
 
 
 def insert_into_db(value: DnsRequestLog) -> None:
@@ -152,7 +156,11 @@ def insert_into_db(value: DnsRequestLog) -> None:
 
   r.publish(f"pubsub:{subdomain}", data)
   idx = r.rpush(f"requests:{subdomain}", data) - 1
-  r.set(f"request:{subdomain}:{value['_id']}", idx)
+  r.set(
+    f"request:{subdomain}:{value['_id']}", 
+    idx,
+    ex=config.redis_ttl
+  )
 
 
 def get_dns_record(domain: str, dtype: str) -> list[str] | None:

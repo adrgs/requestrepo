@@ -160,9 +160,9 @@ async def update_dns(
         values[key].append(new_value)
 
     for key, value in values.items():
-        await redis.set(key, json.dumps(value))
+        await redis.set(key, json.dumps(value), ex=config.redis_ttl)
 
-    await redis.set(f"dns:{subdomain}", json.dumps(final_records))
+    await redis.set(f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl)
 
     return JSONResponse({"msg": "Updated records"})
 
@@ -247,7 +247,7 @@ async def update_file(file: File, token: str, redis: aioredis.Redis = Depends(re
         return JSONResponse({"error": "Response too large"})
 
     # Store file data in Redis instead of filesystem
-    await redis.set(f"page:{subdomain}", file.model_dump_json())
+    await redis.set(f"page:{subdomain}", file.model_dump_json(), ex=config.redis_ttl)
 
     return JSONResponse({"msg": "Updated response"})
 
@@ -259,7 +259,7 @@ async def get_token(redis: aioredis.Redis = Depends(redis_dependency.get_redis))
     while await redis.exists(f"subdomain:{subdomain}"):
         subdomain = get_random_subdomain()
 
-    await redis.set(f"subdomain:{subdomain}", 1)
+    await redis.set(f"subdomain:{subdomain}", 1, ex=config.redis_ttl)
 
     await write_basic_file(subdomain, redis)
 
@@ -406,4 +406,8 @@ async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -
 
     await redis.publish(f"pubsub:{subdomain}", data)
     idx = await redis.rpush(f"requests:{subdomain}", data) - 1
-    await redis.set(f"request:{subdomain}:{request_log['_id']}", idx)
+    await redis.set(
+        f"request:{subdomain}:{request_log['_id']}", 
+        idx,
+        ex=config.redis_ttl
+    )

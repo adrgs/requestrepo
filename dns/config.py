@@ -9,6 +9,7 @@ class Config:
   subdomain_length: int = int(os.environ.get("SUBDOMAIN_LENGTH", 8))
   subdomain_alphabet: str = os.environ.get("SUBDOMAIN_ALPHABET", "0123456789abcdefghijklmnopqrstuvwxyz")
   subdomain_alphabet_set: set = set(subdomain_alphabet)
+  redis_ttl: int = int(os.environ.get("REDIS_TTL_DAYS", 7)) * 24 * 60 * 60  # Convert days to seconds
 
 
 config = Config()
