@@ -7,10 +7,10 @@ import threading
 from dnslib import DNSRecord, QTYPE
 from dnslib import A, AAAA, CNAME, TXT
 from dnslib.server import DNSServer
-from config import config
-from utils import get_subdomain
+from dns.config import config
+from dns.utils import get_subdomain
 from typing import Any
-from models import DnsRequestLog, DnsEntry, Record
+from dns.models import DnsRequestLog, DnsEntry, Record
 import json
 import redis
 import uuid
@@ -168,14 +168,13 @@ def get_dns_record(domain: str, dtype: str) -> list[str] | None:
   return None
 
 
-resolver = Resolver(config.server_ip, config.server_domain)
-servers = [
-  DNSServer(resolver, port=53, address="0.0.0.0", tcp=True),
-  DNSServer(resolver, port=53, address="0.0.0.0", tcp=False),
-]
-
 if __name__ == "__main__":
   print("Starting DNS server...")
+  resolver = Resolver(config.server_ip, config.server_domain)
+  servers = [
+    DNSServer(resolver, port=53, address="0.0.0.0", tcp=True),
+    DNSServer(resolver, port=53, address="0.0.0.0", tcp=False),
+  ]
   stop_event = threading.Event()
 
   for s in servers:

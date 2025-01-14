@@ -3,8 +3,9 @@ import random
 import json
 import jwt
 from pathlib import Path
-from config import config
+from backend.config import config
 from typing import TypedDict
+from redis import asyncio as aioredis
 
 
 def verify_jwt(
@@ -95,18 +96,17 @@ class RequestRepoResponse(TypedDict):
     status_code: int
 
 
-async def write_basic_file(subdomain: str):
-    file_data = RequestRepoResponse(
-        headers=[
+async def write_basic_file(subdomain: str, redis: aioredis.Redis) -> None:
+    file_data = {
+        "headers": [
             {"header": "Access-Control-Allow-Origin", "value": "*"},
             {"header": "Content-Type", "value": "text/html; charset=utf-8"},
         ],
-        status_code=200,
-        raw="",
-    )
-
+        "status_code": 200,
+        "raw": ""
+    }
+    
     if config.include_server_domain:
         file_data["headers"].append({"header": "Server", "value": config.server_domain})
-
-    async with aiofiles.open(Path("pages/") / Path(subdomain).name, "w") as outfile:
-        await outfile.write(json.dumps(file_data))
+        
+    await redis.set(f"page:{subdomain}", json.dumps(file_data))

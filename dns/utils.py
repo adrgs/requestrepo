@@ -1,4 +1,4 @@
-from config import config
+from dns.config import config
 
 
 def get_subdomain(domain: str) -> str | None:

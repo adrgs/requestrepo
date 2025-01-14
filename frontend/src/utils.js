@@ -2,7 +2,7 @@ import axios from "axios";
 import { Base64 } from "js-base64";
 
 export class Utils {
-  static siteUrl = import.meta.env.DEV ? "localhost:21337" : import.meta.env.VITE_DOMAIN || "requestrepo.com";
+  static siteUrl = import.meta.env.DEV ? "localhost:21337" : (import.meta.env.VITE_DOMAIN || "requestrepo.com");
   static domain = this.siteUrl.split(":")[0];
   static apiUrl = "";
   static requestsEndpoint = "/api/get_requests";
