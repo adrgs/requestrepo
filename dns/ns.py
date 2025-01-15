@@ -7,10 +7,10 @@ import threading
 from dnslib import DNSRecord, QTYPE
 from dnslib import A, AAAA, CNAME, TXT
 from dnslib.server import DNSServer
-from dns.config import config
-from dns.utils import get_subdomain
+from config import config
+from utils import get_subdomain
 from typing import Any
-from dns.models import DnsRequestLog, DnsEntry, Record
+from models import DnsRequestLog, DnsEntry, Record
 import json
 import redis
 import uuid
