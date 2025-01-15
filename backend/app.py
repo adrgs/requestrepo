@@ -529,6 +529,7 @@ async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -
 
     await redis.publish(f"pubsub:{subdomain}", data)
     idx = await redis.rpush(f"requests:{subdomain}", data) - 1
+    await redis.expire(f"requests:{subdomain}", config.redis_ttl)
     await redis.set(
         f"request:{subdomain}:{request_log['_id']}", idx, ex=config.redis_ttl
     )
