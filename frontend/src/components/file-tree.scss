@@ -191,6 +191,10 @@
       background: var(--surface-900);
       border-color: var(--surface-700);
 
+      .p-menuitem-active > .p-menuitem-link {
+        background: var(--surface-700);
+      }
+
       .p-menuitem {
         .p-menuitem-link {
           &:hover:not(.p-error) {
