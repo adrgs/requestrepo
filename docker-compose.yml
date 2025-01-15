@@ -24,7 +24,6 @@ services:
     depends_on:
       - redisdb
     volumes:
-      - pages_data:/app/pages
       - backend_cert:/app/cert
   dns:
     build:
@@ -43,5 +42,4 @@ services:
       - redisdb
 volumes:
   redis_data:
-  pages_data:
   backend_cert:

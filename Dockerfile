@@ -27,8 +27,6 @@ COPY ./ip2country /app/ip2country
 COPY --from=frontend-build /frontend/dist /app/public
 COPY --from=frontend-build /frontend/assets /app/public/assets
 
-RUN chmod 777 /app/pages
-
 COPY start.sh /app/start.sh
 RUN chmod 755 /app/start.sh
 

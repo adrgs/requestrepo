@@ -11,7 +11,7 @@ from utils import (
     get_subdomain_from_path,
     verify_jwt,
 )
-from aioredis import Redis, ConnectionPool
+from redis import asyncio as aioredis
 from collections import defaultdict
 from config import config
 from pathlib import Path
@@ -19,7 +19,14 @@ from typing import AsyncIterator
 from fastapi.responses import FileResponse, Response
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
-from models import HttpRequestLog, File, DeleteRequest, DnsRecords, RequestRepoResponse
+from models import (
+    HttpRequestLog,
+    File,
+    DeleteRequest,
+    DnsRecords,
+    FileTreeItem,
+    FileTree,
+)
 import base64
 import json
 import datetime
@@ -28,24 +35,24 @@ import jwt
 import re
 import ip2country
 from fastapi_utils.tasks import repeat_every
-from renewer import is_certificate_expiring_or_untrusted, get_certificate
 import logging
-import aiofiles
+from typing import List, Dict, Union, Any
+from pydantic import BaseModel
 
 app = FastAPI(server_header=False)
 
 
 class RedisDependency:
     def __init__(self):
-        self.pool = ConnectionPool.from_url(
+        self.pool = aioredis.ConnectionPool.from_url(
             f"redis://{config.redis_host}",
             encoding="utf-8",
             decode_responses=True,
             max_connections=1024 * 1024,
         )
 
-    async def get_redis(self) -> Redis:
-        return Redis(connection_pool=self.pool)
+    async def get_redis(self) -> aioredis.Redis:
+        return aioredis.Redis(connection_pool=self.pool)
 
 
 redis_dependency = RedisDependency()
@@ -61,11 +68,13 @@ async def renew_certificate() -> None:
 
     logger.info("Acquired lock for renewer")
     try:
+        """
         if not is_certificate_expiring_or_untrusted(
             "/app/cert/fullchain.pem", config.server_domain
         ):
             logger.info("Certificate is valid")
             return
+        """
 
         logger.info("Renewing certificate")
 
@@ -74,7 +83,7 @@ async def renew_certificate() -> None:
             await redis.set(key, json.dumps(tokens))
             logger.info(f"Updated DNS for {domain} with tokens {tokens}")
 
-        await get_certificate(config.server_domain, "/app/cert/", update_dns)
+        # await get_certificate(config.server_domain, "/app/cert/", update_dns)
     except Exception as e:
         logger.error(f"Error in renewer: {e}")
     finally:
@@ -100,7 +109,9 @@ def validation_error(msg: str) -> Response:
 
 @app.post("/api/update_dns")
 async def update_dns(
-    records: DnsRecords, token: str, redis: Redis = Depends(redis_dependency.get_redis)
+    records: DnsRecords,
+    token: str,
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
 ) -> Response:
     DNS_RECORDS = ["A", "AAAA", "CNAME", "TXT"]
 
@@ -159,16 +170,16 @@ async def update_dns(
         values[key].append(new_value)
 
     for key, value in values.items():
-        await redis.set(key, json.dumps(value))
+        await redis.set(key, json.dumps(value), ex=config.redis_ttl)
 
-    await redis.set(f"dns:{subdomain}", json.dumps(final_records))
+    await redis.set(f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl)
 
     return JSONResponse({"msg": "Updated records"})
 
 
 @app.get("/api/get_dns")
 async def get_dns(
-    token: str, redis: Redis = Depends(redis_dependency.get_redis)
+    token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
@@ -183,23 +194,28 @@ async def get_dns(
 
 
 @app.get("/api/get_file")
-async def get_file(token: str) -> Response:
+async def get_file(
+    token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
 
-    subdomain_path = Path("pages/") / Path(subdomain).name
-    if not subdomain_path.exists():
-        await write_basic_file(subdomain)
+    # Get the file tree first
+    tree_data = await redis.get(f"files:{subdomain}")
+    if not tree_data:
+        await write_basic_file(subdomain, redis)
+        tree_data = await redis.get(f"files:{subdomain}")
 
-    async with aiofiles.open("pages/" + subdomain, "r") as json_file:
-        data = await json_file.read()
-        return Response(data)
+    tree = json.loads(tree_data)
+    return JSONResponse(tree["index.html"])
 
 
 @app.post("/api/delete_request")
 async def delete_request(
-    req: DeleteRequest, token: str, redis: Redis = Depends(redis_dependency.get_redis)
+    req: DeleteRequest,
+    token: str,
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
 ) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
@@ -218,7 +234,7 @@ async def delete_request(
 
 @app.post("/api/delete_all")
 async def delete_all(
-    token: str, redis: Redis = Depends(redis_dependency.get_redis)
+    token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
@@ -238,7 +254,9 @@ async def delete_all(
 
 
 @app.post("/api/update_file")
-async def update_file(file: File, token: str) -> Response:
+async def update_file(
+    file: File, token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> Response:
     subdomain = verify_jwt(token)
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -246,22 +264,33 @@ async def update_file(file: File, token: str) -> Response:
     if len(file.raw) > config.max_file_size:
         return JSONResponse({"error": "Response too large"})
 
-    async with aiofiles.open(Path("pages/") / Path(subdomain).name, "w") as outfile:
-        await outfile.write(file.model_dump_json())
+    # Get existing tree or create new one
+    tree_data = await redis.get(f"files:{subdomain}")
+    if tree_data:
+        tree = json.loads(tree_data)
+    else:
+        tree = {}
+
+    # Update index.html in the tree
+    tree["index.html"] = file.model_dump()
+
+    await redis.set(f"files:{subdomain}", json.dumps(tree), ex=config.redis_ttl)
 
     return JSONResponse({"msg": "Updated response"})
 
 
 @app.post("/api/get_token")
-async def get_token(redis: Redis = Depends(redis_dependency.get_redis)) -> Response:
+async def get_token(
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
+) -> Response:
     subdomain = get_random_subdomain()
 
     while await redis.exists(f"subdomain:{subdomain}"):
         subdomain = get_random_subdomain()
 
-    await redis.set(f"subdomain:{subdomain}", 1)
+    await redis.set(f"subdomain:{subdomain}", 1, ex=config.redis_ttl)
 
-    await write_basic_file(subdomain)
+    await write_basic_file(subdomain, redis)
 
     payload = {
         "iat": datetime.datetime.utcnow(),
@@ -276,7 +305,7 @@ async def get_token(redis: Redis = Depends(redis_dependency.get_redis)) -> Respo
 
 @app.websocket("/api/ws")
 async def websocket_endpoint(
-    websocket: WebSocket, redis: Redis = Depends(redis_dependency.get_redis)
+    websocket: WebSocket, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> None:
     try:
         await websocket.accept()
@@ -305,13 +334,79 @@ async def websocket_endpoint(
         pass
     finally:
         # Perform any necessary cleanup
-        if 'pubsub' in locals():
+        if "pubsub" in locals():
             await pubsub.unsubscribe(f"pubsub:{subdomain}")
 
 
+@app.get("/api/files")
+async def get_files(
+    token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> Response:
+    subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    # Get file tree from Redis
+    tree_data = await redis.get(f"files:{subdomain}")
+    if not tree_data:
+        await write_basic_file(subdomain, redis)
+        tree_data = await redis.get(f"files:{subdomain}")
+
+    return JSONResponse(json.loads(tree_data))
+
+
+@app.post("/api/files")
+async def update_files(
+    tree: Dict[str, Any],
+    token: str,
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
+) -> Response:
+    subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    # Validate the tree structure
+    def validate_tree(tree_dict, path=""):
+        for key, value in tree_dict.items():
+            current_path = f"{path}{key}"
+            if isinstance(value, dict):
+                if key.endswith("/"):
+                    validate_tree(value, current_path)
+                else:
+                    if not all(k in value for k in ["raw", "headers", "status_code"]):
+                        raise ValueError(f"Invalid file structure for {current_path}")
+                    if type(value["raw"]) != str:
+                        raise ValueError(
+                            f"Invalid raw file structure for {current_path}"
+                        )
+                    if type(value["headers"]) != list:
+                        raise ValueError(
+                            f"Invalid headers file structure for {current_path}"
+                        )
+                    if type(value["status_code"]) != int:
+                        raise ValueError(
+                            f"Invalid status_code file structure for {current_path}"
+                        )
+                    if len(value["raw"]) > config.max_file_size:
+                        raise ValueError(f"File too large: {current_path}")
+
+    try:
+        validate_tree(tree)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)})
+
+    # Ensure index.html exists
+    if "index.html" not in tree:
+        return JSONResponse({"error": "index.html cannot be deleted"})
+
+    # Store the file tree
+    await redis.set(f"files:{subdomain}", json.dumps(tree), ex=config.redis_ttl)
+
+    return JSONResponse({"msg": "Updated files"})
+
 
 async def catch_all(request: Request) -> Response:
-    host = request.headers.get("host") or "requestrepo.com"
+    host = request.headers.get("host") or config.server_domain
     subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
         request.url.path
     )
@@ -327,34 +422,61 @@ async def catch_all(request: Request) -> Response:
         response.headers["Access-Control-Allow-Origin"] = "*"
         return response
 
-    subdomain_path = Path("pages/") / Path(subdomain).name
-    if not subdomain_path.exists():
-        await write_basic_file(subdomain)
+    redis: aioredis.Redis = await redis_dependency.get_redis()
 
-    data: RequestRepoResponse = {"raw": "", "headers": [], "status_code": 200}
+    data = await redis.get(f"files:{subdomain}")
+    if not data:
+        await write_basic_file(subdomain, redis)
+        data = await redis.get(f"files:{subdomain}")
 
-    async with aiofiles.open("pages/" + subdomain, "r") as json_file:
-        try:
-            data = await json_file.read()
-            data = json.loads(data)
-        except Exception:
-            pass
     try:
-        resp = Response(base64.b64decode(data["raw"]))
+        data = json.loads(data)
+    except Exception:
+        data = {"index.html": {"raw": "", "headers": [], "status_code": 200}}
+
+    # Normalize path by removing duplicate slashes and trailing slash
+    path = re.sub("/+", "/", request.url.path.strip("/"))
+
+    # Split path into components
+    path_parts = path.split("/")
+    current_data = data
+    file_data = None
+
+    # Traverse the path
+    for part in path_parts:
+        if not part:
+            continue
+
+        if part in current_data:
+            if isinstance(current_data[part], dict):
+                file_data = current_data[part]
+                break
+
+        if part + "/" in current_data:
+            # It's a directory
+            current_data = current_data[part + "/"]
+            if "index.html" in current_data:
+                file_data = current_data["index.html"]
+
+    if not file_data:
+        file_data = data["index.html"]
+
+    try:
+        resp = Response(base64.b64decode(file_data["raw"]))
     except Exception:
         resp = Response(b"")
 
     headers_obj = {}
 
-    for header in data["headers"]:
+    for header in file_data["headers"]:
         key = header["header"]
         value = header["value"]
         headers_obj[key] = value
 
     resp.headers.update(headers_obj)
-    resp.status_code = data["status_code"]
+    resp.status_code = file_data["status_code"]
 
-    await log_request(request, subdomain)
+    await log_request(request, subdomain, redis)
 
     return resp
 
@@ -363,8 +485,7 @@ catch_all_route = Route("/{path:path}", endpoint=catch_all, methods=[])
 app.router.routes.append(catch_all_route)
 
 
-async def log_request(request: Request, subdomain: str) -> None:
-    redis: Redis = await redis_dependency.get_redis()
+async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -> None:
     ip, port = (
         (request.client.host, request.client.port)
         if request.client
@@ -407,4 +528,6 @@ async def log_request(request: Request, subdomain: str) -> None:
 
     await redis.publish(f"pubsub:{subdomain}", data)
     idx = await redis.rpush(f"requests:{subdomain}", data) - 1
-    await redis.set(f"request:{subdomain}:{request_log['_id']}", idx)
+    await redis.set(
+        f"request:{subdomain}:{request_log['_id']}", idx, ex=config.redis_ttl
+    )

@@ -1,2 +1,2 @@
 dnslib
-redis[hiredis]
+redis

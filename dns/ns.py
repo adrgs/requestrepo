@@ -7,10 +7,10 @@ import threading
 from dnslib import DNSRecord, QTYPE
 from dnslib import A, AAAA, CNAME, TXT
 from dnslib.server import DNSServer
-from config import config
-from utils import get_subdomain
+from dns.config import config
+from dns.utils import get_subdomain
 from typing import Any
-from models import DnsRequestLog, DnsEntry, Record
+from dns.models import DnsRequestLog, DnsEntry, Record
 import json
 import redis
 import uuid
@@ -141,7 +141,11 @@ def update_dns_record(domain: str, dtype: str, newval: str) -> None:
     data = json.loads(result)
     dns_entry["_id"] = data["_id"]
 
-  r.set(f"dns:{dtype}:{domain}", json.dumps(dns_entry))
+  r.set(
+    f"dns:{dtype}:{domain}", 
+    json.dumps(dns_entry),
+    ex=config.redis_ttl
+  )
 
 
 def insert_into_db(value: DnsRequestLog) -> None:
@@ -152,7 +156,11 @@ def insert_into_db(value: DnsRequestLog) -> None:
 
   r.publish(f"pubsub:{subdomain}", data)
   idx = r.rpush(f"requests:{subdomain}", data) - 1
-  r.set(f"request:{subdomain}:{value['_id']}", idx)
+  r.set(
+    f"request:{subdomain}:{value['_id']}", 
+    idx,
+    ex=config.redis_ttl
+  )
 
 
 def get_dns_record(domain: str, dtype: str) -> list[str] | None:
@@ -168,14 +176,13 @@ def get_dns_record(domain: str, dtype: str) -> list[str] | None:
   return None
 
 
-resolver = Resolver(config.server_ip, config.server_domain)
-servers = [
-  DNSServer(resolver, port=53, address="0.0.0.0", tcp=True),
-  DNSServer(resolver, port=53, address="0.0.0.0", tcp=False),
-]
-
 if __name__ == "__main__":
   print("Starting DNS server...")
+  resolver = Resolver(config.server_ip, config.server_domain)
+  servers = [
+    DNSServer(resolver, port=53, address="0.0.0.0", tcp=True),
+    DNSServer(resolver, port=53, address="0.0.0.0", tcp=False),
+  ]
   stop_event = threading.Event()
 
   for s in servers:

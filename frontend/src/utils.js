@@ -2,7 +2,9 @@ import axios from "axios";
 import { Base64 } from "js-base64";
 
 export class Utils {
-  static siteUrl = import.meta.env.DEV ? "localhost:21337" : import.meta.env.VITE_DOMAIN || "requestrepo.com";
+  static siteUrl = import.meta.env.DEV
+    ? "localhost:21337"
+    : import.meta.env.VITE_DOMAIN || "requestrepo.com";
   static domain = this.siteUrl.split(":")[0];
   static apiUrl = "";
   static requestsEndpoint = "/api/get_requests";
@@ -67,18 +69,24 @@ export class Utils {
   }
   static getRandomSubdomain() {
     let reqUrl = this.apiUrl + this.subdomainEndpoint;
-    return axios.post(reqUrl, null, { withCredentials: true }).then(function (response) {
-      let theme = localStorage.getItem("theme");
-      localStorage.clear();
-      localStorage.setItem("token", response.data.token);
-      if (theme) localStorage.setItem("theme", theme);
-      window.location.reload();
-    });
+    return axios
+      .post(reqUrl, null, { withCredentials: true })
+      .then(function (response) {
+        let theme = localStorage.getItem("theme");
+        localStorage.clear();
+        localStorage.setItem("token", response.data.token);
+        if (theme) localStorage.setItem("theme", theme);
+        window.location.reload();
+      });
   }
 
   static deleteRequest(id) {
     let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
-    return axios.post(reqUrl, { id: id }, { params: { token: localStorage.getItem("token") } });
+    return axios.post(
+      reqUrl,
+      { id: id },
+      { params: { token: localStorage.getItem("token") } },
+    );
   }
 
   static deleteAll() {
@@ -92,7 +100,7 @@ export class Utils {
     try {
       let buf = new ArrayBuffer(input.length);
       let bufView = new Uint8Array(buf);
-      for (var i=0, strLen=input.length; i<strLen; i++) {
+      for (var i = 0, strLen = input.length; i < strLen; i++) {
         const val = input.charCodeAt(i);
         if (val > 255) return true;
         bufView[i] = val;
@@ -129,7 +137,7 @@ export class Utils {
       return decoder.decode(buffer);
     } catch {
       const view = new Uint8Array(buffer);
-      let output = '';
+      let output = "";
       for (let i = 0; i < buffer.byteLength; i++) {
         output += String.fromCharCode(view[i]);
       }
@@ -138,9 +146,15 @@ export class Utils {
   }
 
   static initTheme() {
-    if (localStorage.getItem("theme") !== "dark" && localStorage.getItem("theme") !== "light") {
+    if (
+      localStorage.getItem("theme") !== "dark" &&
+      localStorage.getItem("theme") !== "light"
+    ) {
       // get system theme
-      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      if (
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches
+      ) {
         localStorage.setItem("theme", "dark");
       } else {
         localStorage.setItem("theme", "light");
@@ -179,5 +193,28 @@ export class Utils {
 
   static isLightTheme() {
     return this.getTheme() === "light";
+  }
+
+  static async getFiles() {
+    const response = await fetch(
+      `/api/files?token=${localStorage.getItem("token")}`,
+    );
+    if (!response.ok) throw new Error("Failed to fetch files");
+    return response.json();
+  }
+
+  static async updateFiles(files) {
+    const response = await fetch(
+      `/api/files?token=${localStorage.getItem("token")}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(files),
+      },
+    );
+    if (!response.ok) throw new Error("Failed to update files");
+    return response.json();
   }
 }

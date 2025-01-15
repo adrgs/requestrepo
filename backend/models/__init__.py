@@ -60,3 +60,13 @@ class RequestRepoResponse(TypedDict):
     raw: str
     headers: list[RequestRepoHeader]
     status_code: int
+
+
+class FileTreeItem(BaseModel):
+    path: str
+    content: str = ""
+    is_directory: bool = False
+
+
+class FileTree(BaseModel):
+    items: List[FileTreeItem]

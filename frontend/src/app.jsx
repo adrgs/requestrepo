@@ -17,12 +17,10 @@ import "primeflex/primeflex.css";
 import "react-toastify/dist/ReactToastify.css";
 import "./app.scss";
 
-
 const genRanHex = (size) =>
   [...Array(size)]
     .map(() => Math.floor(Math.random() * 16).toString(16))
     .join("");
-
 
 // Custom hook for WebSocket with reconnection logic
 function useWebSocket(ws_url, onUpdate, onOpen) {
@@ -102,8 +100,7 @@ const App = () => {
       if (cmd === "invalid_token") {
         localStorage.removeItem("token");
         window.location.reload();
-      }
-      else if (cmd === "requests") {
+      } else if (cmd === "requests") {
         const requests = data["data"].map(JSON.parse);
         requests.forEach((request) => {
           const key = request["_id"];
@@ -134,9 +131,14 @@ const App = () => {
   const ws_url = `${protocol}://${document.location.host}/api/ws`;
 
   const onOpen = () => {
-    const newUser = { ...state.user, httpRequests: [], dnsRequests: [], requests: {}};
+    const newUser = {
+      ...state.user,
+      httpRequests: [],
+      dnsRequests: [],
+      requests: {},
+    };
     setState((prevState) => ({ ...prevState, user: newUser }));
-  }
+  };
 
   // Use custom WebSocket hook
   useWebSocket(ws_url, handleMessage, onOpen);
@@ -226,12 +228,10 @@ const App = () => {
 
     localStorage.setItem("visited", JSON.stringify(visited));
 
-    setState(
-      (prevState) => ({
-        ...prevState,
-        user: { ...prevState.user, requests: updatedRequests, visited },
-      })
-    );
+    setState((prevState) => ({
+      ...prevState,
+      user: { ...prevState.user, requests: updatedRequests, visited },
+    }));
   };
 
   const clickRequestAction = (action, id) => {
@@ -302,13 +302,32 @@ const App = () => {
   };
 
   const copyUrl = () => {
+    const fullUrl = `${window.location.protocol}//${urlArea.current.value}/`;
+    if (!navigator.clipboard) {
+      urlArea.current.select();
+      document.execCommand("copy");
+    } else {
+      navigator.clipboard.writeText(fullUrl);
+    }
+    toast.info("URL copied to clipboard!", {
+      position: "bottom-center",
+      autoClose: 2500,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+      dark: Utils.isDarkTheme(),
+    });
+  };
+
+  const copyDomain = () => {
     if (!navigator.clipboard) {
       urlArea.current.select();
       document.execCommand("copy");
     } else {
       navigator.clipboard.writeText(urlArea.current.value);
     }
-    toast.info("URL copied to clipboard!", {
+    toast.info("Domain copied to clipboard!", {
       position: "bottom-center",
       autoClose: 2500,
       hideProgressBar: false,
@@ -423,6 +442,7 @@ const App = () => {
                     value={state.user.url}
                     style={{ width: "300px", marginRight: "1em" }}
                     ref={urlArea}
+                    onClick={copyDomain}
                   />
                   <Button
                     label="Copy URL"
