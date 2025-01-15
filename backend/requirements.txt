@@ -8,4 +8,3 @@ certifi
 cryptography
 fastapi-utils
 typing_inspect
-aiofiles
