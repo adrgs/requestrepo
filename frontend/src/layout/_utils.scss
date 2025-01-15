@@ -275,9 +275,14 @@ pre {
 }
 
 .p-autocomplete .p-autocomplete-input {
-  max-width: 250px;
   width: 100% !important;
 }
+
+.p-autocomplete {
+  display: block!important;
+  width: 100% !important;
+}
+
 
 .fi-zz {
   background-image: url("https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/aq.svg");
