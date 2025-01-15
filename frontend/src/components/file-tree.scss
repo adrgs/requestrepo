@@ -233,3 +233,29 @@
   text-underline-offset: 3px;
   text-decoration-color: var(--primary-color);
 }
+
+.inline-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+
+  .edit-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.25rem;
+
+    .p-button.p-button-sm {
+      padding: 0.25rem;
+
+      .p-button-icon {
+        font-size: 0.875rem;
+      }
+    }
+  }
+
+  .p-inputtext {
+    flex: 1;
+    width: 100%;
+  }
+}

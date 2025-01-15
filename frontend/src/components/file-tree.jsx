@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Tree } from "primereact/tree";
 import { ContextMenu } from "primereact/contextmenu";
 import { InputText } from "primereact/inputtext";
+import { Button } from "primereact/button";
 import { Utils } from "../utils";
 import "./file-tree.scss";
 
@@ -142,34 +143,93 @@ export const FileTree = ({
   const getContextMenuItems = (node) => {
     if (!node) {
       // Root level context menu
+      if (editMode === "new-file" || editMode === "new-folder") {
+        return [
+          {
+            template: () => (
+              <div className="inline-edit" onClick={(e) => e.preventDefault()}>
+                <InputText
+                  value={editingText}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setEditingText(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") {
+                      createNewItem(editMode === "new-folder");
+                      setEditMode("");
+                      setEditingNode(null);
+                      setEditingText("");
+                      cm.current?.hide();
+                    }
+                    if (e.key === "Escape") {
+                      setEditMode("");
+                      setEditingNode(null);
+                      setEditingText("");
+                      cm.current?.hide();
+                    }
+                  }}
+                  autoFocus
+                  placeholder={
+                    editMode === "new-folder" ? "folder name" : "file name"
+                  }
+                />
+                <div className="edit-buttons">
+                  <Button
+                    icon="pi pi-check"
+                    className="p-button-text p-button-sm"
+                    onClick={() => {
+                      createNewItem(editMode === "new-folder");
+                      setEditMode("");
+                      setEditingNode(null);
+                      setEditingText("");
+                      cm.current?.hide();
+                    }}
+                  />
+                  <Button
+                    icon="pi pi-times"
+                    className="p-button-text p-button-sm"
+                    onClick={() => {
+                      setEditMode("");
+                      setEditingNode(null);
+                      setEditingText("");
+                      cm.current?.hide();
+                    }}
+                  />
+                </div>
+              </div>
+            ),
+          },
+        ];
+      }
+
       return [
         {
           label: "New File",
           icon: "pi pi-file",
-          template: (item) => (
-            <div className="inline-edit" onClick={(e) => e.preventDefault()}>
-              <InputText
-                value={editingText}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  setEditingText(e.target.value);
-                }}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter") {
-                    createNewItem(false);
-                    cm.current?.hide();
-                  }
-                  if (e.key === "Escape") {
-                    setEditingNode(null);
-                    cm.current?.hide();
-                  }
-                }}
-                autoFocus
-                placeholder="filename (end with / for folder)"
-              />
-            </div>
-          ),
+          command: (e) => {
+            setEditMode("new-file");
+            setEditingText("");
+
+            // Hack: Reshow the context menu after a tiny delay
+            setTimeout(() => {
+              cm.current?.show(e.originalEvent);
+            }, 0);
+          },
+        },
+        {
+          label: "New Folder",
+          icon: "pi pi-folder",
+          command: (e) => {
+            setEditMode("new-folder");
+            setEditingText("");
+
+            // Hack: Reshow the context menu after a tiny delay
+            setTimeout(() => {
+              cm.current?.show(e.originalEvent);
+            }, 0);
+          },
         },
       ];
     }
@@ -181,7 +241,11 @@ export const FileTree = ({
 
     const items = [];
 
-    if (editMode === "rename") {
+    if (
+      editMode === "rename" ||
+      editMode === "new-file" ||
+      editMode === "new-folder"
+    ) {
       items.push({
         template: () => (
           <div className="inline-edit" onClick={(e) => e.preventDefault()}>
@@ -194,7 +258,11 @@ export const FileTree = ({
               onKeyDown={(e) => {
                 e.stopPropagation();
                 if (e.key === "Enter") {
-                  handleRename(editingNode, editingText);
+                  if (editMode === "rename") {
+                    handleRename(editingNode, editingText);
+                  } else {
+                    createNewItem(editMode === "new-folder");
+                  }
                   setEditMode("");
                   setEditingNode(null);
                   setEditingText("");
@@ -208,32 +276,75 @@ export const FileTree = ({
                 }
               }}
               autoFocus
-              placeholder="new name"
+              placeholder={
+                editMode === "rename"
+                  ? "new name"
+                  : editMode === "new-folder"
+                    ? "folder name"
+                    : "file name"
+              }
             />
+            <div className="edit-buttons">
+              <Button
+                icon="pi pi-check"
+                className="p-button-text p-button-sm"
+                onClick={() => {
+                  if (editMode === "rename") {
+                    handleRename(editingNode, editingText);
+                  } else {
+                    createNewItem(editMode === "new-folder");
+                  }
+                  setEditMode("");
+                  setEditingNode(null);
+                  setEditingText("");
+                  cm.current?.hide();
+                }}
+              />
+              <Button
+                icon="pi pi-times"
+                className="p-button-text p-button-sm"
+                onClick={() => {
+                  setEditMode("");
+                  setEditingNode(null);
+                  setEditingText("");
+                  cm.current?.hide();
+                }}
+              />
+            </div>
           </div>
         ),
       });
     } else {
-      // Add "New File" option for folders
+      // Add "New File" and "New Folder" options for folders
       if (node.data.endsWith("/")) {
-        items.push({
-          label: "New File",
-          icon: "pi pi-file",
-          template: (item) => (
-            <div className="inline-edit">
-              <InputText
-                value={editingText}
-                onChange={(e) => setEditingText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") createNewItem(false);
-                  if (e.key === "Escape") setEditingNode(null);
-                }}
-                autoFocus
-                placeholder="filename"
-              />
-            </div>
-          ),
-        });
+        items.push(
+          {
+            label: "New File",
+            icon: "pi pi-file",
+            command: (e) => {
+              setEditMode("new-file");
+              setEditingText("");
+
+              // Hack: Reshow the context menu after a tiny delay
+              setTimeout(() => {
+                cm.current?.show(e.originalEvent);
+              }, 0);
+            },
+          },
+          {
+            label: "New Folder",
+            icon: "pi pi-folder",
+            command: (e) => {
+              setEditMode("new-folder");
+              setEditingText("");
+
+              // Hack: Reshow the context menu after a tiny delay
+              setTimeout(() => {
+                cm.current?.show(e.originalEvent);
+              }, 0);
+            },
+          },
+        );
       }
 
       items.push(
