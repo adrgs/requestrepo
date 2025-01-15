@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
-from backend.app import app, redis_dependency
-from backend.utils import (
+from app import app, redis_dependency
+from utils import (
     get_random_subdomain,
     get_subdomain_from_hostname,
     get_subdomain_from_path,

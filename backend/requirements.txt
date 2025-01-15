@@ -1,6 +1,6 @@
 uvicorn[standard]
 fastapi
-aioredis
+redis
 gunicorn
 PyJWT
 simple_acme_dns

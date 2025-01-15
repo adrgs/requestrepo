@@ -1,7 +1,7 @@
 import random
 import json
 import jwt
-from backend.config import config
+from config import config
 from typing import TypedDict
 from redis import asyncio as aioredis
 

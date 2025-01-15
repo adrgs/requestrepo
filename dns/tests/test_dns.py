@@ -1,11 +1,11 @@
 import pytest
-from dns.utils import get_subdomain
-from dns.ns import Resolver, get_dns_record, insert_into_db, update_dns_record, save_into_db
+from utils import get_subdomain
+from ns import Resolver, get_dns_record, insert_into_db, update_dns_record, save_into_db
 from dnslib import DNSRecord, DNSHeader, DNSQuestion, QTYPE
 from unittest.mock import Mock, patch, MagicMock
 import json
 import redis
-from dns.models import DnsRequestLog, DnsEntry
+from models import DnsRequestLog, DnsEntry
 import base64
 
 # Setup mock Redis

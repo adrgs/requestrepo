@@ -4,7 +4,7 @@ from starlette.responses import JSONResponse
 from starlette.requests import ClientDisconnect
 from starlette.routing import Route
 from starlette import status
-from backend.utils import (
+from utils import (
     get_subdomain_from_hostname,
     write_basic_file,
     get_random_subdomain,
@@ -13,13 +13,13 @@ from backend.utils import (
 )
 from redis import asyncio as aioredis
 from collections import defaultdict
-from backend.config import config
+from config import config
 from pathlib import Path
 from typing import AsyncIterator
 from fastapi.responses import FileResponse, Response
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
-from backend.models import (
+from models import (
     HttpRequestLog,
     File,
     DeleteRequest,
