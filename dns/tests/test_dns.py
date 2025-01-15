@@ -110,7 +110,7 @@ def test_insert_into_db(mock_redis_connection):
     # Verify Redis calls
     mock_redis.publish.assert_called_with("pubsub:abcd1234", json.dumps(test_log))
     mock_redis.rpush.assert_called_with("requests:abcd1234", json.dumps(test_log))
-    mock_redis.set.assert_called_with("request:abcd1234:test-id", 0)  # idx is 1-1=0
+    mock_redis.set.assert_called_with("request:abcd1234:test-id", 0, ex=604800)  # idx is 1-1=0
 
 def test_resolver_a_record(resolver, mock_handler):
     request = DNSRecord(DNSHeader(qr=0, aa=1), q=DNSQuestion("test.localhost", QTYPE.A))

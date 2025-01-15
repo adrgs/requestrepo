@@ -6,6 +6,7 @@ import { Utils } from "../utils";
 import { EditorComponent } from "./editor";
 import { HeaderService } from "../header-service";
 import "react-toastify/dist/ReactToastify.css";
+import { FileTree } from "./file-tree";
 
 export const EditResponsePage = ({
   headers: propHeaders = [],
@@ -20,6 +21,8 @@ export const EditResponsePage = ({
   const [statusCode, setStatusCode] = useState(propStatusCode);
   const [headersData, setHeadersData] = useState([]);
   const fileInput = useRef(null);
+  const [files, setFiles] = useState({ items: [] });
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const commands = [
     {
@@ -32,24 +35,43 @@ export const EditResponsePage = ({
 
   const handleEditorChange = (value) => {
     setContent(value);
+    if (selectedFile) {
+      const updatedFiles = { ...files };
+      let current = updatedFiles;
+      const parts = selectedFile.path.split("/").filter((p) => p);
+
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current[parts[i] + "/"];
+      }
+
+      current[parts[parts.length - 1]] = {
+        ...current[parts[parts.length - 1]],
+        raw: Utils.base64Encode(value),
+      };
+
+      setFiles(updatedFiles);
+    }
   };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await Utils.getFile();
-        if (!("headers" in res)) throw new Error("Invalid response");
-        setHeaders(res["headers"]);
-        try {
-          setContent(Utils.base64Decode(res["raw"]));
-        } catch {
-          console.error("Failed to decode base64 content");
+        const files = await Utils.getFiles();
+        // Load index.html by default
+        if (files["index.html"]) {
+          setHeaders(files["index.html"].headers);
+          setContent(Utils.base64Decode(files["index.html"].raw));
+          setStatusCode(files["index.html"].status_code || 200);
+          setSelectedFile({
+            path: "index.html",
+            ...files["index.html"],
+          });
         }
-        setStatusCode(res["status_code"]);
+        setFiles(files);
         setFetched(true);
       } catch (error) {
-        let msg = "Failed to fetch file";
-        if (error.response.status === 403) {
+        let msg = "Failed to fetch files";
+        if (error.response?.status === 403) {
           msg = "Your session token is invalid. Please request a new URL";
         }
         toast.error(msg, {
@@ -61,7 +83,7 @@ export const EditResponsePage = ({
           draggable: true,
           dark: Utils.isDarkTheme(),
         });
-    }
+      }
     };
 
     if (!fetched) {
@@ -80,6 +102,32 @@ export const EditResponsePage = ({
     fetchHeaders();
   }, [fetched, toast]);
 
+  const handleFileUpdate = async (newFiles) => {
+    try {
+      await Utils.updateFiles(newFiles);
+      setFiles(newFiles);
+      toast.success("Files updated successfully!", {
+        position: "bottom-center",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        dark: Utils.isDarkTheme(),
+      });
+    } catch (error) {
+      toast.error("Failed to update files", {
+        position: "bottom-center",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        dark: Utils.isDarkTheme(),
+      });
+    }
+  };
+
   const handleFileUpload = () => {
     fileInput.current.click();
   };
@@ -95,59 +143,45 @@ export const EditResponsePage = ({
     reader.readAsArrayBuffer(file);
   };
 
-  const saveChanges = () => {
-    const filteredHeaders = headers.filter((value) => value.header.length > 0);
-    const obj = {
-      headers: filteredHeaders,
-      status_code: statusCode,
-      raw: Utils.base64Encode(content),
-    };
+  const handleFileSelect = (file) => {
+    setSelectedFile(file);
+    setContent(Utils.base64Decode(file.raw));
+    setHeaders(file.headers || []);
+    setStatusCode(file.status_code || 200);
+  };
 
-    Utils.updateFile(obj).then((res) => {
-      if (res.error) {
-        toast.error(res.error, {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
-      } else {
-        toast.success(res.msg, {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
-        Utils.getFile().then((res) => {
-          setHeaders(res["headers"]);
-          try {
-            setContent(Utils.base64Decode(res["raw"]));
-          } catch {
-            console.error("Failed to decode base64 content");
-          }
-          setStatusCode(res["status_code"]);
-          setFetched(true);
-        });
+  const saveChanges = () => {
+    if (selectedFile) {
+      const updatedFiles = { ...files };
+      let current = updatedFiles;
+      const parts = selectedFile.path.split("/").filter((p) => p);
+
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current[parts[i] + "/"];
       }
-    }).catch((error) => {
-      console.error("Error saving file:", error);
-      toast.error("Failed to save file.", {
-        position: "bottom-center",
-        autoClose: 4000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        dark: Utils.isDarkTheme(),
-      });
-    });
-  }
+
+      current[parts[parts.length - 1]] = {
+        raw: Utils.base64Encode(content),
+        headers: headers.filter((h) => h.header.length > 0),
+        status_code: Number(statusCode) || 200,
+      };
+
+      handleFileUpdate(updatedFiles)
+        .then(() => {})
+        .catch((error) => {
+          console.error("Error saving file:", error);
+          toast.error("Failed to save file.", {
+            position: "bottom-center",
+            autoClose: 4000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+            dark: Utils.isDarkTheme(),
+          });
+        });
+    }
+  };
 
   const addHeader = () => {
     setHeaders([...headers, { header: "", value: "" }]);
@@ -161,6 +195,57 @@ export const EditResponsePage = ({
       updatedHeaders[index] = { header, value };
     }
     setHeaders(updatedHeaders);
+  };
+
+  const getLanguageFromPath = (path) => {
+    if (!path) return "html";
+    const ext = path.split(".").pop().toLowerCase();
+
+    const languageMap = {
+      // Web
+      html: "html",
+      htm: "html",
+      js: "javascript",
+      jsx: "javascript",
+      ts: "typescript",
+      tsx: "typescript",
+      css: "css",
+      scss: "scss",
+      less: "less",
+      json: "json",
+      xml: "xml",
+      svg: "xml",
+
+      // Programming
+      py: "python",
+      rb: "ruby",
+      php: "php",
+      java: "java",
+      cpp: "cpp",
+      c: "c",
+      cs: "csharp",
+      go: "go",
+      rs: "rust",
+      swift: "swift",
+      kt: "kotlin",
+
+      // Config & Data
+      yml: "yaml",
+      yaml: "yaml",
+      toml: "toml",
+      ini: "ini",
+      md: "markdown",
+      sql: "sql",
+      sh: "shell",
+      bash: "shell",
+
+      // Others
+      txt: "plaintext",
+      log: "plaintext",
+      conf: "plaintext",
+    };
+
+    return languageMap[ext] || "plaintext";
   };
 
   return (
@@ -195,12 +280,27 @@ export const EditResponsePage = ({
               />
             </div>
           </div>
-          <EditorComponent
-            value={content}
-            onChange={handleEditorChange}
-            commands={commands}
-            language={"html"}
-          />
+          <div className="grid">
+            <div className="col-10">
+              <EditorComponent
+                value={content}
+                onChange={handleEditorChange}
+                commands={commands}
+                language={
+                  selectedFile ? getLanguageFromPath(selectedFile.path) : "html"
+                }
+              />
+            </div>
+            <div className="col-2" style={{ height: "416px" }}>
+              <FileTree
+                files={files}
+                selectedFile={selectedFile}
+                onSelect={handleFileSelect}
+                onUpdate={handleFileUpdate}
+                toast={toast}
+              />
+            </div>
+          </div>
           <h1>Status Code</h1>
           <InputText
             value={statusCode}

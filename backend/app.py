@@ -24,6 +24,8 @@ from backend.models import (
     File,
     DeleteRequest,
     DnsRecords,
+    FileTreeItem,
+    FileTree,
 )
 import base64
 import json
@@ -34,6 +36,8 @@ import re
 import ip2country
 from fastapi_utils.tasks import repeat_every
 import logging
+from typing import List, Dict, Union, Any
+from pydantic import BaseModel
 
 app = FastAPI(server_header=False)
 
@@ -197,12 +201,14 @@ async def get_file(
     if subdomain is None:
         raise HTTPException(status_code=403, detail="Invalid token")
 
-    data = await redis.get(f"page:{subdomain}")
-    if not data:
+    # Get the file tree first
+    tree_data = await redis.get(f"files:{subdomain}")
+    if not tree_data:
         await write_basic_file(subdomain, redis)
-        data = await redis.get(f"page:{subdomain}")
+        tree_data = await redis.get(f"files:{subdomain}")
 
-    return Response(data)
+    tree = json.loads(tree_data)
+    return JSONResponse(tree["index.html"])
 
 
 @app.post("/api/delete_request")
@@ -258,8 +264,17 @@ async def update_file(
     if len(file.raw) > config.max_file_size:
         return JSONResponse({"error": "Response too large"})
 
-    # Store file data in Redis instead of filesystem
-    await redis.set(f"page:{subdomain}", file.model_dump_json(), ex=config.redis_ttl)
+    # Get existing tree or create new one
+    tree_data = await redis.get(f"files:{subdomain}")
+    if tree_data:
+        tree = json.loads(tree_data)
+    else:
+        tree = {}
+
+    # Update index.html in the tree
+    tree["index.html"] = file.model_dump()
+
+    await redis.set(f"files:{subdomain}", json.dumps(tree), ex=config.redis_ttl)
 
     return JSONResponse({"msg": "Updated response"})
 
@@ -323,6 +338,73 @@ async def websocket_endpoint(
             await pubsub.unsubscribe(f"pubsub:{subdomain}")
 
 
+@app.get("/api/files")
+async def get_files(
+    token: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> Response:
+    subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    # Get file tree from Redis
+    tree_data = await redis.get(f"files:{subdomain}")
+    if not tree_data:
+        await write_basic_file(subdomain, redis)
+        tree_data = await redis.get(f"files:{subdomain}")
+
+    return JSONResponse(json.loads(tree_data))
+
+
+@app.post("/api/files")
+async def update_files(
+    tree: Dict[str, Any],
+    token: str,
+    redis: aioredis.Redis = Depends(redis_dependency.get_redis),
+) -> Response:
+    subdomain = verify_jwt(token)
+    if subdomain is None:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    # Validate the tree structure
+    def validate_tree(tree_dict, path=""):
+        for key, value in tree_dict.items():
+            current_path = f"{path}{key}"
+            if isinstance(value, dict):
+                if key.endswith("/"):
+                    validate_tree(value, current_path)
+                else:
+                    if not all(k in value for k in ["raw", "headers", "status_code"]):
+                        raise ValueError(f"Invalid file structure for {current_path}")
+                    if type(value["raw"]) != str:
+                        raise ValueError(
+                            f"Invalid raw file structure for {current_path}"
+                        )
+                    if type(value["headers"]) != list:
+                        raise ValueError(
+                            f"Invalid headers file structure for {current_path}"
+                        )
+                    if type(value["status_code"]) != int:
+                        raise ValueError(
+                            f"Invalid status_code file structure for {current_path}"
+                        )
+                    if len(value["raw"]) > config.max_file_size:
+                        raise ValueError(f"File too large: {current_path}")
+
+    try:
+        validate_tree(tree)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)})
+
+    # Ensure index.html exists
+    if "index.html" not in tree:
+        return JSONResponse({"error": "index.html cannot be deleted"})
+
+    # Store the file tree
+    await redis.set(f"files:{subdomain}", json.dumps(tree), ex=config.redis_ttl)
+
+    return JSONResponse({"msg": "Updated files"})
+
+
 async def catch_all(request: Request) -> Response:
     host = request.headers.get("host") or config.server_domain
     subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
@@ -342,30 +424,57 @@ async def catch_all(request: Request) -> Response:
 
     redis: aioredis.Redis = await redis_dependency.get_redis()
 
-    data = await redis.get(f"page:{subdomain}")
+    data = await redis.get(f"files:{subdomain}")
     if not data:
         await write_basic_file(subdomain, redis)
-        data = await redis.get(f"page:{subdomain}")
+        data = await redis.get(f"files:{subdomain}")
 
     try:
         data = json.loads(data)
     except Exception:
-        data = {"raw": "", "headers": [], "status_code": 200}
+        data = {"index.html": {"raw": "", "headers": [], "status_code": 200}}
+
+    # Normalize path by removing duplicate slashes and trailing slash
+    path = re.sub("/+", "/", request.url.path.strip("/"))
+
+    # Split path into components
+    path_parts = path.split("/")
+    current_data = data
+    file_data = None
+
+    # Traverse the path
+    for part in path_parts:
+        if not part:
+            continue
+
+        if part in current_data:
+            if isinstance(current_data[part], dict):
+                file_data = current_data[part]
+                break
+
+        if part + "/" in current_data:
+            # It's a directory
+            current_data = current_data[part + "/"]
+            if "index.html" in current_data:
+                file_data = current_data["index.html"]
+
+    if not file_data:
+        file_data = data["index.html"]
 
     try:
-        resp = Response(base64.b64decode(data["raw"]))
+        resp = Response(base64.b64decode(file_data["raw"]))
     except Exception:
         resp = Response(b"")
 
     headers_obj = {}
 
-    for header in data["headers"]:
+    for header in file_data["headers"]:
         key = header["header"]
         value = header["value"]
         headers_obj[key] = value
 
     resp.headers.update(headers_obj)
-    resp.status_code = data["status_code"]
+    resp.status_code = file_data["status_code"]
 
     await log_request(request, subdomain, redis)
 

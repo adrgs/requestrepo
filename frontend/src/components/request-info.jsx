@@ -40,7 +40,9 @@ export class RequestInfo extends Component {
       data =
         request.method +
         " " +
-        request.path + request.query + request.fragment +
+        request.path +
+        request.query +
+        request.fragment +
         " " +
         request.protocol.replace("HTTPS", "HTTP") +
         "\r\n";

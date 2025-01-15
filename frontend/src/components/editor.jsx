@@ -2,10 +2,19 @@ import React, { useEffect, useRef, useState } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import { Utils } from "../utils";
 
-export const EditorComponent = ({ value, onChange, commands, language, onFocus, onBlur }) => {
+export const EditorComponent = ({
+  value,
+  onChange,
+  commands,
+  language,
+  onFocus,
+  onBlur,
+}) => {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
-  const [theme, setTheme] = useState(Utils.getTheme() === "dark" ? "vs-dark" : "vs-light");
+  const [theme, setTheme] = useState(
+    Utils.getTheme() === "dark" ? "vs-dark" : "vs-light",
+  );
 
   useEffect(() => {
     const handleThemeChange = () => {
@@ -26,7 +35,10 @@ export const EditorComponent = ({ value, onChange, commands, language, onFocus, 
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
     commands.forEach((command) => {
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, command.exec);
+      editor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+        command.exec,
+      );
     });
   }, [commands]);
 
