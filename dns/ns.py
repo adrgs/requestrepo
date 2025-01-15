@@ -153,7 +153,7 @@ def insert_into_db(value: DnsRequestLog) -> None:
     r.publish(f"pubsub:{subdomain}", data)
     idx = r.rpush(f"requests:{subdomain}", data) - 1
     r.expire(f"requests:{subdomain}", config.redis_ttl)
-    r.set(f"request:{subdomain}:{value['_id']}", idx, ex=config.redis_ttl)
+    r.set(f"request:{subdomain}:{value['_id']}", idx)
 
 
 def get_dns_record(domain: str, dtype: str) -> list[str] | None:
