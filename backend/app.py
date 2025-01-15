@@ -451,12 +451,13 @@ async def catch_all(request: Request) -> Response:
             if isinstance(current_data[part], dict):
                 file_data = current_data[part]
                 break
-
-        if part + "/" in current_data:
+        elif part + "/" in current_data:
             # It's a directory
             current_data = current_data[part + "/"]
             if "index.html" in current_data:
                 file_data = current_data["index.html"]
+        else:
+            break
 
     if not file_data:
         file_data = data["index.html"]
