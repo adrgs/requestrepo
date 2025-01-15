@@ -241,18 +241,16 @@ export const FileTree = ({
           label: "Rename",
           icon: "pi pi-pencil",
           command: (e) => {
-            e.originalEvent.stopPropagation();
-            e.originalEvent.preventDefault();
             setEditMode("rename");
             setEditingNode(node.data);
             // Set initial text to current name without extension for files
-            const name = node.data.endsWith("/")
-              ? node.label
-              : node.label.includes(".")
-                ? node.label.substring(0, node.label.lastIndexOf("."))
-                : node.label;
+            const name = node.data.replace(/\/+$/, "").split("/").pop();
             setEditingText(name);
-            return false;
+
+            // Hack: Reshow the context menu after a tiny delay
+            setTimeout(() => {
+              cm.current?.show(e.originalEvent);
+            }, 0);
           },
         },
         {
