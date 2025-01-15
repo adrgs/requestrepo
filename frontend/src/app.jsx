@@ -86,6 +86,16 @@ const App = () => {
     dnsFetched: false,
   });
 
+  const [themeState, setThemeState] = useState(Utils.getTheme());
+
+  useEffect(() => {
+    const handleThemeChange = () => {
+      setThemeState(Utils.getTheme());
+    };
+    window.addEventListener("themeChange", handleThemeChange);
+    return () => window.removeEventListener("themeChange", handleThemeChange);
+  }, []);
+
   // Moved to a custom hook
   const handleMessage = useCallback((event) => {
     const data = JSON.parse(event.data);
@@ -498,7 +508,7 @@ const App = () => {
         </div>
       </div>
 
-      <ToastContainer theme={Utils.getTheme()} />
+      <ToastContainer key={themeState} theme={themeState} />
       <div className="layout-mask"></div>
     </div>
   );

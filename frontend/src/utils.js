@@ -1,5 +1,6 @@
 import axios from "axios";
 import { Base64 } from "js-base64";
+import { toast } from "react-toastify";
 
 export class Utils {
   static siteUrl = import.meta.env.DEV
@@ -167,16 +168,15 @@ export class Utils {
   }
 
   static toggleTheme() {
-    if (document.body.classList.contains("dark")) {
-      document.body.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    } else {
-      document.body.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    }
+    const body = document.body;
+    const isDark = !body.classList.contains("dark");
+    body.classList.toggle("dark");
+    localStorage.setItem("theme", isDark ? "dark" : "light");
 
-    // Dispatch a custom event to notify components of the theme change
     window.dispatchEvent(new Event("themeChange"));
+
+    // Return the new theme state immediately
+    return isDark;
   }
 
   static getTheme() {
