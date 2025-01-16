@@ -273,7 +273,7 @@ const App = () => {
 
   // URL for WebSocket based on protocol
   const protocol = document.location.protocol === "https:" ? "wss" : "ws";
-  const ws_url = `${protocol}://${document.location.host}/api/ws`;
+  const ws_url = `${protocol}://${document.location.host}/api/ws2`;
 
   const onOpen = () => {
     setState((prevState) => {

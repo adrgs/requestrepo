@@ -10,7 +10,7 @@ export default defineConfig({
         target: "http://localhost:21337", // Replace with your backend server URL
         changeOrigin: true,
       },
-      "/api/ws": {
+      "/api/ws2": {
         target: "ws://localhost:21337", // Replace with your WebSocket server URL
         ws: true,
       },

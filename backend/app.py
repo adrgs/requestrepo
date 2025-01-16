@@ -360,6 +360,41 @@ async def get_token(
 
 
 @app.websocket("/api/ws")
+async def old_websocket_endpoint(
+    websocket: WebSocket, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> None:
+    try:
+        await websocket.accept()
+
+        token = await websocket.receive_text()
+        subdomain = verify_jwt(token)
+
+        if subdomain is None:
+            await websocket.send_json({"cmd": "invalid_token"})
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
+        requests = [request for request in requests if request != "{}"]
+
+        await websocket.send_json({"cmd": "requests", "data": requests})
+
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(f"pubsub:{subdomain}")
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                await websocket.send_json({"cmd": "request", "data": message["data"]})
+
+    except (WebSocketDisconnect, ConnectionClosed):
+        # Handle the disconnection gracefully
+        pass
+    finally:
+        # Perform any necessary cleanup
+        if "pubsub" in locals():
+            await pubsub.unsubscribe(f"pubsub:{subdomain}")
+
+
+@app.websocket("/api/ws2")
 async def websocket_endpoint(
     websocket: WebSocket, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> None:
