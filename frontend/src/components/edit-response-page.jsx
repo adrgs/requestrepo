@@ -60,7 +60,7 @@ export const EditResponsePage = ({
     setContent("");
     setHeaders([]);
     setStatusCode(200);
-    setFiles({ items: [] });
+    setFiles({});
     setSelectedFile(null);
     setFetched(false);
 
