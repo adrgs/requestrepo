@@ -411,18 +411,70 @@ const App = () => {
       // Ignore null events
       if (!e.key) return;
 
-      if (e.key.startsWith("deleteAll_")) {
+      if (e.key === "sessions" || e.key === "selectedSessionIndex") {
+        // Update state based on new sessions data
+        setState((prevState) => {
+          try {
+            const sessions = JSON.parse(e.newValue || "[]");
+            const selectedIndex = parseInt(
+              localStorage.getItem("selectedSessionIndex") || "0",
+            );
+            const validIndex = Math.max(
+              0,
+              Math.min(selectedIndex, sessions.length - 1),
+            );
+
+            // Convert sessions array to our sessions state format
+            const newSessions = sessions.reduce(
+              (acc, session) => ({
+                ...acc,
+                [session.subdomain]: {
+                  url: `${session.subdomain}.${Utils.siteUrl}`,
+                  domain: Utils.siteUrl,
+                  subdomain: session.subdomain,
+                  httpRequests: [],
+                  dnsRequests: [],
+                  timestamp: null,
+                  requests: {},
+                  visited: JSON.parse(
+                    localStorage.getItem(`visited_${session.subdomain}`) ||
+                      "{}",
+                  ),
+                  selectedRequest: localStorage.getItem(
+                    `lastSelectedRequest_${session.subdomain}`,
+                  ),
+                  token: session.token,
+                },
+              }),
+              {},
+            );
+
+            return {
+              ...prevState,
+              sessions: newSessions,
+              activeSession: sessions[validIndex]?.subdomain || "",
+            };
+          } catch (error) {
+            console.error("Error parsing sessions data:", error);
+            return prevState;
+          }
+        });
+      } else if (e.key.startsWith("deleteAll_")) {
         const targetSubdomain = e.key.replace("deleteAll_", "");
         setState((prevState) => {
           const newSessions = { ...prevState.sessions };
           if (newSessions[targetSubdomain]) {
             newSessions[targetSubdomain] = {
               ...newSessions[targetSubdomain],
+              url: `${targetSubdomain}.${Utils.siteUrl}`,
+              domain: Utils.siteUrl,
+              subdomain: targetSubdomain,
               httpRequests: [],
               dnsRequests: [],
               requests: {},
               visited: {},
-              selectedRequest: undefined,
+              selectedRequest: null,
+              timestamp: null,
             };
           }
           return { ...prevState, sessions: newSessions };
@@ -591,7 +643,7 @@ const App = () => {
           activeSession.selectedRequest = nextSelectedId;
         }
 
-        Utils.deleteRequest(id).then(() => {
+        Utils.deleteRequest(id, state.activeSession).then(() => {
           localStorage.setItem(
             `visited_${state.activeSession}`,
             JSON.stringify(activeSession.visited),
@@ -730,22 +782,49 @@ const App = () => {
       const activeSession = newSessions[state.activeSession];
 
       if (activeSession) {
-        activeSession.httpRequests = [];
-        activeSession.dnsRequests = [];
-        activeSession.requests = {};
-        activeSession.visited = {};
-        activeSession.selectedRequest = undefined;
+        // Call the API to delete all requests
+        Utils.deleteAll(state.activeSession)
+          .then(() => {
+            // Update the current tab's state
+            setState((prevState) => {
+              const newSessions = { ...prevState.sessions };
+              if (newSessions[state.activeSession]) {
+                // Preserve the session properties while clearing request data
+                newSessions[state.activeSession] = {
+                  ...newSessions[state.activeSession],
+                  url: `${state.activeSession}.${Utils.siteUrl}`,
+                  domain: Utils.siteUrl,
+                  subdomain: state.activeSession,
+                  httpRequests: [],
+                  dnsRequests: [],
+                  requests: {},
+                  visited: {},
+                  selectedRequest: null,
+                  timestamp: null,
+                };
+              }
 
-        // Notify other tabs about the deletion for this specific session
-        localStorage.setItem(
-          `deleteAll_${state.activeSession}`,
-          Date.now().toString(),
-        );
+              // Notify other tabs about the deletion for this specific session
+              localStorage.setItem(
+                `deleteAll_${state.activeSession}`,
+                Date.now().toString(),
+              );
 
-        // Clean up the storage item immediately after setting it
-        setTimeout(() => {
-          localStorage.removeItem(`deleteAll_${state.activeSession}`);
-        }, 100);
+              // Clean up the storage item immediately after setting it
+              setTimeout(() => {
+                localStorage.removeItem(`deleteAll_${state.activeSession}`);
+              }, 100);
+
+              return {
+                ...prevState,
+                sessions: newSessions,
+              };
+            });
+          })
+          .catch((error) => {
+            console.error("Failed to delete all requests:", error);
+            toast.error("Failed to delete all requests");
+          });
       }
 
       return {

@@ -352,19 +352,19 @@ export class Utils {
     return this.pendingSessionPromise;
   }
 
-  static deleteRequest(id) {
+  static deleteRequest(id, subdomain = null) {
     let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
     return axios.post(
       reqUrl,
       { id: id },
-      { params: { token: this.getSessionToken(this.subdomain) } },
+      { params: { token: this.getSessionToken(subdomain) } },
     );
   }
 
-  static deleteAll() {
+  static deleteAll(subdomain = null) {
     let reqUrl = this.apiUrl + this.deleteAllEndpoint;
     return axios.post(reqUrl, null, {
-      params: { token: this.getSessionToken(this.subdomain) },
+      params: { token: this.getSessionToken(subdomain) },
     });
   }
 
