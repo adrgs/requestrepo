@@ -39,8 +39,10 @@ import logging
 from typing import List, Dict, Union, Any
 from dataclasses import dataclass, field
 from pydantic import BaseModel
+import asyncio
 
 app = FastAPI(server_header=False)
+
 
 @dataclass
 class SessionManager:
@@ -54,12 +56,33 @@ class SessionManager:
             subdomain = verify_jwt(token)
             if subdomain is None:
                 return False
+
+            # If this subdomain is already in a session, don't add it again
+            if subdomain in self.sessions.values():
+                return False
+
+            # Create pubsub if it doesn't exist
+            if self.pubsub is None:
+                self.pubsub = self.redis.pubsub()
+
+            # Add to sessions first
             self.sessions[token] = subdomain
-            if self.pubsub:
-                await self.pubsub.subscribe(f"pubsub:{subdomain}")
+
+            # Then subscribe to the channel
+            await self.pubsub.subscribe(f"pubsub:{subdomain}")
+
+            # Send historical requests for the new session
+            requests = await self.redis.lrange(f"requests:{subdomain}", 0, -1)
+            requests = [req for req in requests if req != "{}"]
+            await self.websocket.send_json(
+                {"cmd": "requests", "data": requests, "subdomain": subdomain}
+            )
+
             return True
         except Exception as e:
             logger.error(f"Error adding session: {e}")
+            if token in self.sessions:
+                del self.sessions[token]
             return False
 
     async def remove_session(self, token: str) -> None:
@@ -74,6 +97,7 @@ class SessionManager:
 
     def get_subdomain(self, token: str) -> str:
         return self.sessions.get(token)
+
 
 class RedisDependency:
     def __init__(self):
@@ -333,6 +357,8 @@ async def get_token(
 
     token = jwt.encode(payload, config.jwt_secret, algorithm="HS256")
     return JSONResponse({"token": token, "subdomain": subdomain})
+
+
 @app.websocket("/api/ws")
 async def websocket_endpoint(
     websocket: WebSocket, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
@@ -344,85 +370,107 @@ async def websocket_endpoint(
 
         # Receive initial message
         init_data = await websocket.receive_json()
-        
+
         # Handle both single token and multiple sessions format
-        if 'cmd' in init_data and init_data['cmd'] == 'register_sessions':
-            sessions = init_data.get('sessions', [])
+        if "cmd" in init_data and init_data["cmd"] == "register_sessions":
+            sessions = init_data.get("sessions", [])
         else:
             # Legacy single token format
-            sessions = [{'token': init_data.get('token'), 'subdomain': init_data.get('subdomain')}]
+            sessions = [
+                {
+                    "token": init_data.get("token"),
+                    "subdomain": init_data.get("subdomain"),
+                }
+            ]
 
         # Validate and setup sessions
         valid_sessions = []
         for session in sessions:
-            if await session_manager.add_session(session['token']):
+            if await session_manager.add_session(session["token"]):
                 valid_sessions.append(session)
 
         if not valid_sessions:
             await websocket.send_json({"error": "No valid sessions provided"})
             return
 
-        # Send initial data for each session
-        for session in valid_sessions:
-            subdomain = session_manager.get_subdomain(session['token'])
-            if subdomain:
-                requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
-                requests = [req for req in requests if req != "{}"]
-                await websocket.send_json({
-                    "cmd": "requests",
-                    "data": requests,
-                    "subdomain": subdomain
-                })
-
         # Setup pubsub
         session_manager.pubsub = redis.pubsub()
+
+        # Send initial data and subscribe to channels for each session
         for session in valid_sessions:
-            subdomain = session_manager.get_subdomain(session['token'])
+            subdomain = session_manager.get_subdomain(session["token"])
             if subdomain:
+                # Send historical requests
+                requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
+                requests = [req for req in requests if req != "{}"]
+                await websocket.send_json(
+                    {"cmd": "requests", "data": requests, "subdomain": subdomain}
+                )
+
+                # Subscribe to channel
                 await session_manager.pubsub.subscribe(f"pubsub:{subdomain}")
 
         # Main message loop
         while True:
             try:
-                # Handle incoming messages
-                ws_message = await websocket.receive_json()
-                logger.debug(f"Received message: {ws_message}")
-                
-                if ws_message.get("cmd") == "update_tokens":
-                    new_tokens = ws_message.get("tokens", [])
-                    current_tokens = list(session_manager.sessions.keys())
-                    
-                    # Remove old tokens
-                    for token in current_tokens:
-                        if token not in new_tokens:
-                            await session_manager.remove_session(token)
-                    
-                    # Add new tokens
-                    for token in new_tokens:
-                        if token not in current_tokens:
-                            await session_manager.add_session(token)
+                # Handle WebSocket messages (use wait_for to avoid blocking)
+                try:
+                    ws_message = await asyncio.wait_for(
+                        websocket.receive_json(), timeout=0.1
+                    )
+                    logger.debug(f"Received message: {ws_message}")
 
-                # Handle pubsub messages
+                    if ws_message.get("cmd") == "update_tokens":
+                        new_tokens = ws_message.get("tokens", [])
+                        current_tokens = list(session_manager.sessions.keys())
+
+                        # Remove old tokens
+                        for token in current_tokens:
+                            if token not in new_tokens:
+                                await session_manager.remove_session(token)
+
+                        # Add new tokens
+                        for token in new_tokens:
+                            if token not in current_tokens:
+                                await session_manager.add_session(token)
+                except asyncio.TimeoutError:
+                    pass
+
+                # Handle pub/sub messages
                 message = await session_manager.pubsub.get_message(timeout=0.1)
                 if message and message["type"] == "message":
                     channel = message["channel"]
-                    subdomain = channel.decode().split(":")[1] if isinstance(channel, bytes) else channel.split(":")[1]
+                    subdomain = (
+                        channel.decode().split(":")[1]
+                        if isinstance(channel, bytes)
+                        else channel.split(":")[1]
+                    )
                     try:
-                        await websocket.send_json({
-                            "cmd": "request",
-                            "data": message["data"],
-                            "subdomain": subdomain
-                        })
+                        await websocket.send_json(
+                            {
+                                "cmd": "request",
+                                "data": message["data"],
+                                "subdomain": subdomain,
+                            }
+                        )
                     except Exception as e:
-                        logger.error(f"Error sending pubsub message for {subdomain}: {e}")
+                        logger.error(
+                            f"Error sending pubsub message for {subdomain}: {e}"
+                        )
+
+                # Small delay to prevent CPU spinning
+                await asyncio.sleep(0.01)
 
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected")
                 break
+            except ConnectionClosed:
+                logger.info("Connection closed")
+                break
 
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        raise  # Re-raise to see full traceback in logs
+        raise
     finally:
         logger.info("WebSocket connection closed")
         # Cleanup
@@ -625,6 +673,4 @@ async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -
     await redis.publish(f"pubsub:{subdomain}", data)
     idx = await redis.rpush(f"requests:{subdomain}", data) - 1
     await redis.expire(f"requests:{subdomain}", config.redis_ttl)
-    await redis.set(
-        f"request:{subdomain}:{request_log['_id']}", idx
-    )
+    await redis.set(f"request:{subdomain}:{request_log['_id']}", idx)

@@ -67,9 +67,11 @@ export const DnsSettingsPage = ({
     if (toDelete) {
       updatedDnsRecords.splice(index, 1);
     } else {
-      updatedDnsRecords[index] = { 
-        domain, type, value, 
-        subdomain: activeSession.subdomain 
+      updatedDnsRecords[index] = {
+        domain,
+        type,
+        value,
+        subdomain: activeSession.subdomain,
       };
     }
     setDnsRecords(updatedDnsRecords);
@@ -83,7 +85,12 @@ export const DnsSettingsPage = ({
     const filteredRecords = dnsRecords.filter(
       (value) => value.domain.length > 0 && value.value.length > 0,
     );
-    const obj = { records: filteredRecords.map(record => ({ ...record, subdomain: activeSession.subdomain })) };
+    const obj = {
+      records: filteredRecords.map((record) => ({
+        ...record,
+        subdomain: activeSession.subdomain,
+      })),
+    };
 
     Utils.updateDNSRecords(obj, activeSession).then((res) => {
       if (res.error) {
@@ -116,12 +123,12 @@ export const DnsSettingsPage = ({
         element.type = ["A", "AAAA", "CNAME", "TXT"].indexOf(element.type);
       }
       const currentSubdomain = activeSession?.subdomain || user.subdomain;
-      if (
-        element.domain.endsWith(currentSubdomain + "." + Utils.domain)
-      ) {
+      if (element.domain.endsWith(currentSubdomain + "." + Utils.domain)) {
         element.domain = element.domain.substr(
           0,
-          element.domain.length - (currentSubdomain + "." + Utils.domain).length - 1
+          element.domain.length -
+            (currentSubdomain + "." + Utils.domain).length -
+            1,
         );
       }
     } catch {
@@ -134,7 +141,9 @@ export const DnsSettingsPage = ({
         type={element.type}
         domain={element.domain}
         value={element.value}
-        subdomain={element.subdomain || activeSession?.subdomain || user.subdomain}
+        subdomain={
+          element.subdomain || activeSession?.subdomain || user.subdomain
+        }
         handleRecordInputChange={handleRecordInputChange}
       />
     );

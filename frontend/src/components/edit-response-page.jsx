@@ -80,7 +80,7 @@ export const EditResponsePage = ({
         // Get token for this subdomain
         const token = Utils.getSessionToken(user.subdomain);
         if (!token) {
-          throw new Error('No valid token found for session');
+          throw new Error("No valid token found for session");
         }
 
         const files = await Utils.getFiles(user.subdomain);
@@ -96,10 +96,11 @@ export const EditResponsePage = ({
         setFiles(files);
         setFetched(true);
       } catch (error) {
-        const msg = error.response?.status === 403 
-          ? "Your session token is invalid. Please request a new URL"
-          : error.message || "Failed to fetch files";
-        
+        const msg =
+          error.response?.status === 403
+            ? "Your session token is invalid. Please request a new URL"
+            : error.message || "Failed to fetch files";
+
         toast.error(msg, {
           position: "bottom-center",
           autoClose: 4000,
@@ -126,7 +127,7 @@ export const EditResponsePage = ({
         toast.error("Failed to fetch headers", {
           position: "bottom-center",
           autoClose: 4000,
-          dark: Utils.isDarkTheme()
+          dark: Utils.isDarkTheme(),
         });
       }
     };
@@ -152,9 +153,10 @@ export const EditResponsePage = ({
         dark: Utils.isDarkTheme(),
       });
     } catch (error) {
-      const errorMsg = error.response?.status === 403 ? 
-        "Session token is invalid. Please request a new URL" : 
-        "Failed to update files";
+      const errorMsg =
+        error.response?.status === 403
+          ? "Session token is invalid. Please request a new URL"
+          : "Failed to update files";
       toast.error(errorMsg, {
         position: "bottom-center",
         autoClose: 4000,
@@ -223,7 +225,7 @@ export const EditResponsePage = ({
         };
 
         await Utils.updateFiles(updatedFiles, user.subdomain);
-        
+
         toast.success("Changes saved successfully", {
           position: "bottom-center",
           autoClose: 4000,

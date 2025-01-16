@@ -81,7 +81,10 @@ export class AppSidebar extends Component {
     if (session.httpRequests && session.dnsRequests) {
       let i = 0,
         j = 0;
-      while (i < session.httpRequests.length || j < session.dnsRequests.length) {
+      while (
+        i < session.httpRequests.length ||
+        j < session.dnsRequests.length
+      ) {
         let obj = {
           title: null,
           method: null,
@@ -104,7 +107,10 @@ export class AppSidebar extends Component {
           (j >= session.dnsRequests.length || dateA < dateB) &&
           i < session.httpRequests.length
         ) {
-          let req = session.requests && session.requests[session.httpRequests[i]["_id"]] || {};
+          let req =
+            (session.requests &&
+              session.requests[session.httpRequests[i]["_id"]]) ||
+            {};
           obj["title"] =
             req["path"] +
             (req["query"] ? req["query"] : "") +
@@ -121,7 +127,10 @@ export class AppSidebar extends Component {
           requests.push(obj);
           i++;
         } else {
-          let req = session.requests && session.requests[session.dnsRequests[j]["_id"]] || {};
+          let req =
+            (session.requests &&
+              session.requests[session.dnsRequests[j]["_id"]]) ||
+            {};
           obj["title"] = req["name"];
           obj["method"] = "DNS";
           obj["time"] = this.convertUTCDateToLocalDate(dateB).toLocaleString();
@@ -191,25 +200,29 @@ export class AppSidebar extends Component {
   }
   render() {
     const hasValue = this.hasValue;
-    const activeSession = this.props.sessions && this.props.activeSession
-      ? this.props.sessions[this.props.activeSession]
-      : null;
+    const activeSession =
+      this.props.sessions && this.props.activeSession
+        ? this.props.sessions[this.props.activeSession]
+        : null;
 
     let requests = this.getRequests();
 
     let searchValue = this.props.searchValue;
     let dns_filter = this.state.dns_filter;
     let http_filter = this.state.http_filter;
-    requests = requests.filter(function (item) {
-      return (
-        hasValue(
-          (this.props.user?.requests && this.props.user.requests[item.id]) || {},
-          searchValue
-        ) &&
-        ((item.type === "DNS" && dns_filter) ||
-          (item.type === "HTTP" && http_filter))
-      );
-    }.bind(this));
+    requests = requests.filter(
+      function (item) {
+        return (
+          hasValue(
+            (this.props.user?.requests && this.props.user.requests[item.id]) ||
+              {},
+            searchValue,
+          ) &&
+          ((item.type === "DNS" && dns_filter) ||
+            (item.type === "HTTP" && http_filter))
+        );
+      }.bind(this),
+    );
     return (
       <div className={"layout-sidebar layout-sidebar-light"}>
         <div className={"layout-sidebar-header"}>

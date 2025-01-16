@@ -1,253 +1,188 @@
 :root {
-  --topbar-bg-color: #fff;
-  --topbar-color: #858796;
+  --topbar-bg-color: #ffffff;
+  --topbar-color: #495057;
   --topbar-border-color: #ccc;
+  --tab-bg-color: #f8f9fa;
+  --tab-hover-bg-color: #e9ecef;
+  --tab-active-bg-color: rgba(var(--primary-color-rgb), 0.15);
+  --tab-active-color: var(--primary-color);
 }
 
 body.dark {
-  --topbar-bg-color: #222;
-  --topbar-color: #fff;
-  --topbar-border-color: #000;
+  --topbar-bg-color: #1e1e1e;
+  --topbar-color: #e9ecef;
+  --topbar-border-color: #2d2d2d;
+  --tab-bg-color: #2d2d2d;
+  --tab-hover-bg-color: #3d3d3d;
+  --tab-active-bg-color: rgba(var(--primary-color-rgb), 0.25);
+  --tab-active-color: var(--primary-color-light, #4dabf7);
 }
 
 .layout-topbar {
   position: fixed;
   height: 50px;
-  padding: 0.5em 1rem;
+  padding: 0 1rem;
   color: var(--topbar-color);
   z-index: 999;
   right: 0;
   background-color: var(--topbar-bg-color);
-  @include clearfix();
   @include transition(left $transitionDuration);
   border-bottom: 1px solid var(--topbar-border-color);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
   width: 100%;
 
-  .layout-topbar-icons {
-    display: flex;
-    align-items: center;
-    -moz-animation-duration: 0.5s;
-    -webkit-animation-duration: 0.5s;
-    animation-duration: 0.5s;
+  .logo-link {
+    margin-right: 1rem;
 
-    button {
-      position: relative;
-      color: $topbarItemColor;
-      margin-left: 20px;
-      display: inline-block;
-      text-decoration: none;
-      @include transition(color $transitionDuration);
-      overflow: visible;
-
-      &:hover {
-        color: $topbarItemHoverColor;
-      }
-
-      span {
-        &.layout-topbar-icon {
-          font-size: 2em;
-        }
-
-        &.layout-topbar-item-text {
-          font-size: 20px;
-          display: none;
-        }
-
-        &.layout-topbar-badge {
-          position: absolute;
-          font-size: 10px;
-          right: -5px;
-          top: -5px;
-          width: 16px;
-          height: 16px;
-          text-align: center;
-          line-height: 16px;
-          color: $topbarItemBadgeColor;
-          background-color: $topbarItemBadgeBgColor;
-          @include border-radius(50%);
-        }
-      }
-    }
-
-    .layout-topbar-search {
-      padding: 0;
-      position: relative;
-      display: inline-block;
-      margin-right: 1rem;
-
-      input {
-        display: inline-block;
-        border: 0 none;
-        font-size: $fontSize;
-        background: transparent;
-        border-bottom: 2px solid $topbarSearchInputBorderBottomColor;
-        outline: 0 none;
-        -webkit-box-shadow: none;
-        box-shadow: none;
-        color: $topbarSearchInputColor;
-        width: 100px;
-        padding: 1px 20px 1px 1px;
-        margin: 0px;
-        @include border-radius(2px);
-        &::-webkit-input-placeholder {
-          color: $topbarSearchInputColor;
-          opacity: 0.7;
-          @include transition(opacity $transitionDuration);
-        }
-        &:-moz-placeholder {
-          color: $topbarSearchInputColor;
-          opacity: 0.7;
-          @include transition(opacity $transitionDuration);
-        }
-        &::-moz-placeholder {
-          color: $topbarSearchInputColor;
-          opacity: 0.7;
-          @include transition(opacity $transitionDuration);
-        }
-        &:-ms-input-placeholder {
-          color: $topbarSearchInputColor;
-          opacity: 0.7;
-          @include transition(opacity $transitionDuration);
-        }
-      }
-
-      .layout-topbar-search-icon {
-        font-size: 18px;
-        position: absolute;
-        top: -1px;
-        right: 0px;
-      }
-
-      &:hover {
-        input {
-          border-bottom-color: $topbarItemHoverColor;
-          &::-webkit-input-placeholder {
-            opacity: 1;
-          }
-          &:-moz-placeholder {
-            opacity: 1;
-          }
-          &::-moz-placeholder {
-            opacity: 1;
-          }
-          &:-ms-input-placeholder {
-            opacity: 1;
-          }
-        }
-
-        .layout-topbar-search-icon {
-          color: $topbarItemHoverColor;
-        }
-      }
+    .logo-object {
+      height: 25px;
+      display: block;
     }
   }
 
-  .layout-menu-button {
-    cursor: pointer;
-    display: inline-block;
-    text-decoration: none;
-    color: $topbarItemColor;
-    @include transition(color $transitionDuration);
-
-    span {
-      font-size: 2em;
-    }
-
-    &:hover {
-      color: $topbarItemHoverColor;
-    }
-  }
-
-  button {
-    cursor: pointer;
-  }
-}
-
-  .session-tabs-container {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  .layout-topbar-session {
     flex: 1;
     min-width: 0;
-    margin: 0;
+    margin-right: 1rem;
+  }
+
+  .session-tabs {
+    display: flex;
+    gap: 0.5rem;
     overflow-x: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    padding: 0.25rem 0.5rem;
-    max-width: calc(100% - 200px);
 
-    &:empty {
-      display: none;
-    }
     &::-webkit-scrollbar {
       display: none;
     }
   }
 
   .session-tab {
+    background-color: var(--tab-bg-color);
+    border-radius: 6px;
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.75rem;
-    background-color: rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background-color 0.2s ease;
-    font-size: 0.9rem;
+    gap: 0.35rem;
     min-width: 100px;
-    max-width: 180px;
-    flex-shrink: 0;
+    max-width: 200px;
+    font-size: 0.875rem;
+    width: fit-content;
 
     &:hover {
-      background-color: rgba(0, 0, 0, 0.1);
+      background-color: var(--tab-hover-bg-color);
     }
+
     &.active {
-      background-color: var(--primary-color);
-      color: #fff;
-
-      .close-button:hover {
-        background-color: rgba(255, 255, 255, 0.2);
-      }
+      background-color: var(--tab-active-bg-color);
+      color: var(--tab-active-color);
     }
 
-    .close-button {
-      padding: 4px;
-      border-radius: 50%;
-      line-height: 1;
-      font-size: 0.8rem;
-      margin-left: auto;
+    .session-tab-content {
       display: flex;
       align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+    }
+
+    .subdomain {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0;
+    }
+
+    .unseen-count {
+      background-color: var(--primary-color);
+      color: white;
+      min-width: 1.2rem;
+      height: 1.2rem;
+      padding: 0 0.3rem;
+      border-radius: 0.6rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
       justify-content: center;
-      transition: background-color 0.2s ease;
+    }
+
+    .close-tab {
+      padding: 0.2rem;
+      width: 1.2rem;
+      height: 1.2rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      margin-left: 0;
 
       &:hover {
         background-color: rgba(0, 0, 0, 0.1);
       }
+
+      .pi {
+        font-size: 0.75rem;
+      }
     }
   }
 
-  .new-session-button {
-    padding: 0.4rem 0.75rem;
-    background-color: var(--primary-color);
-    color: #fff;
-    border-radius: 4px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background-color 0.2s ease;
-    font-size: 0.9rem;
+  .layout-topbar-icons {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    flex-shrink: 0;
-    min-width: fit-content;
+    gap: 0.75rem;
 
-    &:hover {
-      background-color: var(--primary-darker-color);
+    .new-session-button {
+      font-size: 0.875rem;
+      font-weight: 500;
+
+      &:hover {
+        background-color: var(--primary-darker-color);
+      }
+
+      .pi {
+        font-size: 0.875rem;
+      }
+    }
+
+    .theme-toggle {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+
+      &:hover {
+        background-color: var(--tab-hover-bg-color);
+      }
+    }
+
+    .layout-topbar-search {
+      position: relative;
+      width: 200px;
+
+      input {
+        width: 100%;
+        padding: 0.35rem 1.75rem 0.35rem 0.6rem;
+        border-radius: 4px;
+        background-color: var(--tab-bg-color);
+        border: 1px solid var(--topbar-border-color);
+        color: var(--topbar-color);
+
+        &:focus {
+          border-color: var(--primary-color);
+          box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+        }
+      }
+
+      .layout-topbar-search-icon {
+        position: absolute;
+        right: 0.6rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--topbar-color);
+      }
     }
   }
+}

@@ -19,23 +19,30 @@ export class Utils {
   static subdomain = "";
   static pendingSessionPromise = null;
   static MAX_SESSIONS = 5;
-  static sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
-  static selectedSessionIndex = parseInt(localStorage.getItem('selectedSessionIndex') || '0');
+  static sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
+  static selectedSessionIndex = parseInt(
+    localStorage.getItem("selectedSessionIndex") || "0",
+  );
   static getActiveSession() {
     try {
-      const sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
+      const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
       if (sessions.length === 0) {
         this.selectedSessionIndex = 0;
         return null;
       }
 
       // Get and validate selectedSessionIndex
-      let selectedIndex = parseInt(localStorage.getItem('selectedSessionIndex') || '0');
+      let selectedIndex = parseInt(
+        localStorage.getItem("selectedSessionIndex") || "0",
+      );
       selectedIndex = Math.max(0, Math.min(selectedIndex, sessions.length - 1));
-      
+
       // Update if index was invalid
-      if (selectedIndex.toString() !== localStorage.getItem('selectedSessionIndex')) {
-        localStorage.setItem('selectedSessionIndex', selectedIndex.toString());
+      if (
+        selectedIndex.toString() !==
+        localStorage.getItem("selectedSessionIndex")
+      ) {
+        localStorage.setItem("selectedSessionIndex", selectedIndex.toString());
       }
 
       const session = sessions[selectedIndex];
@@ -44,26 +51,29 @@ export class Utils {
       }
       return session;
     } catch (error) {
-      console.error('Error getting active session:', error);
+      console.error("Error getting active session:", error);
       return null;
     }
   }
 
   static saveSessionsToStorage() {
-    localStorage.setItem('sessions', JSON.stringify(this.sessions));
-    localStorage.setItem('selectedSessionIndex', this.selectedSessionIndex.toString());
+    localStorage.setItem("sessions", JSON.stringify(this.sessions));
+    localStorage.setItem(
+      "selectedSessionIndex",
+      this.selectedSessionIndex.toString(),
+    );
   }
 
   static addSession(subdomain, token) {
     if (this.sessions.length >= this.MAX_SESSIONS) {
-      throw new Error('Maximum number of sessions reached');
+      throw new Error("Maximum number of sessions reached");
     }
 
     const newSession = {
       subdomain,
       token,
       createdAt: new Date().toISOString(),
-      unseenRequests: 0
+      unseenRequests: 0,
     };
 
     this.sessions.push(newSession);
@@ -71,10 +81,10 @@ export class Utils {
     this.saveSessionsToStorage();
     return newSession;
   }
-  
+
   static removeSession(index) {
     if (index < 0 || index >= this.sessions.length) {
-      throw new Error('Invalid session index');
+      throw new Error("Invalid session index");
     }
 
     const removedSession = this.sessions[index];
@@ -85,14 +95,17 @@ export class Utils {
     const lastRequestKey = `lastRequest_${removedSession.subdomain}`;
     const dnsKey = `dns_${removedSession.subdomain}`;
     const filesKey = `files_${removedSession.subdomain}`;
-    
+
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const key = localStorage.key(i);
-      if (key && (key.startsWith(sessionPrefix) || 
-          key === visitedKey || 
+      if (
+        key &&
+        (key.startsWith(sessionPrefix) ||
+          key === visitedKey ||
           key === lastRequestKey ||
           key === dnsKey ||
-          key === filesKey)) {
+          key === filesKey)
+      ) {
         localStorage.removeItem(key);
       }
     }
@@ -101,60 +114,64 @@ export class Utils {
     const removedSessionDetails = {
       subdomain: removedSession.subdomain,
       token: removedSession.token,
-      index: index
+      index: index,
     };
 
     this.sessions.splice(index, 1);
-    
+
     // Update selected index and ensure it's valid
     if (this.selectedSessionIndex >= this.sessions.length) {
       this.selectedSessionIndex = Math.max(0, this.sessions.length - 1);
     }
-    
+
     // Update subdomain for the new active session
     if (this.sessions.length > 0) {
       this.subdomain = this.sessions[this.selectedSessionIndex].subdomain;
     } else {
-      this.subdomain = '';
+      this.subdomain = "";
       this.selectedSessionIndex = 0;
     }
-    
+
     this.saveSessionsToStorage();
-    
+
     // Dispatch a more detailed event with comprehensive session state
-    window.dispatchEvent(new CustomEvent('sessionChanged', { 
-      detail: { 
-        type: 'remove', 
-        removedSession: removedSessionDetails,
-        remainingSessions: this.sessions,
-        activeSession: this.getActiveSession(),
-        selectedIndex: this.selectedSessionIndex,
-        totalSessions: this.sessions.length
-      } 
-    }));
-    
+    window.dispatchEvent(
+      new CustomEvent("sessionChanged", {
+        detail: {
+          type: "remove",
+          removedSession: removedSessionDetails,
+          remainingSessions: this.sessions,
+          activeSession: this.getActiveSession(),
+          selectedIndex: this.selectedSessionIndex,
+          totalSessions: this.sessions.length,
+        },
+      }),
+    );
+
     return true;
   }
 
   static selectSession(index) {
     if (index < 0 || index >= this.sessions.length) {
-      throw new Error('Invalid session index');
+      throw new Error("Invalid session index");
     }
-    
+
     this.selectedSessionIndex = index;
     const session = this.sessions[index];
     this.subdomain = session.subdomain;
     this.saveSessionsToStorage();
-    
+
     // Dispatch event with more complete session information
-    window.dispatchEvent(new CustomEvent('sessionChanged', { 
-      detail: { 
-        type: 'select', 
-        session,
-        allSessions: this.sessions,
-        selectedIndex: this.selectedSessionIndex
-      } 
-    }));
+    window.dispatchEvent(
+      new CustomEvent("sessionChanged", {
+        detail: {
+          type: "select",
+          session,
+          allSessions: this.sessions,
+          selectedIndex: this.selectedSessionIndex,
+        },
+      }),
+    );
   }
 
   static getSessionToken(subdomain = null) {
@@ -169,27 +186,31 @@ export class Utils {
       }
 
       // Get sessions from localStorage
-      const sessionsStr = localStorage.getItem('sessions');
+      const sessionsStr = localStorage.getItem("sessions");
       if (!sessionsStr) return null;
 
       const sessions = JSON.parse(sessionsStr);
-      const session = sessions.find(s => s.subdomain === subdomain);
+      const session = sessions.find((s) => s.subdomain === subdomain);
       return session ? session.token : null;
     } catch (error) {
-      console.error('Error getting session token:', error);
+      console.error("Error getting session token:", error);
       return null;
     }
   }
 
   static setSessionToken(subdomain, token) {
-    const existingIndex = this.sessions.findIndex(s => s.subdomain === subdomain);
+    const existingIndex = this.sessions.findIndex(
+      (s) => s.subdomain === subdomain,
+    );
     if (existingIndex >= 0) {
       this.sessions[existingIndex].token = token;
     } else {
       try {
         this.addSession(subdomain, token);
       } catch (error) {
-        toast.error('Maximum number of sessions reached. Please close an existing session first.');
+        toast.error(
+          "Maximum number of sessions reached. Please close an existing session first.",
+        );
         throw error;
       }
     }
@@ -201,22 +222,24 @@ export class Utils {
   }
 
   static getAllSessionTokens() {
-    return this.sessions.filter(session => {
-      // Validate token format
-      try {
-        JSON.parse(Utils.base64Decode(session.token.split('.')[1]));
-        return true;
-      } catch (error) {
-        return false;
-      }
-    }).map(session => ({
-      subdomain: session.subdomain,
-      token: session.token
-    }));
+    return this.sessions
+      .filter((session) => {
+        // Validate token format
+        try {
+          JSON.parse(Utils.base64Decode(session.token.split(".")[1]));
+          return true;
+        } catch (error) {
+          return false;
+        }
+      })
+      .map((session) => ({
+        subdomain: session.subdomain,
+        token: session.token,
+      }));
   }
 
   static updateSessionUnseenRequests(subdomain, count) {
-    const session = this.sessions.find(s => s.subdomain === subdomain);
+    const session = this.sessions.find((s) => s.subdomain === subdomain);
     if (session) {
       session.unseenRequests = count;
       this.saveSessionsToStorage();
@@ -263,7 +286,7 @@ export class Utils {
 
   static userHasSubdomain() {
     try {
-      const sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
+      const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
       if (sessions.length > 0) {
         const activeSession = this.getActiveSession();
         if (activeSession) {
@@ -273,14 +296,14 @@ export class Utils {
       }
       return false;
     } catch (error) {
-      console.error('Error in userHasSubdomain:', error);
+      console.error("Error in userHasSubdomain:", error);
       return false;
     }
   }
 
   static async getRandomSubdomain() {
     let reqUrl = this.apiUrl + this.subdomainEndpoint;
-    
+
     // If there's already a pending session creation, return that promise
     if (this.pendingSessionPromise) {
       return this.pendingSessionPromise;
@@ -290,29 +313,37 @@ export class Utils {
     this.pendingSessionPromise = new Promise(async (resolve, reject) => {
       try {
         // Check if we've reached the maximum number of sessions
-        const sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
+        const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
         if (sessions.length >= this.MAX_SESSIONS) {
-          throw new Error('Maximum number of sessions reached');
+          throw new Error("Maximum number of sessions reached");
         }
 
-        const response = await axios.post(reqUrl, null, { withCredentials: true });
+        const response = await axios.post(reqUrl, null, {
+          withCredentials: true,
+        });
         const token = response.data.token;
-        
+
         if (!token) {
-          throw new Error('No token received from server');
+          throw new Error("No token received from server");
         }
 
-        const tokenData = JSON.parse(Utils.base64Decode(token.split('.')[1]));
+        const tokenData = JSON.parse(Utils.base64Decode(token.split(".")[1]));
         const subdomain = tokenData.subdomain;
-        
+
         if (!subdomain) {
-          throw new Error('Invalid token format: no subdomain found');
+          throw new Error("Invalid token format: no subdomain found");
         }
 
         resolve({ subdomain, token });
       } catch (error) {
-        console.error('Error in getRandomSubdomain:', error);
-        reject(new Error(error.response?.data?.message || error.message || 'Failed to initialize session'));
+        console.error("Error in getRandomSubdomain:", error);
+        reject(
+          new Error(
+            error.response?.data?.message ||
+              error.message ||
+              "Failed to initialize session",
+          ),
+        );
       }
     }).finally(() => {
       this.pendingSessionPromise = null;
@@ -437,25 +468,20 @@ export class Utils {
 
   static async getFiles(subdomain = null) {
     const token = this.getSessionToken(subdomain);
-    const response = await fetch(
-      `/api/files?token=${token}`,
-    );
+    const response = await fetch(`/api/files?token=${token}`);
     if (!response.ok) throw new Error("Failed to fetch files");
     return response.json();
   }
 
   static async updateFiles(files, subdomain = null) {
     const token = this.getSessionToken(subdomain);
-    const response = await fetch(
-      `/api/files?token=${token}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(files),
+    const response = await fetch(`/api/files?token=${token}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(files),
+    });
     if (!response.ok) throw new Error("Failed to update files");
     return response.json();
   }
@@ -468,10 +494,10 @@ export class Utils {
       `lastSelectedRequest_${subdomain}`,
       `lastDeletedRequest_${subdomain}`,
       `dns_${subdomain}`,
-      `files_${subdomain}`
+      `files_${subdomain}`,
     ];
 
-    keysToRemove.forEach(key => {
+    keysToRemove.forEach((key) => {
       localStorage.removeItem(key);
     });
 
@@ -485,21 +511,28 @@ export class Utils {
 
     // Update sessions array
     try {
-      const sessionsStr = localStorage.getItem('sessions');
+      const sessionsStr = localStorage.getItem("sessions");
       if (sessionsStr) {
         const sessions = JSON.parse(sessionsStr);
-        const updatedSessions = sessions.filter(s => s.subdomain !== subdomain);
-        localStorage.setItem('sessions', JSON.stringify(updatedSessions));
-        
+        const updatedSessions = sessions.filter(
+          (s) => s.subdomain !== subdomain,
+        );
+        localStorage.setItem("sessions", JSON.stringify(updatedSessions));
+
         // Update selectedSessionIndex if needed
-        let selectedIndex = parseInt(localStorage.getItem('selectedSessionIndex') || '0');
+        let selectedIndex = parseInt(
+          localStorage.getItem("selectedSessionIndex") || "0",
+        );
         if (selectedIndex >= updatedSessions.length) {
           selectedIndex = Math.max(0, updatedSessions.length - 1);
-          localStorage.setItem('selectedSessionIndex', selectedIndex.toString());
+          localStorage.setItem(
+            "selectedSessionIndex",
+            selectedIndex.toString(),
+          );
         }
       }
     } catch (error) {
-      console.error('Error updating sessions in localStorage:', error);
+      console.error("Error updating sessions in localStorage:", error);
     }
   }
 }
