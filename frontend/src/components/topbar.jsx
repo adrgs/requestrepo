@@ -12,6 +12,7 @@ export class AppTopbar extends Component {
       sessions: props.sessions || {},
       activeSession: props.activeSession || "",
       unseenRequests: {},
+      isCreatingSession: false,
     };
     this.handleSearchValueChange = this.handleSearchValueChange.bind(this);
     this.toggleTheme = this.toggleTheme.bind(this);
@@ -119,7 +120,11 @@ export class AppTopbar extends Component {
   }
 
   async handleNewSession() {
+    if (this.state.isCreatingSession) return;
+
     try {
+      this.setState({ isCreatingSession: true });
+      
       // Get new subdomain and token
       const { subdomain, token } = await Utils.getRandomSubdomain();
 
@@ -148,6 +153,8 @@ export class AppTopbar extends Component {
     } catch (error) {
       console.error("Error creating new session:", error);
       throw error;
+    } finally {
+      this.setState({ isCreatingSession: false });
     }
   }
 
@@ -208,6 +215,8 @@ export class AppTopbar extends Component {
               icon="pi pi-plus"
               className="p-button-text p-button-secondary new-session-button"
               onClick={this.handleNewSession}
+              disabled={this.state.isCreatingSession}
+              loading={this.state.isCreatingSession}
             />
           )}
 

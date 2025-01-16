@@ -396,18 +396,17 @@ const App = () => {
   }, []); // Run once on mount
 
   useEffect(() => {
-    const activeSession = state.sessions[state.activeSession];
     const text = `Dashboard - ${Utils.siteUrl}`;
-    if (activeSession) {
-      const n =
-        activeSession.httpRequests.length +
-        activeSession.dnsRequests.length -
-        Object.keys(activeSession.visited || {}).length;
-      document.title = n <= 0 ? text : `(${n}) ${text}`;
-    } else {
-      document.title = text;
-    }
-  }, [state.sessions, state.activeSession]);
+    const totalUnseen = Object.values(state.sessions).reduce((sum, session) => {
+      const unseenCount = 
+        session.httpRequests.length + 
+        session.dnsRequests.length - 
+        Object.keys(session.visited || {}).length;
+      return sum + Math.max(0, unseenCount);
+    }, 0);
+    
+    document.title = totalUnseen <= 0 ? text : `(${totalUnseen}) ${text}`;
+  }, [state.sessions]);
 
   useEffect(() => {
     Utils.initTheme();
@@ -651,7 +650,7 @@ const App = () => {
     });
   };
 
-  const handleNewSession = async () => {
+  const handleNewURL = async () => {
     try {
       const activeSession = state.sessions[state.activeSession];
       if (!activeSession) {
@@ -944,7 +943,7 @@ const App = () => {
                   <Button
                     label="New URL"
                     icon="pi pi-refresh"
-                    onClick={handleNewSession}
+                    onClick={handleNewURL}
                   />
                 </div>
               }

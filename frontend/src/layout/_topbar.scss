@@ -18,6 +18,10 @@ body.dark {
   --tab-active-color: var(--primary-color-light, #4dabf7);
 }
 
+.p-tooltip-text {
+  font-size: 0.875rem;
+}
+
 .layout-topbar {
   position: fixed;
   height: 50px;
