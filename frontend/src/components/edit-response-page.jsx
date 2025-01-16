@@ -14,6 +14,7 @@ export const EditResponsePage = ({
   fetched: propFetched = false,
   statusCode: propStatusCode = 200,
   toast,
+  user,
 }) => {
   const [headers, setHeaders] = useState(propHeaders);
   const [content, setContent] = useState(propContent);
@@ -52,12 +53,37 @@ export const EditResponsePage = ({
       setFiles(updatedFiles);
     }
   };
+  // Reset state when user changes
+  useEffect(() => {
+    if (!user) return;
 
+    setContent("");
+    setHeaders([]);
+    setStatusCode(200);
+    setFiles({ items: [] });
+    setSelectedFile(null);
+    setFetched(false);
+
+    return () => {
+      // Cleanup when user changes or component unmounts
+    };
+  }, [user]);
+
+  // Fetch data when component mounts or user changes
   useEffect(() => {
     const fetchData = async () => {
+      if (!user?.subdomain) {
+        return;
+      }
+
       try {
-        const files = await Utils.getFiles();
-        // Load index.html by default
+        // Get token for this subdomain
+        const token = Utils.getSessionToken(user.subdomain);
+        if (!token) {
+          throw new Error('No valid token found for session');
+        }
+
+        const files = await Utils.getFiles(user.subdomain);
         if (files["index.html"]) {
           setHeaders(files["index.html"].headers);
           setContent(Utils.base64Decode(files["index.html"].raw));
@@ -70,10 +96,10 @@ export const EditResponsePage = ({
         setFiles(files);
         setFetched(true);
       } catch (error) {
-        let msg = "Failed to fetch files";
-        if (error.response?.status === 403) {
-          msg = "Your session token is invalid. Please request a new URL";
-        }
+        const msg = error.response?.status === 403 
+          ? "Your session token is invalid. Please request a new URL"
+          : error.message || "Failed to fetch files";
+        
         toast.error(msg, {
           position: "bottom-center",
           autoClose: 4000,
@@ -86,25 +112,35 @@ export const EditResponsePage = ({
       }
     };
 
-    if (!fetched) {
-      fetchData();
-    }
+    fetchData();
+  }, [user?.subdomain]);
+  // Fetch headers separately
+  useEffect(() => {
+    if (!user) return;
 
     const fetchHeaders = async () => {
       try {
         const data = await new HeaderService().getHeaders();
         setHeadersData(data);
       } catch (error) {
-        console.error("Failed to fetch headers");
+        toast.error("Failed to fetch headers", {
+          position: "bottom-center",
+          autoClose: 4000,
+          dark: Utils.isDarkTheme()
+        });
       }
     };
 
     fetchHeaders();
-  }, [fetched, toast]);
+  }, []);
 
   const handleFileUpdate = async (newFiles) => {
+    if (!user) {
+      toast.error("No active session");
+      return;
+    }
     try {
-      await Utils.updateFiles(newFiles);
+      await Utils.updateFiles(newFiles, user.token, user.subdomain);
       setFiles(newFiles);
       toast.success("Files updated successfully!", {
         position: "bottom-center",
@@ -116,7 +152,10 @@ export const EditResponsePage = ({
         dark: Utils.isDarkTheme(),
       });
     } catch (error) {
-      toast.error("Failed to update files", {
+      const errorMsg = error.response?.status === 403 ? 
+        "Session token is invalid. Please request a new URL" : 
+        "Failed to update files";
+      toast.error(errorMsg, {
         position: "bottom-center",
         autoClose: 4000,
         hideProgressBar: false,
@@ -144,46 +183,76 @@ export const EditResponsePage = ({
   };
 
   const handleFileSelect = (file) => {
+    if (!user) {
+      toast.error("No active session");
+      return;
+    }
     setSelectedFile(file);
     setContent(Utils.base64Decode(file.raw));
     setHeaders(file.headers || []);
     setStatusCode(file.status_code || 200);
   };
 
-  const saveChanges = () => {
-    if (selectedFile) {
+  const saveChanges = async () => {
+    if (!user?.subdomain) {
+      toast.error("No active session");
+      return;
+    }
+
+    // Check for valid token
+    const token = Utils.getSessionToken(user.subdomain);
+    if (!token) {
+      toast.error("Invalid session token");
+      return;
+    }
+
+    try {
       const updatedFiles = { ...files };
-      let current = updatedFiles;
-      const parts = selectedFile.path.split("/").filter((p) => p);
+      if (selectedFile) {
+        let current = updatedFiles;
+        const parts = selectedFile.path.split("/").filter((p) => p);
 
-      for (let i = 0; i < parts.length - 1; i++) {
-        current = current[parts[i] + "/"];
-      }
+        for (let i = 0; i < parts.length - 1; i++) {
+          current = current[parts[i] + "/"];
+        }
 
-      current[parts[parts.length - 1]] = {
-        raw: Utils.base64Encode(content),
-        headers: headers.filter((h) => h.header.length > 0),
-        status_code: Number(statusCode) || 200,
-      };
+        current[parts[parts.length - 1]] = {
+          raw: Utils.base64Encode(content),
+          headers: headers.filter((h) => h.header.length > 0),
+          status_code: Number(statusCode) || 200,
+        };
 
-      handleFileUpdate(updatedFiles)
-        .then(() => {})
-        .catch((error) => {
-          console.error("Error saving file:", error);
-          toast.error("Failed to save file.", {
-            position: "bottom-center",
-            autoClose: 4000,
-            hideProgressBar: false,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-            dark: Utils.isDarkTheme(),
-          });
+        await Utils.updateFiles(updatedFiles, user.subdomain);
+        
+        toast.success("Changes saved successfully", {
+          position: "bottom-center",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          dark: Utils.isDarkTheme(),
         });
+      }
+    } catch (error) {
+      console.error("Error saving changes:", error);
+      toast.error("Failed to save changes", {
+        position: "bottom-center",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        dark: Utils.isDarkTheme(),
+      });
     }
   };
 
   const addHeader = () => {
+    if (!user) {
+      toast.error("No active session");
+      return;
+    }
     setHeaders([...headers, { header: "", value: "" }]);
   };
 

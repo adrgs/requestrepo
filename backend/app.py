@@ -37,10 +37,43 @@ import ip2country
 from fastapi_utils.tasks import repeat_every
 import logging
 from typing import List, Dict, Union, Any
+from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 app = FastAPI(server_header=False)
 
+@dataclass
+class SessionManager:
+    websocket: WebSocket
+    redis: aioredis.Redis
+    sessions: Dict[str, str] = field(default_factory=dict)  # token -> subdomain mapping
+    pubsub: aioredis.Redis.pubsub = None
+
+    async def add_session(self, token: str) -> bool:
+        try:
+            subdomain = verify_jwt(token)
+            if subdomain is None:
+                return False
+            self.sessions[token] = subdomain
+            if self.pubsub:
+                await self.pubsub.subscribe(f"pubsub:{subdomain}")
+            return True
+        except Exception as e:
+            logger.error(f"Error adding session: {e}")
+            return False
+
+    async def remove_session(self, token: str) -> None:
+        try:
+            if token in self.sessions:
+                subdomain = self.sessions[token]
+                if self.pubsub:
+                    await self.pubsub.unsubscribe(f"pubsub:{subdomain}")
+                del self.sessions[token]
+        except Exception as e:
+            logger.error(f"Error removing session: {e}")
+
+    def get_subdomain(self, token: str) -> str:
+        return self.sessions.get(token)
 
 class RedisDependency:
     def __init__(self):
@@ -299,43 +332,105 @@ async def get_token(
     }
 
     token = jwt.encode(payload, config.jwt_secret, algorithm="HS256")
-
     return JSONResponse({"token": token, "subdomain": subdomain})
-
-
 @app.websocket("/api/ws")
 async def websocket_endpoint(
     websocket: WebSocket, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> None:
+    session_manager = SessionManager(websocket=websocket, redis=redis)
     try:
         await websocket.accept()
+        logger.info("WebSocket connected")
 
-        token = await websocket.receive_text()
-        subdomain = verify_jwt(token)
+        # Receive initial message
+        init_data = await websocket.receive_json()
+        
+        # Handle both single token and multiple sessions format
+        if 'cmd' in init_data and init_data['cmd'] == 'register_sessions':
+            sessions = init_data.get('sessions', [])
+        else:
+            # Legacy single token format
+            sessions = [{'token': init_data.get('token'), 'subdomain': init_data.get('subdomain')}]
 
-        if subdomain is None:
-            await websocket.send_json({"cmd": "invalid_token"})
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        # Validate and setup sessions
+        valid_sessions = []
+        for session in sessions:
+            if await session_manager.add_session(session['token']):
+                valid_sessions.append(session)
+
+        if not valid_sessions:
+            await websocket.send_json({"error": "No valid sessions provided"})
             return
 
-        requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
-        requests = [request for request in requests if request != "{}"]
+        # Send initial data for each session
+        for session in valid_sessions:
+            subdomain = session_manager.get_subdomain(session['token'])
+            if subdomain:
+                requests = await redis.lrange(f"requests:{subdomain}", 0, -1)
+                requests = [req for req in requests if req != "{}"]
+                await websocket.send_json({
+                    "cmd": "requests",
+                    "data": requests,
+                    "subdomain": subdomain
+                })
 
-        await websocket.send_json({"cmd": "requests", "data": requests})
+        # Setup pubsub
+        session_manager.pubsub = redis.pubsub()
+        for session in valid_sessions:
+            subdomain = session_manager.get_subdomain(session['token'])
+            if subdomain:
+                await session_manager.pubsub.subscribe(f"pubsub:{subdomain}")
 
-        pubsub = redis.pubsub()
-        await pubsub.subscribe(f"pubsub:{subdomain}")
-        async for message in pubsub.listen():
-            if message["type"] == "message":
-                await websocket.send_json({"cmd": "request", "data": message["data"]})
+        # Main message loop
+        while True:
+            try:
+                # Handle incoming messages
+                ws_message = await websocket.receive_json()
+                logger.debug(f"Received message: {ws_message}")
+                
+                if ws_message.get("cmd") == "update_tokens":
+                    new_tokens = ws_message.get("tokens", [])
+                    current_tokens = list(session_manager.sessions.keys())
+                    
+                    # Remove old tokens
+                    for token in current_tokens:
+                        if token not in new_tokens:
+                            await session_manager.remove_session(token)
+                    
+                    # Add new tokens
+                    for token in new_tokens:
+                        if token not in current_tokens:
+                            await session_manager.add_session(token)
 
-    except (WebSocketDisconnect, ConnectionClosed):
-        # Handle the disconnection gracefully
-        pass
+                # Handle pubsub messages
+                message = await session_manager.pubsub.get_message(timeout=0.1)
+                if message and message["type"] == "message":
+                    channel = message["channel"]
+                    subdomain = channel.decode().split(":")[1] if isinstance(channel, bytes) else channel.split(":")[1]
+                    try:
+                        await websocket.send_json({
+                            "cmd": "request",
+                            "data": message["data"],
+                            "subdomain": subdomain
+                        })
+                    except Exception as e:
+                        logger.error(f"Error sending pubsub message for {subdomain}: {e}")
+
+            except WebSocketDisconnect:
+                logger.info("WebSocket disconnected")
+                break
+
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        raise  # Re-raise to see full traceback in logs
     finally:
-        # Perform any necessary cleanup
-        if "pubsub" in locals():
-            await pubsub.unsubscribe(f"pubsub:{subdomain}")
+        logger.info("WebSocket connection closed")
+        # Cleanup
+        if session_manager.pubsub:
+            try:
+                await session_manager.pubsub.close()
+            except Exception as e:
+                logger.error(f"Error closing pubsub: {e}")
 
 
 @app.get("/api/files")

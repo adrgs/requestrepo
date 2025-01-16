@@ -3,7 +3,6 @@ import { RequestCard } from "./request-card";
 import { Checkbox } from "primereact/checkbox";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
-
 export class AppSidebar extends Component {
   constructor(props) {
     super(props);
@@ -14,32 +13,42 @@ export class AppSidebar extends Component {
 
     this.lastNumberOfReqs = 0;
     this.numberOfReqs = 0;
-
     this.onCheckboxChange = this.onCheckboxChange.bind(this);
     this.hasValue = this.hasValue.bind(this);
     this.deleteAllRequests = this.deleteAllRequests.bind(this);
   }
 
   scrollToBottom() {
-    this.messagesEnd.scrollIntoView({ behavior: "auto" });
+    this.messagesEnd?.scrollIntoView({ behavior: "auto" });
   }
 
   componentDidMount() {
     this.scrollToBottom();
   }
 
-  componentDidUpdate() {
-    if (this.numberOfReqs > this.lastNumberOfReqs) this.scrollToBottom();
+  componentDidUpdate(prevProps) {
+    if (this.numberOfReqs > this.lastNumberOfReqs) {
+      this.scrollToBottom();
+    }
     this.lastNumberOfReqs = this.numberOfReqs;
+    if (prevProps.activeSession !== this.props.activeSession) {
+      this.setState({ http_filter: true, dns_filter: true });
+    }
   }
 
-  shouldComponentUpdate() {
-    return true;
+  shouldComponentUpdate(nextProps) {
+    return (
+      nextProps.user !== this.props.user ||
+      nextProps.activeSession !== this.props.activeSession ||
+      nextProps.sessions !== this.props.sessions ||
+      nextProps.searchValue !== this.props.searchValue ||
+      this.state.http_filter !== nextProps.http_filter ||
+      this.state.dns_filter !== nextProps.dns_filter
+    );
   }
 
   onCheckboxChange(event) {
     const { value } = event;
-
     this.setState((prevState) => {
       if (value === "HTTP") {
         return { http_filter: !prevState.http_filter };
@@ -58,15 +67,21 @@ export class AppSidebar extends Component {
     d.setUTCSeconds(utcSeconds);
     return d;
   }
-
   getRequests() {
     let requests = [];
-    let user = this.props.user;
+    if (!this.props.sessions || !this.props.activeSession) {
+      return requests;
+    }
 
-    if (user.httpRequests !== null && user.dnsRequests !== null) {
+    const session = this.props.sessions[this.props.activeSession];
+    if (!session || !session.requests) {
+      return requests;
+    }
+
+    if (session.httpRequests && session.dnsRequests) {
       let i = 0,
         j = 0;
-      while (i < user.httpRequests.length || j < user.dnsRequests.length) {
+      while (i < session.httpRequests.length || j < session.dnsRequests.length) {
         let obj = {
           title: null,
           method: null,
@@ -78,18 +93,18 @@ export class AppSidebar extends Component {
 
         let dateA = 0;
         let dateB = 0;
-        if (i < user.httpRequests.length) {
-          dateA = parseInt(user.httpRequests[i].date);
+        if (i < session.httpRequests.length) {
+          dateA = parseInt(session.httpRequests[i].date);
         }
-        if (j < user.dnsRequests.length) {
-          dateB = parseInt(user.dnsRequests[j].date);
+        if (j < session.dnsRequests.length) {
+          dateB = parseInt(session.dnsRequests[j].date);
         }
 
         if (
-          (j >= user.dnsRequests.length || dateA < dateB) &&
-          i < user.httpRequests.length
+          (j >= session.dnsRequests.length || dateA < dateB) &&
+          i < session.httpRequests.length
         ) {
-          let req = user.requests[user.httpRequests[i]["_id"]];
+          let req = session.requests && session.requests[session.httpRequests[i]["_id"]] || {};
           obj["title"] =
             req["path"] +
             (req["query"] ? req["query"] : "") +
@@ -106,7 +121,7 @@ export class AppSidebar extends Component {
           requests.push(obj);
           i++;
         } else {
-          let req = user.requests[user.dnsRequests[j]["_id"]];
+          let req = session.requests && session.requests[session.dnsRequests[j]["_id"]] || {};
           obj["title"] = req["name"];
           obj["method"] = "DNS";
           obj["time"] = this.convertUTCDateToLocalDate(dateB).toLocaleString();
@@ -129,14 +144,15 @@ export class AppSidebar extends Component {
   }
 
   deleteAllRequests() {
-    Utils.deleteAll().then(() => {
-      this.props.deleteAllRequests();
-    });
+    if (!this.props.user) {
+      return;
+    }
+
+    this.props.deleteAllRequests();
   }
 
   hasValue(item, needle) {
     if (!needle) return true;
-
     if (item["name"] !== undefined) {
       if ("dns".indexOf(needle) >= 0) return true;
     } else {
@@ -173,17 +189,23 @@ export class AppSidebar extends Component {
 
     return false;
   }
-
   render() {
+    const hasValue = this.hasValue;
+    const activeSession = this.props.sessions && this.props.activeSession
+      ? this.props.sessions[this.props.activeSession]
+      : null;
+
     let requests = this.getRequests();
-    let hasValue = this.hasValue;
-    let user = this.props.user;
+
     let searchValue = this.props.searchValue;
     let dns_filter = this.state.dns_filter;
     let http_filter = this.state.http_filter;
     requests = requests.filter(function (item) {
       return (
-        hasValue(user.requests[item.id], searchValue) &&
+        hasValue(
+          (activeSession.requests && activeSession.requests[item.id]) || {},
+          searchValue
+        ) &&
         ((item.type === "DNS" && dns_filter) ||
           (item.type === "HTTP" && http_filter))
       );
@@ -229,8 +251,8 @@ export class AppSidebar extends Component {
           {requests.map((item) => {
             return (
               <RequestCard
-                active={this.props.user.selectedRequest === item.id}
-                visited={this.props.user.visited[item.id] !== undefined}
+                active={this.props.user?.selectedRequest === item.id}
+                visited={this.props.user?.visited?.[item.id] !== undefined}
                 title={item.title}
                 time={item.time}
                 new={item.new}
@@ -240,6 +262,7 @@ export class AppSidebar extends Component {
                 id={item.id}
                 key={item.key}
                 clickRequestAction={this.props.clickRequestAction}
+                sessionId={this.props.user?.subdomain}
               />
             );
           })}
@@ -261,12 +284,11 @@ export class AppSidebar extends Component {
           }}
         >
           <Button
-            href="#/edit-response"
             label="Mark all as read"
             icon="pi pi-check-square"
             className="p-button-text p-button-secondary"
             style={{ marginRight: ".25em" }}
-            onClick={this.props.markAllAsVisited}
+            onClick={() => this.props.user && this.props.markAllAsVisited()}
           />
         </div>
       </div>

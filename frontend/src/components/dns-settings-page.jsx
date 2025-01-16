@@ -8,6 +8,7 @@ export const DnsSettingsPage = ({
   fetched = false,
   user,
   toast,
+  activeSession,
 }) => {
   const [dnsRecords, setDnsRecords] = useState(propDnsRecords);
   const [hasFetched, setHasFetched] = useState(fetched);
@@ -15,13 +16,16 @@ export const DnsSettingsPage = ({
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await Utils.getDNSRecords();
+        const res = await Utils.getDNSRecords(activeSession);
         setDnsRecords(res);
         setHasFetched(true); // Update the state to indicate fetching is complete
       } catch (error) {
-        let msg = "Failed to fetch DNS records";
-        if (error.response.status === 403) {
+        let msg;
+        if (error.response?.status === 403) {
           msg = "Your session token is invalid. Please request a new URL";
+          Utils.removeSession(activeSession?.index);
+        } else {
+          msg = "Failed to fetch DNS records";
         }
         toast.error(msg, {
           position: "bottom-center",
@@ -35,36 +39,53 @@ export const DnsSettingsPage = ({
       }
     };
 
-    if (!hasFetched) {
+    // Refetch when session changes or hasn't fetched yet
+    if (!hasFetched || (activeSession && activeSession.token)) {
+      setHasFetched(false);
       fetchData();
     }
-  }, [hasFetched, toast]);
+  }, [hasFetched, toast, activeSession]);
 
   const add = (domain = "", type = 0, value = "") => {
+    if (!activeSession?.token) {
+      toast.error("No active session selected");
+      return;
+    }
     const newDnsRecords = [
       ...dnsRecords,
-      { domain, type, value, subdomain: user.subdomain },
+      { domain, type, value, subdomain: activeSession.subdomain },
     ];
     setDnsRecords(newDnsRecords);
   };
 
   const handleRecordInputChange = (index, domain, type, value, toDelete) => {
+    if (!activeSession?.token) {
+      toast.error("No active session selected");
+      return;
+    }
     const updatedDnsRecords = [...dnsRecords];
     if (toDelete) {
       updatedDnsRecords.splice(index, 1);
     } else {
-      updatedDnsRecords[index] = { domain, type, value };
+      updatedDnsRecords[index] = { 
+        domain, type, value, 
+        subdomain: activeSession.subdomain 
+      };
     }
     setDnsRecords(updatedDnsRecords);
   };
 
   const saveChanges = useCallback(() => {
+    if (!activeSession?.token) {
+      toast.error("No active session selected");
+      return;
+    }
     const filteredRecords = dnsRecords.filter(
       (value) => value.domain.length > 0 && value.value.length > 0,
     );
-    const obj = { records: filteredRecords };
+    const obj = { records: filteredRecords.map(record => ({ ...record, subdomain: activeSession.subdomain })) };
 
-    Utils.updateDNSRecords(obj).then((res) => {
+    Utils.updateDNSRecords(obj, activeSession).then((res) => {
       if (res.error) {
         toast.error(res.error, {
           position: "bottom-center",
@@ -87,19 +108,20 @@ export const DnsSettingsPage = ({
         });
       }
     });
-  }, [dnsRecords, toast]);
+  }, [dnsRecords, toast, activeSession]);
 
   const renderedDnsRecords = dnsRecords.map((element, index) => {
     try {
       if (typeof element.type === "string") {
         element.type = ["A", "AAAA", "CNAME", "TXT"].indexOf(element.type);
       }
+      const currentSubdomain = activeSession?.subdomain || user.subdomain;
       if (
-        element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) >= 0
+        element.domain.endsWith(currentSubdomain + "." + Utils.domain)
       ) {
         element.domain = element.domain.substr(
           0,
-          element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) - 1,
+          element.domain.length - (currentSubdomain + "." + Utils.domain).length - 1
         );
       }
     } catch {
@@ -112,7 +134,7 @@ export const DnsSettingsPage = ({
         type={element.type}
         domain={element.domain}
         value={element.value}
-        subdomain={element.subdomain || user.subdomain}
+        subdomain={element.subdomain || activeSession?.subdomain || user.subdomain}
         handleRecordInputChange={handleRecordInputChange}
       />
     );

