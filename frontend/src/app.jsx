@@ -229,35 +229,24 @@ const App = () => {
         httpRequests: [],
         dnsRequests: [],
         requests: {},
-        visited: {}
+        visited: {},
+        selectedRequest: null
       };
 
-      if (cmd === "invalid_token") {
-        // Generate a new token
-        const newToken = genRanHex(32);
-        try {
-          Utils.setSessionToken(subdomain, newToken);
-        
-          // If websocket is open, send the new token
-          const ws = websocketRef.current;
-          if (ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              token: newToken,
-              subdomain: subdomain
-            }));
-          }
-        } catch (error) {
-          toast.error(error.message);
-        }
-      } else if (cmd === "requests") {
+      if (cmd === "requests") {
         const requests = data["data"].map(JSON.parse);
         requests.forEach((request) => {
           const key = request["_id"];
           session.requests[key] = request;
           if (request["type"] === "http") {
-            session.httpRequests.push(request);
+            // Prevent duplicate requests
+            if (!session.httpRequests.find(r => r["_id"] === key)) {
+              session.httpRequests.push(request);
+            }
           } else if (request["type"] === "dns") {
-            session.dnsRequests.push(request);
+            if (!session.dnsRequests.find(r => r["_id"] === key)) {
+              session.dnsRequests.push(request);
+            }
           }
         });
       } else if (cmd === "request") {
@@ -271,6 +260,7 @@ const App = () => {
           session.dnsRequests.push(request);
         }
       }
+
       newSessions[subdomain] = session;
       return { ...prevState, sessions: newSessions };
     });
@@ -281,16 +271,22 @@ const App = () => {
   const ws_url = `${protocol}://${document.location.host}/api/ws`;
 
   const onOpen = () => {
-    const newSessions = {};
-    Object.keys(state.sessions).forEach(subdomain => {
-      newSessions[subdomain] = {
-        ...state.sessions[subdomain],
-        httpRequests: [],
-        dnsRequests: [],
-        requests: {},
-      };
+    setState((prevState) => {
+      const newSessions = {};
+      Object.keys(prevState.sessions).forEach(subdomain => {
+        // Preserve existing session data
+        const existingSession = prevState.sessions[subdomain];
+        newSessions[subdomain] = {
+          ...existingSession,
+          // Only reset these if they're empty
+          httpRequests: existingSession.httpRequests || [],
+          dnsRequests: existingSession.dnsRequests || [],
+          requests: existingSession.requests || {},
+          visited: existingSession.visited || {},
+        };
+      });
+      return { ...prevState, sessions: newSessions };
     });
-    setState((prevState) => ({ ...prevState, sessions: newSessions }));
   };
 
   // Use custom WebSocket hook
@@ -750,8 +746,8 @@ const App = () => {
             const sessionData = sessions.find(s => s.subdomain === session);
             if (!sessionData) return prev;
 
-            // Create new session state object
-            const newSession = {
+            // Preserve existing session data if it exists
+            const existingSession = prev.sessions[session] || {
               url: `${sessionData.subdomain}.${Utils.siteUrl}`,
               domain: Utils.siteUrl,
               subdomain: sessionData.subdomain,
@@ -768,7 +764,7 @@ const App = () => {
               ...prev,
               sessions: {
                 ...prev.sessions,
-                [session]: newSession
+                [session]: existingSession
               },
               activeSession: session
             };
@@ -839,6 +835,7 @@ const App = () => {
         clickRequestAction={clickRequestAction}
         deleteAllRequests={deleteAllRequests}
         markAllAsVisited={markAllAsVisited}
+        activeSession={state.activeSession}
       />
 
       <div className="layout-main">

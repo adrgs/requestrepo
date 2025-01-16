@@ -69,11 +69,11 @@ export class AppSidebar extends Component {
   }
   getRequests() {
     let requests = [];
-    if (!this.props.sessions || !this.props.activeSession) {
+    if (!this.props.user) {
       return requests;
     }
 
-    const session = this.props.sessions[this.props.activeSession];
+    const session = this.props.user;
     if (!session || !session.requests) {
       return requests;
     }
@@ -203,13 +203,13 @@ export class AppSidebar extends Component {
     requests = requests.filter(function (item) {
       return (
         hasValue(
-          (activeSession.requests && activeSession.requests[item.id]) || {},
+          (this.props.user?.requests && this.props.user.requests[item.id]) || {},
           searchValue
         ) &&
         ((item.type === "DNS" && dns_filter) ||
           (item.type === "HTTP" && http_filter))
       );
-    });
+    }.bind(this));
     return (
       <div className={"layout-sidebar layout-sidebar-light"}>
         <div className={"layout-sidebar-header"}>
