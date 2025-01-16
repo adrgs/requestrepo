@@ -248,18 +248,18 @@ export class Utils {
     return false;
   }
 
-  static async getDNSRecords() {
+  static async getDNSRecords(subdomain = null) {
     let reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
     let res = await axios.get(reqUrl, {
-      params: { token: this.getSessionToken(this.subdomain) },
+      params: { token: this.getSessionToken(subdomain) },
     });
     return res.data;
   }
 
-  static async updateDNSRecords(data) {
+  static async updateDNSRecords(data, subdomain = null) {
     let reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
     let res = await axios.post(reqUrl, data, {
-      params: { token: this.getSessionToken(this.subdomain) },
+      params: { token: this.getSessionToken(subdomain) },
     });
     return res.data;
   }

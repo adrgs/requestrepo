@@ -5,77 +5,77 @@ import { Utils } from "../utils";
 
 export const DnsSettingsPage = ({
   dnsRecords: propDnsRecords = [],
-  fetched = false,
   user,
   toast,
   activeSession,
 }) => {
   const [dnsRecords, setDnsRecords] = useState(propDnsRecords);
-  const [hasFetched, setHasFetched] = useState(fetched);
+
+  useEffect(() => {
+    setDnsRecords(propDnsRecords);
+  }, [propDnsRecords]);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!activeSession?.subdomain) {
+        setDnsRecords([]);
+        return;
+      }
+
       try {
-        const res = await Utils.getDNSRecords(activeSession);
+        const token = Utils.getSessionToken(activeSession.subdomain);
+        if (!token) {
+          throw new Error("No valid token found for session");
+        }
+
+        const res = await Utils.getDNSRecords(activeSession.subdomain);
         setDnsRecords(res);
-        setHasFetched(true); // Update the state to indicate fetching is complete
       } catch (error) {
         let msg;
         if (error.response?.status === 403) {
           msg = "Your session token is invalid. Please request a new URL";
-          Utils.removeSession(activeSession?.index);
+          Utils.removeSession(activeSession.subdomain);
         } else {
           msg = "Failed to fetch DNS records";
         }
-        toast.error(msg, {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
+        toast.error(msg);
       }
     };
 
-    // Refetch when session changes or hasn't fetched yet
-    if (!hasFetched || (activeSession && activeSession.token)) {
-      setHasFetched(false);
-      fetchData();
-    }
-  }, [hasFetched, toast, activeSession]);
+    fetchData();
+  }, [activeSession, toast]);
 
-  const add = (domain = "", type = 0, value = "") => {
+  const add = useCallback((domain = "", type = 0, value = "") => {
     if (!activeSession?.token) {
       toast.error("No active session selected");
       return;
     }
-    const newDnsRecords = [
-      ...dnsRecords,
+    setDnsRecords(prevRecords => [
+      ...prevRecords,
       { domain, type, value, subdomain: activeSession.subdomain },
-    ];
-    setDnsRecords(newDnsRecords);
-  };
+    ]);
+  }, [activeSession, toast]);
 
-  const handleRecordInputChange = (index, domain, type, value, toDelete) => {
+  const handleRecordInputChange = useCallback((index, domain, type, value, toDelete) => {
     if (!activeSession?.token) {
       toast.error("No active session selected");
       return;
     }
-    const updatedDnsRecords = [...dnsRecords];
-    if (toDelete) {
-      updatedDnsRecords.splice(index, 1);
-    } else {
-      updatedDnsRecords[index] = {
-        domain,
-        type,
-        value,
-        subdomain: activeSession.subdomain,
-      };
-    }
-    setDnsRecords(updatedDnsRecords);
-  };
+    setDnsRecords(prevRecords => {
+      const updatedRecords = [...prevRecords];
+      if (toDelete) {
+        updatedRecords.splice(index, 1);
+      } else {
+        updatedRecords[index] = {
+          domain,
+          type,
+          value,
+          subdomain: activeSession.subdomain,
+        };
+      }
+      return updatedRecords;
+    });
+  }, [activeSession, toast]);
 
   const saveChanges = useCallback(() => {
     if (!activeSession?.token) {
@@ -92,7 +92,7 @@ export const DnsSettingsPage = ({
       })),
     };
 
-    Utils.updateDNSRecords(obj, activeSession).then((res) => {
+    Utils.updateDNSRecords(obj, activeSession.subdomain).then((res) => {
       if (res.error) {
         toast.error(res.error, {
           position: "bottom-center",
@@ -122,13 +122,12 @@ export const DnsSettingsPage = ({
       if (typeof element.type === "string") {
         element.type = ["A", "AAAA", "CNAME", "TXT"].indexOf(element.type);
       }
-      const currentSubdomain = activeSession?.subdomain || user.subdomain;
-      if (element.domain.endsWith(currentSubdomain + "." + Utils.domain)) {
+      if (
+        element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) >= 0
+      ) {
         element.domain = element.domain.substr(
           0,
-          element.domain.length -
-            (currentSubdomain + "." + Utils.domain).length -
-            1,
+          element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) - 1,
         );
       }
     } catch {

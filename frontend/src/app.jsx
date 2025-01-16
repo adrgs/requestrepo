@@ -218,7 +218,6 @@ const App = () => {
   }, []);
   // Moved to a custom hook
   const handleMessage = useCallback((event, subdomain) => {
-    console.log("WebSocket message received:", new Date().toISOString());
     const data = JSON.parse(event.data);
     const { cmd } = data;
     handleWebSocketData(cmd, data, subdomain);
@@ -236,6 +235,7 @@ const App = () => {
         requests: {},
         visited: {},
         selectedRequest: null,
+        dnsRecords: [],
       };
 
       if (cmd === "requests") {
@@ -264,6 +264,8 @@ const App = () => {
         } else if (request["type"] === "dns") {
           session.dnsRequests.push(request);
         }
+      } else if (cmd === "dns_records") {
+        session.dnsRecords = data.records;
       }
 
       newSessions[subdomain] = session;
@@ -773,11 +775,6 @@ const App = () => {
     });
   };
 
-  // Add debug logging for state updates
-  useEffect(() => {
-    console.log("State updated:", new Date().toISOString());
-  }, [state]);
-
   // Component rendering logic
   return (
     <div className="layout-wrapper layout-static">
@@ -986,9 +983,9 @@ const App = () => {
                 element={
                   <DnsSettingsPage
                     user={state.sessions[state.activeSession]}
-                    dnsRecords={state.dnsRecords}
+                    dnsRecords={state.sessions[state.activeSession]?.dnsRecords || []}
                     toast={toast}
-                    fetched={state.dnsFetched}
+                    activeSession={state.sessions[state.activeSession]}
                   />
                 }
               />

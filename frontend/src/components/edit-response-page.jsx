@@ -141,7 +141,7 @@ export const EditResponsePage = ({
       return;
     }
     try {
-      await Utils.updateFiles(newFiles, user.token, user.subdomain);
+      await Utils.updateFiles(newFiles, user.subdomain);
       setFiles(newFiles);
       toast.success("Files updated successfully!", {
         position: "bottom-center",
@@ -369,6 +369,7 @@ export const EditResponsePage = ({
                 onSelect={handleFileSelect}
                 onUpdate={handleFileUpdate}
                 toast={toast}
+                activeSession={user}
               />
             </div>
           </div>
