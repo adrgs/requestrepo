@@ -45,37 +45,43 @@ export const DnsSettingsPage = ({
     fetchData();
   }, [activeSession, toast]);
 
-  const add = useCallback((domain = "", type = 0, value = "") => {
-    if (!activeSession?.token) {
-      toast.error("No active session selected");
-      return;
-    }
-    setDnsRecords(prevRecords => [
-      ...prevRecords,
-      { domain, type, value, subdomain: activeSession.subdomain },
-    ]);
-  }, [activeSession, toast]);
-
-  const handleRecordInputChange = useCallback((index, domain, type, value, toDelete) => {
-    if (!activeSession?.token) {
-      toast.error("No active session selected");
-      return;
-    }
-    setDnsRecords(prevRecords => {
-      const updatedRecords = [...prevRecords];
-      if (toDelete) {
-        updatedRecords.splice(index, 1);
-      } else {
-        updatedRecords[index] = {
-          domain,
-          type,
-          value,
-          subdomain: activeSession.subdomain,
-        };
+  const add = useCallback(
+    (domain = "", type = 0, value = "") => {
+      if (!activeSession?.token) {
+        toast.error("No active session selected");
+        return;
       }
-      return updatedRecords;
-    });
-  }, [activeSession, toast]);
+      setDnsRecords((prevRecords) => [
+        ...prevRecords,
+        { domain, type, value, subdomain: activeSession.subdomain },
+      ]);
+    },
+    [activeSession, toast],
+  );
+
+  const handleRecordInputChange = useCallback(
+    (index, domain, type, value, toDelete) => {
+      if (!activeSession?.token) {
+        toast.error("No active session selected");
+        return;
+      }
+      setDnsRecords((prevRecords) => {
+        const updatedRecords = [...prevRecords];
+        if (toDelete) {
+          updatedRecords.splice(index, 1);
+        } else {
+          updatedRecords[index] = {
+            domain,
+            type,
+            value,
+            subdomain: activeSession.subdomain,
+          };
+        }
+        return updatedRecords;
+      });
+    },
+    [activeSession, toast],
+  );
 
   const saveChanges = useCallback(() => {
     if (!activeSession?.token) {

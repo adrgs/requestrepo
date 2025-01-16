@@ -17,11 +17,6 @@ import "primeflex/primeflex.css";
 import "react-toastify/dist/ReactToastify.css";
 import "./app.scss";
 
-const genRanHex = (size) =>
-  [...Array(size)]
-    .map(() => Math.floor(Math.random() * 16).toString(16))
-    .join("");
-// Custom hook for WebSocket with reconnection logic
 function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
   const reconnectTimeoutRef = useRef(null);
   const isConnectingRef = useRef(false);
@@ -416,23 +411,27 @@ const App = () => {
       // Ignore null events
       if (!e.key) return;
 
-      const subdomain = state.activeSession;
-      if (e.key.startsWith("visited_") || e.key === "deleteAll") {
+      if (e.key.startsWith("deleteAll_")) {
+        const targetSubdomain = e.key.replace("deleteAll_", "");
         setState((prevState) => {
           const newSessions = { ...prevState.sessions };
-          if (e.key === "deleteAll") {
-            if (newSessions[subdomain]) {
-              newSessions[subdomain] = {
-                ...newSessions[subdomain],
-                httpRequests: [],
-                dnsRequests: [],
-                requests: {},
-                visited: {},
-                selectedRequest: undefined,
-              };
-            }
-          } else {
-            const targetSubdomain = e.key.replace("visited_", "");
+          if (newSessions[targetSubdomain]) {
+            newSessions[targetSubdomain] = {
+              ...newSessions[targetSubdomain],
+              httpRequests: [],
+              dnsRequests: [],
+              requests: {},
+              visited: {},
+              selectedRequest: undefined,
+            };
+          }
+          return { ...prevState, sessions: newSessions };
+        });
+      } else if (e.key.startsWith("visited_") || e.key.startsWith("token_")) {
+        if (e.key.startsWith("visited_")) {
+          const targetSubdomain = e.key.replace("visited_", "");
+          setState((prevState) => {
+            const newSessions = { ...prevState.sessions };
             if (newSessions[targetSubdomain]) {
               try {
                 const newVisited = JSON.parse(e.newValue || "{}");
@@ -452,14 +451,14 @@ const App = () => {
                 console.error("Error parsing visited data:", err);
               }
             }
+            return { ...prevState, sessions: newSessions };
+          });
+        } else if (e.key.startsWith("token_")) {
+          // Only reload if this is a manual token change, not our automatic token refresh
+          if (!e.newValue || e.newValue === "") {
+            console.log("Manual token removal detected, reloading");
+            document.location.reload();
           }
-          return { ...prevState, sessions: newSessions };
-        });
-      } else if (e.key.startsWith("token_")) {
-        // Only reload if this is a manual token change, not our automatic token refresh
-        if (!e.newValue || e.newValue === "") {
-          console.log("Manual token removal detected, reloading");
-          document.location.reload();
         }
       } else if (e.key?.startsWith("lastSelectedRequest_")) {
         const targetSubdomain = e.key.replace("lastSelectedRequest_", "");
@@ -725,14 +724,6 @@ const App = () => {
     }
   };
 
-  // Use effect to handle side effects after deleteAllRequests
-  useEffect(() => {
-    if (state.deleteFlag) {
-      localStorage.setItem("visited", "{}");
-      localStorage.setItem("deleteAll", genRanHex(16));
-    }
-  }, [state.deleteFlag]);
-
   const deleteAllRequests = () => {
     setState((prevState) => {
       const newSessions = { ...prevState.sessions };
@@ -743,12 +734,23 @@ const App = () => {
         activeSession.dnsRequests = [];
         activeSession.requests = {};
         activeSession.visited = {};
+        activeSession.selectedRequest = undefined;
+
+        // Notify other tabs about the deletion for this specific session
+        localStorage.setItem(
+          `deleteAll_${state.activeSession}`,
+          Date.now().toString(),
+        );
+
+        // Clean up the storage item immediately after setting it
+        setTimeout(() => {
+          localStorage.removeItem(`deleteAll_${state.activeSession}`);
+        }, 100);
       }
 
       return {
         ...prevState,
         sessions: newSessions,
-        deleteFlag: !prevState.deleteFlag, // toggle flag to trigger useEffect
       };
     });
   };
@@ -983,7 +985,9 @@ const App = () => {
                 element={
                   <DnsSettingsPage
                     user={state.sessions[state.activeSession]}
-                    dnsRecords={state.sessions[state.activeSession]?.dnsRecords || []}
+                    dnsRecords={
+                      state.sessions[state.activeSession]?.dnsRecords || []
+                    }
                     toast={toast}
                     activeSession={state.sessions[state.activeSession]}
                   />
