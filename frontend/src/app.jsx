@@ -398,13 +398,13 @@ const App = () => {
   useEffect(() => {
     const text = `Dashboard - ${Utils.siteUrl}`;
     const totalUnseen = Object.values(state.sessions).reduce((sum, session) => {
-      const unseenCount = 
-        session.httpRequests.length + 
-        session.dnsRequests.length - 
+      const unseenCount =
+        session.httpRequests.length +
+        session.dnsRequests.length -
         Object.keys(session.visited || {}).length;
       return sum + Math.max(0, unseenCount);
     }, 0);
-    
+
     document.title = totalUnseen <= 0 ? text : `(${totalUnseen}) ${text}`;
   }, [state.sessions]);
 
@@ -683,10 +683,16 @@ const App = () => {
 
         // Update the active session with new subdomain
         newSessions[subdomain] = {
-          ...activeSession,
+          domain: Utils.siteUrl,
           url: `${subdomain}.${Utils.siteUrl}`,
           subdomain: subdomain,
           token: token,
+          httpRequests: [],
+          dnsRequests: [],
+          timestamp: null,
+          requests: {},
+          visited: {},
+          selectedRequest: null,
         };
 
         // Clean up old session data from localStorage

@@ -124,7 +124,7 @@ export class AppTopbar extends Component {
 
     try {
       this.setState({ isCreatingSession: true });
-      
+
       // Get new subdomain and token
       const { subdomain, token } = await Utils.getRandomSubdomain();
 
