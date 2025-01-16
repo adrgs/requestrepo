@@ -424,25 +424,44 @@ const App = () => {
               Math.min(selectedIndex, sessions.length - 1),
             );
 
-            // Convert sessions array to our sessions state format
+            // Send update_tokens to WebSocket
+            if (websocketRef.current?.readyState === WebSocket.OPEN) {
+              websocketRef.current.send(
+                JSON.stringify({
+                  cmd: "update_tokens",
+                  tokens: sessions.map((s) => s.token),
+                }),
+              );
+            }
+
+            // Convert sessions array to our sessions state format while preserving existing state
             const newSessions = sessions.reduce(
               (acc, session) => ({
                 ...acc,
                 [session.subdomain]: {
+                  ...(prevState.sessions[session.subdomain] || {}), // Preserve existing state if available
                   url: `${session.subdomain}.${Utils.siteUrl}`,
                   domain: Utils.siteUrl,
                   subdomain: session.subdomain,
-                  httpRequests: [],
-                  dnsRequests: [],
-                  timestamp: null,
-                  requests: {},
-                  visited: JSON.parse(
-                    localStorage.getItem(`visited_${session.subdomain}`) ||
-                      "{}",
-                  ),
-                  selectedRequest: localStorage.getItem(
-                    `lastSelectedRequest_${session.subdomain}`,
-                  ),
+                  httpRequests:
+                    prevState.sessions[session.subdomain]?.httpRequests || [],
+                  dnsRequests:
+                    prevState.sessions[session.subdomain]?.dnsRequests || [],
+                  timestamp:
+                    prevState.sessions[session.subdomain]?.timestamp || null,
+                  requests:
+                    prevState.sessions[session.subdomain]?.requests || {},
+                  visited:
+                    prevState.sessions[session.subdomain]?.visited ||
+                    JSON.parse(
+                      localStorage.getItem(`visited_${session.subdomain}`) ||
+                        "{}",
+                    ),
+                  selectedRequest:
+                    prevState.sessions[session.subdomain]?.selectedRequest ||
+                    localStorage.getItem(
+                      `lastSelectedRequest_${session.subdomain}`,
+                    ),
                   token: session.token,
                 },
               }),
@@ -731,22 +750,30 @@ const App = () => {
       }
 
       setState((prevState) => {
-        const newSessions = { ...prevState.sessions };
-        delete newSessions[activeSession.subdomain];
-
-        // Update the active session with new subdomain
-        newSessions[subdomain] = {
-          domain: Utils.siteUrl,
-          url: `${subdomain}.${Utils.siteUrl}`,
-          subdomain: subdomain,
-          token: token,
-          httpRequests: [],
-          dnsRequests: [],
-          timestamp: null,
-          requests: {},
-          visited: {},
-          selectedRequest: null,
-        };
+        const newSessions = Object.keys(prevState.sessions).reduce(
+          (acc, key) => {
+            if (key === activeSession.subdomain) {
+              // Insert the new subdomain in place of the old one
+              acc[subdomain] = {
+                domain: Utils.siteUrl,
+                url: `${subdomain}.${Utils.siteUrl}`,
+                subdomain: subdomain,
+                token: token,
+                httpRequests: [],
+                dnsRequests: [],
+                timestamp: null,
+                requests: {},
+                visited: {},
+                selectedRequest: null,
+              };
+            } else {
+              // Keep other sessions as is
+              acc[key] = prevState.sessions[key];
+            }
+            return acc;
+          },
+          {},
+        );
 
         // Clean up old session data from localStorage
         localStorage.removeItem(`visited_${activeSession.subdomain}`);

@@ -38,7 +38,15 @@ export const DnsSettingsPage = ({
         } else {
           msg = "Failed to fetch DNS records";
         }
-        toast.error(msg);
+        toast.error(msg, {
+          position: "bottom-center",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          dark: Utils.isDarkTheme(),
+        });
       }
     };
 
