@@ -137,7 +137,7 @@ function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
 const App = () => {
   const urlArea = useRef(null);
   const websocketRef = useRef(null);
-  const [state, setState] = useState({
+  const [appState, setAppState] = useState({
     layoutMode: "static",
     layoutColorMode: "light",
     staticMenuInactive: false,
@@ -174,7 +174,7 @@ const App = () => {
             localStorage.setItem("selectedSessionIndex", "0");
 
             // Update state
-            setState((prevState) => ({
+            setAppState((prevState) => ({
               ...prevState,
               sessions: {
                 [subdomain]: {
@@ -219,7 +219,7 @@ const App = () => {
   }, []);
   // Function to handle WebSocket data separately
   const handleWebSocketData = (cmd, data, subdomain) => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
       const session = newSessions[subdomain] || {
         url: `${subdomain}.${Utils.siteUrl}`,
@@ -273,7 +273,7 @@ const App = () => {
   const ws_url = `${protocol}://${document.location.host}/api/ws2`;
 
   const onOpen = () => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = {};
       Object.keys(prevState.sessions).forEach((subdomain) => {
         // Preserve existing session data
@@ -292,7 +292,7 @@ const App = () => {
   };
 
   // Use custom WebSocket hook
-  useWebSocket(ws_url, handleMessage, onOpen, state.sessions, websocketRef);
+  useWebSocket(ws_url, handleMessage, onOpen, appState.sessions, websocketRef);
 
   // Initialize sessions in useEffect
   useEffect(() => {
@@ -323,7 +323,7 @@ const App = () => {
           localStorage.setItem("selectedSessionIndex", "0");
 
           // Update parent component's state via onSessionChange pattern
-          setState((prev) => ({
+          setAppState((prev) => ({
             ...prev,
             sessions: {
               [subdomain]: {
@@ -378,7 +378,7 @@ const App = () => {
           {},
         );
 
-        setState((prev) => ({
+        setAppState((prev) => ({
           ...prev,
           sessions,
           activeSession:
@@ -394,7 +394,7 @@ const App = () => {
 
   useEffect(() => {
     const text = `Dashboard - ${Utils.siteUrl}`;
-    const totalUnseen = Object.values(state.sessions).reduce((sum, session) => {
+    const totalUnseen = Object.values(appState.sessions).reduce((sum, session) => {
       const unseenCount =
         session.httpRequests.length +
         session.dnsRequests.length -
@@ -403,7 +403,7 @@ const App = () => {
     }, 0);
 
     document.title = totalUnseen <= 0 ? text : `(${totalUnseen}) ${text}`;
-  }, [state.sessions]);
+  }, [appState.sessions]);
 
   useEffect(() => {
     Utils.initTheme();
@@ -413,7 +413,7 @@ const App = () => {
 
       if (e.key === "sessions" || e.key === "selectedSessionIndex") {
         // Update state based on new sessions data
-        setState((prevState) => {
+        setAppState((prevState) => {
           try {
             const sessions = JSON.parse(e.newValue || "[]");
             const selectedIndex = parseInt(
@@ -480,7 +480,7 @@ const App = () => {
         });
       } else if (e.key.startsWith("deleteAll_")) {
         const targetSubdomain = e.key.replace("deleteAll_", "");
-        setState((prevState) => {
+        setAppState((prevState) => {
           const newSessions = { ...prevState.sessions };
           if (newSessions[targetSubdomain]) {
             newSessions[targetSubdomain] = {
@@ -501,7 +501,7 @@ const App = () => {
       } else if (e.key.startsWith("visited_") || e.key.startsWith("token_")) {
         if (e.key.startsWith("visited_")) {
           const targetSubdomain = e.key.replace("visited_", "");
-          setState((prevState) => {
+          setAppState((prevState) => {
             const newSessions = { ...prevState.sessions };
             if (newSessions[targetSubdomain]) {
               try {
@@ -533,7 +533,7 @@ const App = () => {
         }
       } else if (e.key?.startsWith("lastSelectedRequest_")) {
         const targetSubdomain = e.key.replace("lastSelectedRequest_", "");
-        setState((prevState) => {
+        setAppState((prevState) => {
           const newSessions = { ...prevState.sessions };
           if (
             newSessions[targetSubdomain] &&
@@ -547,7 +547,7 @@ const App = () => {
       } else if (e.key?.startsWith("lastDeletedRequest_")) {
         const targetSubdomain = e.key.replace("lastDeletedRequest_", "");
         const requestId = e.newValue;
-        setState((prevState) => {
+        setAppState((prevState) => {
           const newSessions = { ...prevState.sessions };
           if (newSessions[targetSubdomain]) {
             delete newSessions[targetSubdomain].requests[requestId];
@@ -568,12 +568,12 @@ const App = () => {
     return () => {
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, [state.activeSession]); // Add dependency on activeSession
+  }, [appState.activeSession]); // Add dependency on activeSession
 
   const markAllAsVisited = () => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const activeSession = newSessions[state.activeSession];
+      const activeSession = newSessions[appState.activeSession];
 
       if (activeSession) {
         const updatedRequests = {};
@@ -588,7 +588,7 @@ const App = () => {
         activeSession.visited = visited;
 
         localStorage.setItem(
-          `visited_${state.activeSession}`,
+          `visited_${appState.activeSession}`,
           JSON.stringify(visited),
         );
       }
@@ -598,9 +598,9 @@ const App = () => {
   };
 
   const clickRequestAction = (action, id) => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const activeSession = newSessions[state.activeSession];
+      const activeSession = newSessions[appState.activeSession];
 
       if (!activeSession) return prevState;
 
@@ -611,12 +611,12 @@ const App = () => {
           if (activeSession.visited[id] === undefined) {
             activeSession.visited[id] = true;
             localStorage.setItem(
-              `visited_${state.activeSession}`,
+              `visited_${appState.activeSession}`,
               JSON.stringify(activeSession.visited),
             );
           }
           localStorage.setItem(
-            `lastSelectedRequest_${state.activeSession}`,
+            `lastSelectedRequest_${appState.activeSession}`,
             id,
           );
         }
@@ -653,26 +653,26 @@ const App = () => {
 
         if (
           id ===
-          localStorage.getItem(`lastSelectedRequest_${state.activeSession}`)
+          localStorage.getItem(`lastSelectedRequest_${appState.activeSession}`)
         ) {
           localStorage.setItem(
-            `lastSelectedRequest_${state.activeSession}`,
+            `lastSelectedRequest_${appState.activeSession}`,
             nextSelectedId,
           );
           activeSession.selectedRequest = nextSelectedId;
         }
 
-        Utils.deleteRequest(id, state.activeSession).then(() => {
+        Utils.deleteRequest(id, appState.activeSession).then(() => {
           localStorage.setItem(
-            `visited_${state.activeSession}`,
+            `visited_${appState.activeSession}`,
             JSON.stringify(activeSession.visited),
           );
-          localStorage.setItem(`lastDeletedRequest_${state.activeSession}`, id);
+          localStorage.setItem(`lastDeletedRequest_${appState.activeSession}`, id);
         });
       } else if (action === "reset") {
         activeSession.selectedRequest = undefined;
         localStorage.setItem(
-          `lastSelectedRequest_${state.activeSession}`,
+          `lastSelectedRequest_${appState.activeSession}`,
           undefined,
         );
       }
@@ -682,7 +682,7 @@ const App = () => {
   };
 
   const updateSearchValue = (val) => {
-    setState((prevState) => ({ ...prevState, searchValue: val }));
+    setAppState((prevState) => ({ ...prevState, searchValue: val }));
   };
 
   const copyUrl = () => {
@@ -724,7 +724,7 @@ const App = () => {
 
   const handleNewURL = async () => {
     try {
-      const activeSession = state.sessions[state.activeSession];
+      const activeSession = appState.sessions[appState.activeSession];
       if (!activeSession) {
         throw new Error("No active session found");
       }
@@ -749,7 +749,7 @@ const App = () => {
         localStorage.setItem("sessions", JSON.stringify(sessions));
       }
 
-      setState((prevState) => {
+      setAppState((prevState) => {
         const newSessions = Object.keys(prevState.sessions).reduce(
           (acc, key) => {
             if (key === activeSession.subdomain) {
@@ -804,24 +804,24 @@ const App = () => {
   };
 
   const deleteAllRequests = () => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const activeSession = newSessions[state.activeSession];
+      const activeSession = newSessions[appState.activeSession];
 
       if (activeSession) {
         // Call the API to delete all requests
-        Utils.deleteAll(state.activeSession)
+        Utils.deleteAll(appState.activeSession)
           .then(() => {
             // Update the current tab's state
-            setState((prevState) => {
+            setAppState((prevState) => {
               const newSessions = { ...prevState.sessions };
-              if (newSessions[state.activeSession]) {
+              if (newSessions[appState.activeSession]) {
                 // Preserve the session properties while clearing request data
-                newSessions[state.activeSession] = {
-                  ...newSessions[state.activeSession],
-                  url: `${state.activeSession}.${Utils.siteUrl}`,
+                newSessions[appState.activeSession] = {
+                  ...newSessions[appState.activeSession],
+                  url: `${appState.activeSession}.${Utils.siteUrl}`,
                   domain: Utils.siteUrl,
-                  subdomain: state.activeSession,
+                  subdomain: appState.activeSession,
                   httpRequests: [],
                   dnsRequests: [],
                   requests: {},
@@ -833,13 +833,13 @@ const App = () => {
 
               // Notify other tabs about the deletion for this specific session
               localStorage.setItem(
-                `deleteAll_${state.activeSession}`,
+                `deleteAll_${appState.activeSession}`,
                 Date.now().toString(),
               );
 
               // Clean up the storage item immediately after setting it
               setTimeout(() => {
-                localStorage.removeItem(`deleteAll_${state.activeSession}`);
+                localStorage.removeItem(`deleteAll_${appState.activeSession}`);
               }, 100);
 
               return {
@@ -863,7 +863,7 @@ const App = () => {
 
   const onToggleMenu = (event) => {
     event.preventDefault();
-    setState((prevState) => {
+    setAppState((prevState) => {
       const isDesktop = window.innerWidth > 768;
       if (isDesktop) {
         if (prevState.layoutMode === "overlay") {
@@ -889,10 +889,10 @@ const App = () => {
       <AppTopbar
         onToggleMenu={onToggleMenu}
         updateSearchValue={updateSearchValue}
-        sessions={state.sessions}
-        activeSession={state.activeSession}
+        sessions={appState.sessions}
+        activeSession={appState.activeSession}
         onSessionChange={(session) =>
-          setState((prev) => {
+          setAppState((prev) => {
             try {
               // Get the session data from localStorage
               const sessionsStr = localStorage.getItem("sessions");
@@ -941,7 +941,7 @@ const App = () => {
           })
         }
         onSessionRemove={(subdomain) => {
-          setState((prev) => {
+          setAppState((prev) => {
             try {
               const newSessions = { ...prev.sessions };
 
@@ -989,12 +989,12 @@ const App = () => {
       />
 
       <AppSidebar
-        user={state.sessions[state.activeSession]}
-        searchValue={state.searchValue}
+        user={appState.sessions[appState.activeSession]}
+        searchValue={appState.searchValue}
         clickRequestAction={clickRequestAction}
         deleteAllRequests={deleteAllRequests}
         markAllAsVisited={markAllAsVisited}
-        activeSession={state.activeSession}
+        activeSession={appState.activeSession}
       />
 
       <div className="layout-main">
@@ -1035,8 +1035,8 @@ const App = () => {
                     type="text"
                     placeholder="Your URL"
                     value={
-                      state.sessions[state.activeSession]
-                        ? `${state.sessions[state.activeSession].subdomain}.${state.sessions[state.activeSession].domain}`
+                      appState.sessions[appState.activeSession]
+                        ? `${appState.sessions[appState.activeSession].subdomain}.${appState.sessions[appState.activeSession].domain}`
                         : ""
                     }
                     style={{ width: "300px", marginRight: "1em" }}
@@ -1064,24 +1064,24 @@ const App = () => {
                 exact
                 path="/"
                 element={
-                  <RequestsPage user={state.sessions[state.activeSession]} />
+                  <RequestsPage user={appState.sessions[appState.activeSession]} />
                 }
               />
               <Route
                 path="/requests"
                 element={
-                  <RequestsPage user={state.sessions[state.activeSession]} />
+                  <RequestsPage user={appState.sessions[appState.activeSession]} />
                 }
               />
               <Route
                 path="/edit-response"
                 element={
                   <EditResponsePage
-                    content={state.response.raw}
-                    statusCode={state.response.status_code}
-                    headers={state.response.headers}
-                    user={state.sessions[state.activeSession]}
-                    fetched={state.response.fetched}
+                    content={appState.response.raw}
+                    statusCode={appState.response.status_code}
+                    headers={appState.response.headers}
+                    user={appState.sessions[appState.activeSession]}
+                    fetched={appState.response.fetched}
                     toast={toast}
                   />
                 }
@@ -1090,12 +1090,12 @@ const App = () => {
                 path="/dns-settings"
                 element={
                   <DnsSettingsPage
-                    user={state.sessions[state.activeSession]}
+                    user={appState.sessions[appState.activeSession]}
                     dnsRecords={
-                      state.sessions[state.activeSession]?.dnsRecords || []
+                      appState.sessions[appState.activeSession]?.dnsRecords || []
                     }
                     toast={toast}
-                    activeSession={state.sessions[state.activeSession]}
+                    activeSession={appState.sessions[appState.activeSession]}
                   />
                 }
               />

@@ -1,45 +1,45 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
-from contextlib import asynccontextmanager
-from starlette.responses import JSONResponse
-from starlette.requests import ClientDisconnect
-from starlette.routing import Route
-from starlette import status
-from utils import (
-    get_subdomain_from_hostname,
-    write_basic_file,
-    get_random_subdomain,
-    get_subdomain_from_path,
-    verify_jwt,
-)
-from redis import asyncio as aioredis
+import base64
+import datetime
+import json
+import logging
+import re
+import uuid
 from collections import defaultdict
-from config import config
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncIterator
-from fastapi.responses import FileResponse, Response
+from typing import Any, AsyncIterator, Dict, List, Union
+
+import asyncio
+import ip2country
+import jwt
+from config import config
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.websockets import WebSocket, WebSocketDisconnect
-from websockets.exceptions import ConnectionClosed
+from fastapi_utils.tasks import repeat_every
 from models import (
-    HttpRequestLog,
-    File,
     DeleteRequest,
     DnsRecords,
-    FileTreeItem,
+    File,
     FileTree,
+    FileTreeItem,
+    HttpRequestLog,
 )
-import base64
-import json
-import datetime
-import uuid
-import jwt
-import re
-import ip2country
-from fastapi_utils.tasks import repeat_every
-import logging
-from typing import List, Dict, Union, Any
-from dataclasses import dataclass, field
 from pydantic import BaseModel
-import asyncio
+from redis import asyncio as aioredis
+from starlette import status
+from starlette.requests import ClientDisconnect
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+from utils import (
+    get_random_subdomain,
+    get_subdomain_from_hostname,
+    get_subdomain_from_path,
+    verify_jwt,
+    write_basic_file,
+)
+from websockets.exceptions import ConnectionClosed
 
 app = FastAPI(server_header=False)
 
@@ -48,7 +48,7 @@ app = FastAPI(server_header=False)
 class SessionManager:
     websocket: WebSocket
     redis: aioredis.Redis
-    sessions: Dict[str, str] = field(default_factory=dict)  # token -> subdomain mapping
+    sessions: set = field(default_factory=set)  # set of subdomains
     pubsub: aioredis.Redis.pubsub = None
 
     async def add_session(self, token: str) -> bool:
@@ -58,7 +58,7 @@ class SessionManager:
                 return False
 
             # If this subdomain is already in a session, don't add it again
-            if subdomain in self.sessions.values():
+            if subdomain in self.sessions:
                 return False
 
             # Create pubsub if it doesn't exist
@@ -66,7 +66,7 @@ class SessionManager:
                 self.pubsub = self.redis.pubsub()
 
             # Add to sessions first
-            self.sessions[token] = subdomain
+            self.sessions.add(subdomain)
 
             # Then subscribe to the channel
             await self.pubsub.subscribe(f"pubsub:{subdomain}")
@@ -81,22 +81,22 @@ class SessionManager:
             return True
         except Exception as e:
             logger.error(f"Error adding session: {e}")
-            if token in self.sessions:
-                del self.sessions[token]
+            if subdomain in self.sessions:
+                self.sessions.remove(subdomain)
             return False
 
     async def remove_session(self, token: str) -> None:
         try:
-            if token in self.sessions:
-                subdomain = self.sessions[token]
+            subdomain = verify_jwt(token)
+            if subdomain in self.sessions:
                 if self.pubsub:
                     await self.pubsub.unsubscribe(f"pubsub:{subdomain}")
-                del self.sessions[token]
+                self.sessions.remove(subdomain)
         except Exception as e:
             logger.error(f"Error removing session: {e}")
 
     def get_subdomain(self, token: str) -> str:
-        return self.sessions.get(token)
+        return verify_jwt(token)
 
 
 class RedisDependency:
@@ -214,6 +214,8 @@ async def update_dns(
 
     values = defaultdict(list)
 
+    pipeline = redis.pipeline()
+
     for record in records.records:
         new_domain = f"{record.domain.lower()}.{subdomain}.{config.server_domain}."
         new_value = record.value
@@ -227,9 +229,11 @@ async def update_dns(
         values[key].append(new_value)
 
     for key, value in values.items():
-        await redis.set(key, json.dumps(value), ex=config.redis_ttl)
+        pipeline.set(key, json.dumps(value), ex=config.redis_ttl)
 
-    await redis.set(f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl)
+    pipeline.set(f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl)
+
+    await pipeline.execute()
 
     return JSONResponse({"msg": "Updated records"})
 
@@ -457,7 +461,7 @@ async def websocket_endpoint(
 
                     if ws_message.get("cmd") == "update_tokens":
                         new_tokens = ws_message.get("tokens", [])
-                        current_tokens = list(session_manager.sessions.keys())
+                        current_tokens = list(session_manager.sessions)
 
                         # Remove old tokens
                         for token in current_tokens:
@@ -501,6 +505,9 @@ async def websocket_endpoint(
                 break
             except ConnectionClosed:
                 logger.info("Connection closed")
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
                 break
 
     except Exception as e:
