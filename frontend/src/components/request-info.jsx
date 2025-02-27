@@ -29,6 +29,19 @@ export class RequestInfo extends Component {
     return window.innerWidth > 768;
   }
 
+  encodePathWithSlashes(path) {
+    // Split the path by forward slashes
+    const segments = path.split('/');
+    
+    // Encode each segment individually
+    const encodedSegments = segments.map(segment => 
+      segment ? encodeURIComponent(segment) : ''
+    );
+    
+    // Join segments back with slashes
+    return encodedSegments.join('/');
+  }
+
   render() {
     let request = this.props.request;
     let data = Utils.base64Decode(request.raw);
@@ -40,7 +53,7 @@ export class RequestInfo extends Component {
       data =
         request.method +
         " " +
-        request.path +
+        this.encodePathWithSlashes(request.path) +
         request.query +
         request.fragment +
         " " +

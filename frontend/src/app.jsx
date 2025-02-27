@@ -233,6 +233,11 @@ const App = () => {
         dnsRecords: [],
       };
 
+      if (cmd === "invalid_token") {
+        const token = data["token"];
+        const subdomain = JSON.parse(atob(token.split(".")[1]))["subdomain"];
+        toast.error(`Invalid token for ${subdomain}, request a new URL`);
+      }
       if (cmd === "requests") {
         const requests = data["data"].map(JSON.parse);
         requests.forEach((request) => {
@@ -346,15 +351,6 @@ const App = () => {
           toast.error("Failed to create initial session");
         }
       } else {
-        // Get the selected session index
-        const selectedIndex = parseInt(
-          localStorage.getItem("selectedSessionIndex") || "0",
-        );
-        const validIndex = Math.max(
-          0,
-          Math.min(selectedIndex, allSessions.length - 1),
-        );
-
         const sessions = allSessions.reduce(
           (acc, session) => ({
             ...acc,
@@ -527,7 +523,6 @@ const App = () => {
         } else if (e.key.startsWith("token_")) {
           // Only reload if this is a manual token change, not our automatic token refresh
           if (!e.newValue || e.newValue === "") {
-            console.log("Manual token removal detected, reloading");
             document.location.reload();
           }
         }

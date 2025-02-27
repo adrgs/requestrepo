@@ -36,10 +36,10 @@ export class RequestsPage extends Component {
       );
     }
 
+    const activeSession = Utils.getActiveSession();
+
     const token = this.state.isEditorFocused
-      ? (user && user.subdomain
-          ? localStorage.getItem(`token_${user.subdomain}`)
-          : localStorage.getItem("token")) || "********"
+      ? activeSession.token
       : "********";
 
     // parse url into host:port
@@ -66,7 +66,6 @@ client.update_http(raw=b"hello world")
 new_request = client.get_request()
 print("Latest Request:", new_request)`;
 
-    console.log(user);
     return (
       <div className="card card-w-title card-body">
         {user?.requests &&
@@ -131,8 +130,7 @@ print("Latest Request:", new_request)`;
                 <CopyButton
                   text={content.replace(
                     "********",
-                    localStorage.getItem(`token_${user.subdomain}`) ||
-                      localStorage.getItem("token"),
+                    activeSession.token,
                   )}
                 />
                 <EditorComponent
