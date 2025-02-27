@@ -95,6 +95,12 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Error removing session: {e}")
 
+    async def remove_all_sessions(self) -> None:
+        for subdomain in self.sessions:
+            if self.pubsub:
+                await self.pubsub.unsubscribe(f"pubsub:{subdomain}")
+        self.sessions.clear()
+
     def get_subdomain(self, token: str) -> str:
         return verify_jwt(token)
 
@@ -427,6 +433,8 @@ async def websocket_endpoint(
         for session in sessions:
             if await session_manager.add_session(session["token"]):
                 valid_sessions.append(session)
+            else:
+                await websocket.send_json({"cmd": "invalid_token", "token": session["token"]})
 
         if not valid_sessions:
             await websocket.send_json({"error": "No valid sessions provided"})
@@ -461,17 +469,14 @@ async def websocket_endpoint(
 
                     if ws_message.get("cmd") == "update_tokens":
                         new_tokens = ws_message.get("tokens", [])
-                        current_tokens = list(session_manager.sessions)
 
                         # Remove old tokens
-                        for token in current_tokens:
-                            if token not in new_tokens:
-                                await session_manager.remove_session(token)
+                        await session_manager.remove_all_sessions()
 
                         # Add new tokens
                         for token in new_tokens:
-                            if token not in current_tokens:
-                                await session_manager.add_session(token)
+                            if not await session_manager.add_session(token):
+                                await websocket.send_json({"cmd": "invalid_token", "token": token})
                 except asyncio.TimeoutError:
                     pass
 
