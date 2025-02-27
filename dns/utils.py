@@ -1,7 +1,8 @@
 from config import config
+from typing import Union
 
 
-def get_subdomain(domain: str) -> str | None:
+def get_subdomain(domain: str) -> Union[str, None]:
     domain = domain.lower()
 
     rindex_domain = domain.rfind("." + config.server_domain)

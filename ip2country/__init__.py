@@ -2,6 +2,7 @@ import functools
 import bisect
 import gzip
 import os
+from typing import Union
 
 show_country = False
 ip_list: list[tuple[int, str]] = []
@@ -12,7 +13,7 @@ def get_directory() -> str:
 
 
 @functools.lru_cache(maxsize=1024)
-def ip_to_country(ip: str) -> str | None:
+def ip_to_country(ip: str) -> Union[str, None]:
     if not is_ipv4(ip) or not show_country:
         return None
 

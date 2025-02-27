@@ -2,7 +2,7 @@ import random
 import json
 import jwt
 from config import config
-from typing import TypedDict
+from typing import TypedDict, Union
 from redis import asyncio as aioredis
 
 
@@ -10,7 +10,7 @@ def verify_jwt(
     token: str,
     length: int = config.subdomain_length,
     alphabet_set: set = config.subdomain_alphabet_set,
-) -> str | None:
+) -> Union[str, None]:
     try:
         decoded_token = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
         subdomain = decoded_token.get("subdomain")
