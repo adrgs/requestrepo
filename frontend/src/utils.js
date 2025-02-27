@@ -274,6 +274,14 @@ export class Utils {
     return res.data;
   }
 
+  static async getRequest(id, subdomain) {
+    let reqUrl = this.apiUrl + this.getRequestEndpoint;
+    let res = await axios.get(reqUrl, {
+      params: { id, subdomain },
+    });
+    return res.data;
+  }
+
   static async updateFile(data) {
     let reqUrl = this.apiUrl + this.updateFileEndpoint;
     let res = await axios.post(reqUrl, data, {

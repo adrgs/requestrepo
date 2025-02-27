@@ -131,7 +131,7 @@ function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
         }
 
         // Start the heartbeat
-        heartbeatIntervalRef.current = setInterval(sendHeartbeat, 30000); // 30 seconds
+        heartbeatIntervalRef.current = setInterval(sendHeartbeat, 5000); // 30 seconds
 
         if (onOpenRef.current) {
           onOpenRef.current();
@@ -477,6 +477,7 @@ const App = () => {
         } else if (request["type"] === "dns") {
           session.dnsRequests.push(request);
         }
+        updateDocumentTitle();
       } else if (cmd === "dns_records") {
         session.dnsRecords = data.records;
       }
@@ -614,7 +615,7 @@ const App = () => {
     initializeSessions();
   }, []); // Run once on mount
 
-  useEffect(() => {
+  const updateDocumentTitle = () => {
     const text = `Dashboard - ${Utils.siteUrl}`;
     const totalUnseen = Object.values(appState.sessions).reduce((sum, session) => {
       const unseenCount =
@@ -625,6 +626,11 @@ const App = () => {
     }, 0);
 
     document.title = totalUnseen <= 0 ? text : `(${totalUnseen}) ${text}`;
+  };
+
+  useEffect(() => {
+    updateDocumentTitle();
+
   }, [appState.sessions]);
 
   useEffect(() => {

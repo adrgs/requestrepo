@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
+import { toast } from "react-toastify";
 
 export class RequestInfo extends Component {
   constructor(props) {
@@ -44,20 +45,18 @@ export class RequestInfo extends Component {
   }
 
   shareRequest = () => {
-    // Create a text representation of the request details to share
-    const requestDetails = this.props.request.name === undefined
-      ? `${this.props.request.method} ${this.props.request.url} (${this.props.request.protocol})`
-      : `DNS request for ${this.props.request.name}`;
+    const id = this.props.request._id;
+    const subdomain = this.props.request.uid;
+
+    const data = btoa(JSON.stringify({id, subdomain}));
+
+    const url = `${window.location.origin}/?request=${data}`;
     
-    // Use the clipboard API to copy the details
-    navigator.clipboard.writeText(requestDetails)
-      .then(() => {
-        // You could add a toast notification here if you have one available
-        console.log('Request details copied to clipboard');
-      })
-      .catch(err => {
-        console.error('Failed to copy to clipboard', err);
-      });
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success("Request share link copied to clipboard");
+    }).catch((err) => {
+      toast.error("Failed to copy request share link to clipboard");
+    });
   };
 
   render() {

@@ -26,8 +26,11 @@ export class AppTopbar extends Component {
   handleShareSession() {
     const token = Utils.getSessionToken(this.state.activeSession);
     const url = `${window.location.origin}/?share=${token}`;
-    navigator.clipboard.writeText(url);
-    toast.success("Share link copied to clipboard");
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success("Session share link copied to clipboard");
+    }).catch((err) => {
+      toast.error("Failed to copy session share link to clipboard");
+    });
   }
 
   toggleTheme() {

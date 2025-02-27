@@ -6,6 +6,17 @@ from typing import TypedDict, Union
 from redis import asyncio as aioredis
 
 
+def verify_subdomain(
+    subdomain: str,
+    length: int = config.subdomain_length,
+    alphabet_set: set = config.subdomain_alphabet_set,
+) -> bool:
+    return (
+        isinstance(subdomain, str)
+        and len(subdomain) == length
+        and set(subdomain).issubset(alphabet_set)
+    )
+
 def verify_jwt(
     token: str,
     length: int = config.subdomain_length,
@@ -14,12 +25,7 @@ def verify_jwt(
     try:
         decoded_token = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
         subdomain = decoded_token.get("subdomain")
-
-        if (
-            isinstance(subdomain, str)
-            and len(subdomain) == length
-            and set(subdomain).issubset(alphabet_set)
-        ):
+        if verify_subdomain(subdomain, length, alphabet_set):
             return subdomain
     except Exception:
         pass
