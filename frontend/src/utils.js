@@ -25,33 +25,35 @@ export class Utils {
   );
   static getActiveSession() {
     try {
-      const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
-      if (sessions.length === 0) {
-        this.selectedSessionIndex = 0;
-        return null;
+      // First check sessionStorage for this tab's active session
+      const activeSessionSubdomain = sessionStorage.getItem("activeSessionSubdomain");
+      if (activeSessionSubdomain) {
+        const allSessions = this.getAllSessions();
+        const activeSession = allSessions.find(s => s.subdomain === activeSessionSubdomain);
+        if (activeSession) {
+          return activeSession;
+        }
       }
-
-      // Get and validate selectedSessionIndex
-      let selectedIndex = parseInt(
-        localStorage.getItem("selectedSessionIndex") || "0",
-      );
-      selectedIndex = Math.max(0, Math.min(selectedIndex, sessions.length - 1));
-
-      // Update if index was invalid
-      if (
-        selectedIndex.toString() !==
-        localStorage.getItem("selectedSessionIndex")
-      ) {
-        localStorage.setItem("selectedSessionIndex", selectedIndex.toString());
+      
+      // Fall back to the global selected session if needed
+      const sessionsStr = localStorage.getItem("sessions");
+      if (!sessionsStr) return null;
+      
+      const sessions = JSON.parse(sessionsStr);
+      if (sessions.length === 0) return null;
+      
+      const selectedIndex = parseInt(localStorage.getItem("selectedSessionIndex") || "0");
+      const validIndex = Math.max(0, Math.min(selectedIndex, sessions.length - 1));
+      
+      // Update sessionStorage with the selected session for this tab
+      const selectedSession = sessions[validIndex];
+      if (selectedSession) {
+        sessionStorage.setItem("activeSessionSubdomain", selectedSession.subdomain);
       }
-
-      const session = sessions[selectedIndex];
-      if (session) {
-        this.subdomain = session.subdomain;
-      }
-      return session;
+      
+      return sessions[validIndex];
     } catch (error) {
-      console.error("Error getting active session:", error);
+      console.error("Error getting active session", error);
       return null;
     }
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppTopbar } from "./components/topbar";
 import { AppSidebar } from "./components/sidebar";
 import { RequestsPage } from "./components/requests-page";
@@ -22,6 +22,8 @@ function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
   const isConnectingRef = useRef(false);
   const sessionsRef = useRef(sessions);
   const onOpenRef = useRef(onOpen);
+  const heartbeatIntervalRef = useRef(null);
+  const lastPongTimeRef = useRef(Date.now());
 
   // Update refs when dependencies change
   useEffect(() => {
@@ -32,111 +34,191 @@ function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
     onOpenRef.current = onOpen;
   }, [onOpen]);
 
-  useEffect(() => {
-    const connectWebSocket = () => {
-      // Prevent multiple connection attempts
-      if (
-        isConnectingRef.current ||
-        websocketRef.current?.readyState === WebSocket.CONNECTING
-      ) {
-        return;
-      }
-
-      // Don't reconnect if already connected
-      if (websocketRef.current?.readyState === WebSocket.OPEN) {
-        return;
-      }
-
-      isConnectingRef.current = true;
-
-      // Close existing connection before creating new one
-      if (websocketRef.current) {
-        try {
+  // Function to send heartbeat ping
+  const sendHeartbeat = useCallback(() => {
+    if (websocketRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        // Send a ping message
+        websocketRef.current.send(JSON.stringify({ cmd: "ping" }));
+        
+        // Check if we haven't received a response for too long (10 seconds)
+        const timeSinceLastPong = Date.now() - lastPongTimeRef.current;
+        if (timeSinceLastPong > 10000) {
+          console.warn("WebSocket connection may be stale, reconnecting...");
+          // Force close and reconnect
           websocketRef.current.close();
-        } catch (err) {
-          console.error("Error closing websocket:", err);
+        }
+      } catch (error) {
+        console.error("Error sending heartbeat:", error);
+        // Connection is probably dead, force reconnect
+        if (websocketRef.current) {
+          websocketRef.current.close();
         }
       }
+    }
+  }, []);
 
-      const socket = new WebSocket(ws_url);
-      websocketRef.current = socket;
+  const connectWebSocket = useCallback(() => {
+    // Prevent multiple connection attempts
+    if (
+      isConnectingRef.current ||
+      websocketRef.current?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
 
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          onUpdate(event, data.subdomain || Utils.subdomain);
-        } catch (err) {
-          console.error("Error handling websocket message:", err);
+    // Don't reconnect if already connected
+    if (websocketRef.current?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    isConnectingRef.current = true;
+
+    // Close existing connection before creating new one
+    if (websocketRef.current) {
+      try {
+        websocketRef.current.close();
+      } catch (err) {
+        console.error("Error closing websocket:", err);
+      }
+    }
+
+    // Clear any existing heartbeat interval
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    const socket = new WebSocket(ws_url);
+    websocketRef.current = socket;
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Handle pong response
+        if (data.cmd === "pong") {
+          lastPongTimeRef.current = Date.now();
+          return;
         }
-      };
-
-      socket.onopen = () => {
-        isConnectingRef.current = false;
-
-        try {
-          // Send all valid session tokens on connect
-          const sessionTokens = Object.entries(sessionsRef.current)
-            .filter(([_, session]) => session && session.token)
-            .map(([subdomain, session]) => ({
-              token: session.token,
-              subdomain: subdomain,
-            }));
-
-          if (sessionTokens.length > 0) {
-            socket.send(
-              JSON.stringify({
-                cmd: "register_sessions",
-                sessions: sessionTokens,
-              }),
-            );
-          }
-
-          if (onOpenRef.current) {
-            onOpenRef.current();
-          }
-        } catch (err) {
-          console.error("Error in websocket onopen:", err);
-        }
-      };
-
-      socket.onclose = (event) => {
-        isConnectingRef.current = false;
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
-
-        // Only attempt reconnect if this is still the current socket and it wasn't closed intentionally
-        if (websocketRef.current === socket && event.code !== 1000) {
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2500);
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        isConnectingRef.current = false;
-        if (websocketRef.current === socket) {
-          socket.close();
-        }
-      };
+        
+        onUpdate(event, data.subdomain || Utils.subdomain);
+      } catch (err) {
+        console.error("Error handling websocket message:", err);
+      }
     };
 
+    socket.onopen = () => {
+      isConnectingRef.current = false;
+      lastPongTimeRef.current = Date.now();
+
+      try {
+        // Send all valid session tokens on connect
+        const sessionTokens = Object.entries(sessionsRef.current)
+          .filter(([_, session]) => session && session.token)
+          .map(([subdomain, session]) => ({
+            token: session.token,
+            subdomain: subdomain,
+          }));
+
+        if (sessionTokens.length > 0) {
+          socket.send(
+            JSON.stringify({
+              cmd: "register_sessions",
+              sessions: sessionTokens,
+            }),
+          );
+        }
+
+        // Start the heartbeat
+        heartbeatIntervalRef.current = setInterval(sendHeartbeat, 30000); // 30 seconds
+
+        if (onOpenRef.current) {
+          onOpenRef.current();
+        }
+      } catch (err) {
+        console.error("Error in websocket onopen:", err);
+      }
+    };
+
+    socket.onclose = (event) => {
+      isConnectingRef.current = false;
+      
+      // Clear heartbeat interval on close
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+
+      // Only attempt reconnect if this is still the current socket and it wasn't closed intentionally
+      if (websocketRef.current === socket && event.code !== 1000) {
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2500);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      isConnectingRef.current = false;
+      if (websocketRef.current === socket) {
+        socket.close();
+      }
+    };
+  }, [ws_url, onUpdate, sendHeartbeat]);
+
+  // Main WebSocket connection effect
+  useEffect(() => {
     connectWebSocket();
 
+    // Handle visibility change to reconnect when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Check WebSocket state when tab becomes visible
+        if (!websocketRef.current || 
+            websocketRef.current.readyState === WebSocket.CLOSED || 
+            websocketRef.current.readyState === WebSocket.CLOSING) {
+          // Reset connecting flag in case it got stuck
+          isConnectingRef.current = false;
+          // Try to reconnect
+          connectWebSocket();
+        } else if (websocketRef.current.readyState === WebSocket.OPEN) {
+          // Connection appears to be open, send a ping to verify
+          sendHeartbeat();
+        }
+      }
+    };
+
+    // Add visibility change listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      // Clean up
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       isConnectingRef.current = false;
+      
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+      }
+      
       if (websocketRef.current) {
         websocketRef.current.close(1000); // Normal closure
       }
+      
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [ws_url]); // Only reconnect if ws_url changes
+  }, [ws_url, connectWebSocket, sendHeartbeat]); // Only reconnect if ws_url changes
 }
 
 const App = () => {
   const urlArea = useRef(null);
   const websocketRef = useRef(null);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [appState, setAppState] = useState({
     layoutMode: "static",
     layoutColorMode: "light",
@@ -154,54 +236,185 @@ const App = () => {
   // Move initial session check into useEffect
   useEffect(() => {
     const checkInitialSession = async () => {
-      if (!Utils.userHasSubdomain()) {
-        // Only create a new session if none exist
-        const existingSessions = Utils.getAllSessions();
-        if (existingSessions.length === 0) {
-          try {
-            const { subdomain, token } = await Utils.getRandomSubdomain();
+      // Check for shared token in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const sharedToken = urlParams.get('share');
+      
+      if (sharedToken) {
+        try {
+          // Decode the token to get the subdomain
+          const tokenParts = sharedToken.split('.');
+          if (tokenParts.length >= 2) {
+            let subdomain;
+            try {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              subdomain = payload.subdomain;
+            } catch (e) {
+              console.error("Failed to parse token payload:", e);
+              throw new Error("Invalid token format");
+            }
+            
+            if (!subdomain) {
+              throw new Error("Token missing subdomain information");
+            }
+            
+            // Get current sessions from localStorage
+            const existingSessions = Utils.getAllSessions();
+            
+            // Check if this session already exists
+            const sessionExists = existingSessions.some(session => 
+              session.token === sharedToken || session.subdomain === subdomain
+            );
+            
+            if (!sessionExists) {
+              // Create new session object
+              const newSession = {
+                subdomain,
+                token: sharedToken,
+                createdAt: new Date().toISOString(),
+                unseenRequests: 0,
+              };
+              
+              // Add to existing sessions
+              existingSessions.push(newSession);
+              
+              // Save updated sessions
+              localStorage.setItem("sessions", JSON.stringify(existingSessions));
+              
+              // Store active session in sessionStorage to make it tab-specific
+              sessionStorage.setItem("activeSessionSubdomain", subdomain);
+              
+              // Update app state
+              setAppState(prevState => {
+                const newSessions = {
+                  ...prevState.sessions,
+                  [subdomain]: {
+                    url: `${subdomain}.${Utils.siteUrl}`,
+                    domain: Utils.siteUrl,
+                    subdomain: subdomain,
+                    httpRequests: [],
+                    dnsRequests: [],
+                    timestamp: null,
+                    requests: {},
+                    visited: {},
+                    selectedRequest: null,
+                    token: sharedToken,
+                  }
+                };
+                
+                return {
+                  ...prevState,
+                  sessions: newSessions,
+                  activeSession: subdomain,
+                };
+              });
+              
+              // Send token to WebSocket if connected
+              if (websocketRef.current?.readyState === WebSocket.OPEN) {
+                websocketRef.current.send(
+                  JSON.stringify({
+                    cmd: "register_sessions",
+                    sessions: [{ token: sharedToken, subdomain }],
+                  })
+                );
+              }
+              
+              toast.success(`Added shared session: ${subdomain}`);
+            } else {
+              toast.info(`Session ${subdomain} already exists`);
+              // Still make this the active session in this tab
+              sessionStorage.setItem("activeSessionSubdomain", subdomain);
+            }
+            
+            // Remove share parameter from URL without reloading
+            navigate(location.pathname, { replace: true });
+            
+            // Remove share parameter from URL without reloading
+            // Create a clean URL without any query parameters
+            navigate(location.pathname, { 
+              replace: true,
+              search: '' // This explicitly removes all query parameters
+            });
 
-            // Create initial session array
-            const newSession = {
-              subdomain,
-              token,
-              createdAt: new Date().toISOString(),
-              unseenRequests: 0,
-            };
+            // Remove share parameter from URL without triggering re-renders
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } else {
+            throw new Error("Invalid token format");
+          }
+        } catch (error) {
+          console.error("Failed to process shared token:", error);
+          toast.error(`Invalid shared token: ${error.message}`);
+          
+          // Remove share parameter from URL even if processing failed
+          navigate(location.pathname, { replace: true });
+          
+          // Remove share parameter from URL even if processing failed
+          navigate(location.pathname, { 
+            replace: true, 
+            search: '' // Clear all query parameters
+          });
 
-            // Save to localStorage
-            localStorage.setItem("sessions", JSON.stringify([newSession]));
-            localStorage.setItem("selectedSessionIndex", "0");
+          // Remove share parameter from URL even if processing failed
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
 
-            // Update state
-            setAppState((prevState) => ({
-              ...prevState,
-              sessions: {
-                [subdomain]: {
-                  url: `${subdomain}.${Utils.siteUrl}`,
-                  domain: Utils.siteUrl,
-                  subdomain: subdomain,
-                  httpRequests: [],
-                  dnsRequests: [],
-                  timestamp: null,
-                  requests: {},
-                  visited: {},
-                  selectedRequest: null,
-                  token: token,
+      // Separate logic for first-time users
+      const createInitialSessionIfNeeded = async () => {
+        if (!Utils.userHasSubdomain()) {
+          // Only create a new session if none exist
+          const existingSessions = Utils.getAllSessions();
+          if (existingSessions.length === 0) {
+            try {
+              const { subdomain, token } = await Utils.getRandomSubdomain();
+
+              // Create initial session array
+              const newSession = {
+                subdomain,
+                token,
+                createdAt: new Date().toISOString(),
+                unseenRequests: 0,
+              };
+
+              // Save to localStorage
+              localStorage.setItem("sessions", JSON.stringify([newSession]));
+              localStorage.setItem("selectedSessionIndex", "0");
+
+              // Update state
+              setAppState((prevState) => ({
+                ...prevState,
+                sessions: {
+                  [subdomain]: {
+                    url: `${subdomain}.${Utils.siteUrl}`,
+                    domain: Utils.siteUrl,
+                    subdomain: subdomain,
+                    httpRequests: [],
+                    dnsRequests: [],
+                    timestamp: null,
+                    requests: {},
+                    visited: {},
+                    selectedRequest: null,
+                    token: token,
+                  },
                 },
-              },
-              activeSession: subdomain,
-            }));
-          } catch (error) {
-            console.error("Failed to create initial session:", error);
-            toast.error("Failed to create initial session");
+                activeSession: subdomain,
+              }));
+            } catch (error) {
+              console.error("Failed to create initial session:", error);
+              toast.error("Failed to create initial session");
+            }
           }
         }
+      };
+
+      // Only run the initial session creation if we didn't process a share token
+      if (!sharedToken) {
+        await createInitialSessionIfNeeded();
       }
     };
 
     checkInitialSession();
-  }, []); // Run once on mount
+  }, []); // Include both location and navigate as dependencies
 
   const [themeState, setThemeState] = useState(Utils.getTheme());
   useEffect(() => {
@@ -325,7 +538,9 @@ const App = () => {
 
           // Update localStorage
           localStorage.setItem("sessions", JSON.stringify(sessions));
-          localStorage.setItem("selectedSessionIndex", "0");
+          
+          // Save active session to sessionStorage (tab-specific)
+          sessionStorage.setItem("activeSessionSubdomain", subdomain);
 
           // Update parent component's state via onSessionChange pattern
           setAppState((prev) => ({
@@ -351,6 +566,7 @@ const App = () => {
           toast.error("Failed to create initial session");
         }
       } else {
+        // Convert array to object format
         const sessions = allSessions.reduce(
           (acc, session) => ({
             ...acc,
@@ -374,13 +590,23 @@ const App = () => {
           {},
         );
 
+        // Get the active session from sessionStorage (tab-specific) or fall back to first session
+        const activeSessionSubdomain = sessionStorage.getItem("activeSessionSubdomain") || 
+          allSessions[0]?.subdomain || "";
+
+        // Validate that the active session actually exists in our sessions
+        const finalActiveSession = sessions[activeSessionSubdomain] ? 
+          activeSessionSubdomain : allSessions[0]?.subdomain || "";
+        
+        if (finalActiveSession && finalActiveSession !== activeSessionSubdomain) {
+          // Update sessionStorage if we had to fall back to a different session
+          sessionStorage.setItem("activeSessionSubdomain", finalActiveSession);
+        }
+
         setAppState((prev) => ({
           ...prev,
           sessions,
-          activeSession:
-            Utils.getActiveSession()?.subdomain ||
-            Utils.getAllSessions()[0]?.subdomain ||
-            "",
+          activeSession: finalActiveSession,
         }));
       }
     };
@@ -878,6 +1104,14 @@ const App = () => {
     });
   };
 
+  // Update Utils to use sessionStorage for active session
+  useEffect(() => {
+    // Update sessionStorage whenever active session changes
+    if (appState.activeSession) {
+      sessionStorage.setItem("activeSessionSubdomain", appState.activeSession);
+    }
+  }, [appState.activeSession]);
+
   // Component rendering logic
   return (
     <div className="layout-wrapper layout-static">
@@ -920,6 +1154,9 @@ const App = () => {
                   }),
                 );
               }
+
+              // Update session storage with the new active session
+              sessionStorage.setItem("activeSessionSubdomain", session);
 
               return {
                 ...prev,

@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
+import { Button } from "primereact/button";
 import { Utils } from "../utils";
 
 export class RequestInfo extends Component {
@@ -42,6 +43,23 @@ export class RequestInfo extends Component {
     return encodedSegments.join('/');
   }
 
+  shareRequest = () => {
+    // Create a text representation of the request details to share
+    const requestDetails = this.props.request.name === undefined
+      ? `${this.props.request.method} ${this.props.request.url} (${this.props.request.protocol})`
+      : `DNS request for ${this.props.request.name}`;
+    
+    // Use the clipboard API to copy the details
+    navigator.clipboard.writeText(requestDetails)
+      .then(() => {
+        // You could add a toast notification here if you have one available
+        console.log('Request details copied to clipboard');
+      })
+      .catch(err => {
+        console.error('Failed to copy to clipboard', err);
+      });
+  };
+
   render() {
     let request = this.props.request;
     let data = Utils.base64Decode(request.raw);
@@ -78,7 +96,10 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <h1>Request Details</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1>Request Details</h1>
+              <Button icon="pi pi-share-alt" className="p-button-text p-button-secondary theme-toggle" style={{ width: '2rem', height: '2rem', borderRadius: '50%' }} onClick={this.shareRequest} tooltip="Share request details" />
+            </div>
             <table className="req-table">
               <tbody>
                 <tr>
@@ -217,7 +238,10 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <h1>Request Details</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1>Request Details</h1>
+              <Button icon="pi pi-share-alt" className="p-button-rounded" onClick={this.shareRequest} tooltip="Share request details" />
+            </div>
             <table className="req-table">
               <tbody>
                 <tr>
