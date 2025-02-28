@@ -17,6 +17,7 @@ def verify_subdomain(
         and set(subdomain).issubset(alphabet_set)
     )
 
+
 def verify_jwt(
     token: str,
     length: int = config.subdomain_length,

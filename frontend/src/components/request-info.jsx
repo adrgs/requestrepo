@@ -34,36 +34,39 @@ export class RequestInfo extends Component {
 
   encodePathWithSlashes(path) {
     // Split the path by forward slashes
-    const segments = path.split('/');
-    
+    const segments = path.split("/");
+
     // Encode each segment individually
-    const encodedSegments = segments.map(segment => 
-      segment ? encodeURIComponent(segment) : ''
+    const encodedSegments = segments.map((segment) =>
+      segment ? encodeURIComponent(segment) : "",
     );
-    
+
     // Join segments back with slashes
-    return encodedSegments.join('/');
+    return encodedSegments.join("/");
   }
 
   shareRequest = () => {
     const id = this.props.request._id;
     const subdomain = this.props.request.uid;
 
-    const data = btoa(JSON.stringify({id, subdomain}));
+    const data = btoa(JSON.stringify({ id, subdomain }));
 
     const url = `${window.location.origin}/?request=${data}`;
-    
-    navigator.clipboard.writeText(url).then(() => {
-      toast.success("Request share link copied to clipboard");
-    }).catch((err) => {
-      toast.error("Failed to copy request share link to clipboard");
-    });
+
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        toast.success("Request share link copied to clipboard");
+      })
+      .catch((err) => {
+        toast.error("Failed to copy request share link to clipboard");
+      });
   };
 
   render() {
     let request = this.props.request;
     const isShared = this.props.isShared || false;
-    let data = request.raw ? Utils.base64Decode(request.raw) : '';
+    let data = request.raw ? Utils.base64Decode(request.raw) : "";
 
     let headerKeys;
     if (request.headers) headerKeys = Object.keys(request.headers);
@@ -97,17 +100,22 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5em' }}>
-              <h1 style={{ margin: '0' }}>Request Details</h1>
-              {isShared && (
-                <Tag value="Shared" severity="info" />
-              )}
-              <Button 
-                icon="pi pi-share-alt" 
-                className="p-button-text p-button-secondary theme-toggle" 
-                style={{ width: '2rem', height: '2rem', borderRadius: '50%' }}
-                onClick={this.shareRequest} 
-                tooltip="Share request details" 
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "0.5em",
+              }}
+            >
+              <h1 style={{ margin: "0" }}>Request Details</h1>
+              {isShared && <Tag value="Shared" severity="info" />}
+              <Button
+                icon="pi pi-share-alt"
+                className="p-button-text p-button-secondary theme-toggle"
+                style={{ width: "2rem", height: "2rem", borderRadius: "50%" }}
+                onClick={this.shareRequest}
+                tooltip="Share request details"
               />
             </div>
             <table className="req-table">
@@ -248,17 +256,22 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5em' }}>
-              <h1 style={{ margin: '0' }}>Request Details</h1>
-              {isShared && (
-                <Tag value="Shared" severity="info" />
-              )}
-              <Button 
-                icon="pi pi-share-alt" 
-                className="p-button-text p-button-secondary theme-toggle" 
-                style={{ width: '2rem', height: '2rem', borderRadius: '50%' }}
-                onClick={this.shareRequest} 
-                tooltip="Share request details" 
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "0.5em",
+              }}
+            >
+              <h1 style={{ margin: "0" }}>Request Details</h1>
+              {isShared && <Tag value="Shared" severity="info" />}
+              <Button
+                icon="pi pi-share-alt"
+                className="p-button-text p-button-secondary theme-toggle"
+                style={{ width: "2rem", height: "2rem", borderRadius: "50%" }}
+                onClick={this.shareRequest}
+                tooltip="Share request details"
               />
             </div>
             <table className="req-table">

@@ -26,11 +26,14 @@ export class AppTopbar extends Component {
   handleShareSession() {
     const token = Utils.getSessionToken(this.state.activeSession);
     const url = `${window.location.origin}/?share=${token}`;
-    navigator.clipboard.writeText(url).then(() => {
-      toast.success("Session share link copied to clipboard");
-    }).catch((err) => {
-      toast.error("Failed to copy session share link to clipboard");
-    });
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        toast.success("Session share link copied to clipboard");
+      })
+      .catch((err) => {
+        toast.error("Failed to copy session share link to clipboard");
+      });
   }
 
   toggleTheme() {
@@ -187,10 +190,7 @@ export class AppTopbar extends Component {
 
         <div className="layout-topbar-session">
           {showTabs && (
-            <div 
-              className="session-tabs" 
-              title="Your active sessions"
-            >
+            <div className="session-tabs" title="Your active sessions">
               {Object.entries(this.state.sessions).map(
                 ([subdomain, session]) => (
                   <div

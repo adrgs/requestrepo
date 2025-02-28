@@ -27,31 +27,43 @@ export class Utils {
   static getActiveSession() {
     try {
       // First check sessionStorage for this tab's active session
-      const activeSessionSubdomain = sessionStorage.getItem("activeSessionSubdomain");
+      const activeSessionSubdomain = sessionStorage.getItem(
+        "activeSessionSubdomain",
+      );
       if (activeSessionSubdomain) {
         const allSessions = this.getAllSessions();
-        const activeSession = allSessions.find(s => s.subdomain === activeSessionSubdomain);
+        const activeSession = allSessions.find(
+          (s) => s.subdomain === activeSessionSubdomain,
+        );
         if (activeSession) {
           return activeSession;
         }
       }
-      
+
       // Fall back to the global selected session if needed
       const sessionsStr = localStorage.getItem("sessions");
       if (!sessionsStr) return null;
-      
+
       const sessions = JSON.parse(sessionsStr);
       if (sessions.length === 0) return null;
-      
-      const selectedIndex = parseInt(localStorage.getItem("selectedSessionIndex") || "0");
-      const validIndex = Math.max(0, Math.min(selectedIndex, sessions.length - 1));
-      
+
+      const selectedIndex = parseInt(
+        localStorage.getItem("selectedSessionIndex") || "0",
+      );
+      const validIndex = Math.max(
+        0,
+        Math.min(selectedIndex, sessions.length - 1),
+      );
+
       // Update sessionStorage with the selected session for this tab
       const selectedSession = sessions[validIndex];
       if (selectedSession) {
-        sessionStorage.setItem("activeSessionSubdomain", selectedSession.subdomain);
+        sessionStorage.setItem(
+          "activeSessionSubdomain",
+          selectedSession.subdomain,
+        );
       }
-      
+
       return sessions[validIndex];
     } catch (error) {
       console.error("Error getting active session", error);

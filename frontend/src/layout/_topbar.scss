@@ -59,24 +59,24 @@ body.dark {
     overflow-x: auto;
     white-space: nowrap;
     max-width: 100%;
-    
+
     // Skinny scrollbar styling
     scrollbar-width: thin; /* Firefox */
     -ms-overflow-style: thin; /* IE and Edge */
-    
+
     &::-webkit-scrollbar {
       height: 3px; /* Height for horizontal scrollbar */
       width: 3px;
     }
-    
+
     &::-webkit-scrollbar-track {
       background: transparent;
     }
-    
+
     &::-webkit-scrollbar-thumb {
       background-color: rgba(0, 0, 0, 0.2);
       border-radius: 10px;
-      
+
       body.dark & {
         background-color: rgba(255, 255, 255, 0.2);
       }
@@ -166,7 +166,7 @@ body.dark {
         font-size: 0.75rem;
       }
     }
-    
+
     &:hover .close-tab {
       display: inline-flex;
     }

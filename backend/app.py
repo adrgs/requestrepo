@@ -278,6 +278,7 @@ async def get_file(
     tree = json.loads(tree_data)
     return JSONResponse(tree["index.html"])
 
+
 @app.get("/api/get_request")
 async def get_request(
     subdomain: str, id: str, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
@@ -299,6 +300,7 @@ async def get_request(
         raise HTTPException(status_code=404, detail="Request not found")
 
     return JSONResponse(json.loads(request))
+
 
 @app.post("/api/delete_request")
 async def delete_request(
@@ -456,7 +458,9 @@ async def websocket_endpoint(
             if await session_manager.add_session(session["token"]):
                 valid_sessions.append(session)
             else:
-                await websocket.send_json({"cmd": "invalid_token", "token": session["token"]})
+                await websocket.send_json(
+                    {"cmd": "invalid_token", "token": session["token"]}
+                )
 
         if not valid_sessions:
             await websocket.send_json({"error": "No valid sessions provided"})
@@ -498,7 +502,9 @@ async def websocket_endpoint(
                         # Add new tokens
                         for token in new_tokens:
                             if not await session_manager.add_session(token):
-                                await websocket.send_json({"cmd": "invalid_token", "token": token})
+                                await websocket.send_json(
+                                    {"cmd": "invalid_token", "token": token}
+                                )
                     elif ws_message.get("cmd") == "ping":
                         await websocket.send_json({"cmd": "pong"})
                 except asyncio.TimeoutError:
