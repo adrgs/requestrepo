@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppTopbar } from "./components/topbar";
 import { AppSidebar } from "./components/sidebar";
 import { RequestsPage } from "./components/requests-page";
@@ -22,6 +22,8 @@ function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
   const isConnectingRef = useRef(false);
   const sessionsRef = useRef(sessions);
   const onOpenRef = useRef(onOpen);
+  const heartbeatIntervalRef = useRef(null);
+  const lastPongTimeRef = useRef(Date.now());
 
   // Update refs when dependencies change
   useEffect(() => {
@@ -32,112 +34,192 @@ function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
     onOpenRef.current = onOpen;
   }, [onOpen]);
 
-  useEffect(() => {
-    const connectWebSocket = () => {
-      // Prevent multiple connection attempts
-      if (
-        isConnectingRef.current ||
-        websocketRef.current?.readyState === WebSocket.CONNECTING
-      ) {
-        return;
-      }
-
-      // Don't reconnect if already connected
-      if (websocketRef.current?.readyState === WebSocket.OPEN) {
-        return;
-      }
-
-      isConnectingRef.current = true;
-
-      // Close existing connection before creating new one
-      if (websocketRef.current) {
-        try {
+  // Function to send heartbeat ping
+  const sendHeartbeat = useCallback(() => {
+    if (websocketRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        // Send a ping message
+        websocketRef.current.send(JSON.stringify({ cmd: "ping" }));
+        
+        // Check if we haven't received a response for too long (10 seconds)
+        const timeSinceLastPong = Date.now() - lastPongTimeRef.current;
+        if (timeSinceLastPong > 10000) {
+          console.warn("WebSocket connection may be stale, reconnecting...");
+          // Force close and reconnect
           websocketRef.current.close();
-        } catch (err) {
-          console.error("Error closing websocket:", err);
+        }
+      } catch (error) {
+        console.error("Error sending heartbeat:", error);
+        // Connection is probably dead, force reconnect
+        if (websocketRef.current) {
+          websocketRef.current.close();
         }
       }
+    }
+  }, []);
 
-      const socket = new WebSocket(ws_url);
-      websocketRef.current = socket;
+  const connectWebSocket = useCallback(() => {
+    // Prevent multiple connection attempts
+    if (
+      isConnectingRef.current ||
+      websocketRef.current?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
 
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          onUpdate(event, data.subdomain || Utils.subdomain);
-        } catch (err) {
-          console.error("Error handling websocket message:", err);
+    // Don't reconnect if already connected
+    if (websocketRef.current?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    isConnectingRef.current = true;
+
+    // Close existing connection before creating new one
+    if (websocketRef.current) {
+      try {
+        websocketRef.current.close();
+      } catch (err) {
+        console.error("Error closing websocket:", err);
+      }
+    }
+
+    // Clear any existing heartbeat interval
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    const socket = new WebSocket(ws_url);
+    websocketRef.current = socket;
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Handle pong response
+        if (data.cmd === "pong") {
+          lastPongTimeRef.current = Date.now();
+          return;
         }
-      };
-
-      socket.onopen = () => {
-        isConnectingRef.current = false;
-
-        try {
-          // Send all valid session tokens on connect
-          const sessionTokens = Object.entries(sessionsRef.current)
-            .filter(([_, session]) => session && session.token)
-            .map(([subdomain, session]) => ({
-              token: session.token,
-              subdomain: subdomain,
-            }));
-
-          if (sessionTokens.length > 0) {
-            socket.send(
-              JSON.stringify({
-                cmd: "register_sessions",
-                sessions: sessionTokens,
-              }),
-            );
-          }
-
-          if (onOpenRef.current) {
-            onOpenRef.current();
-          }
-        } catch (err) {
-          console.error("Error in websocket onopen:", err);
-        }
-      };
-
-      socket.onclose = (event) => {
-        isConnectingRef.current = false;
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
-
-        // Only attempt reconnect if this is still the current socket and it wasn't closed intentionally
-        if (websocketRef.current === socket && event.code !== 1000) {
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2500);
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        isConnectingRef.current = false;
-        if (websocketRef.current === socket) {
-          socket.close();
-        }
-      };
+        
+        onUpdate(event, data.subdomain || Utils.subdomain);
+      } catch (err) {
+        console.error("Error handling websocket message:", err);
+      }
     };
 
+    socket.onopen = () => {
+      isConnectingRef.current = false;
+      lastPongTimeRef.current = Date.now();
+
+      try {
+        // Send all valid session tokens on connect
+        const sessionTokens = Object.entries(sessionsRef.current)
+          .filter(([_, session]) => session && session.token)
+          .map(([subdomain, session]) => ({
+            token: session.token,
+            subdomain: subdomain,
+          }));
+
+        if (sessionTokens.length > 0) {
+          socket.send(
+            JSON.stringify({
+              cmd: "register_sessions",
+              sessions: sessionTokens,
+            }),
+          );
+        }
+
+        // Start the heartbeat
+        heartbeatIntervalRef.current = setInterval(sendHeartbeat, 5000); // 30 seconds
+
+        if (onOpenRef.current) {
+          onOpenRef.current();
+        }
+      } catch (err) {
+        console.error("Error in websocket onopen:", err);
+      }
+    };
+
+    socket.onclose = (event) => {
+      isConnectingRef.current = false;
+      
+      // Clear heartbeat interval on close
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+
+      // Only attempt reconnect if this is still the current socket and it wasn't closed intentionally
+      if (websocketRef.current === socket && event.code !== 1000) {
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2500);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      isConnectingRef.current = false;
+      if (websocketRef.current === socket) {
+        socket.close();
+      }
+    };
+  }, [ws_url, onUpdate, sendHeartbeat]);
+
+  // Main WebSocket connection effect
+  useEffect(() => {
     connectWebSocket();
 
+    // Handle visibility change to reconnect when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Check WebSocket state when tab becomes visible
+        if (!websocketRef.current || 
+            websocketRef.current.readyState === WebSocket.CLOSED || 
+            websocketRef.current.readyState === WebSocket.CLOSING) {
+          // Reset connecting flag in case it got stuck
+          isConnectingRef.current = false;
+          // Try to reconnect
+          connectWebSocket();
+        } else if (websocketRef.current.readyState === WebSocket.OPEN) {
+          // Connection appears to be open, send a ping to verify
+          sendHeartbeat();
+        }
+      }
+    };
+
+    // Add visibility change listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      // Clean up
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       isConnectingRef.current = false;
+      
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+      }
+      
       if (websocketRef.current) {
         websocketRef.current.close(1000); // Normal closure
       }
+      
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [ws_url]); // Only reconnect if ws_url changes
+  }, [ws_url, connectWebSocket, sendHeartbeat]); // Only reconnect if ws_url changes
 }
 
 const App = () => {
   const urlArea = useRef(null);
   const websocketRef = useRef(null);
-  const [state, setState] = useState({
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [appState, setAppState] = useState({
     layoutMode: "static",
     layoutColorMode: "light",
     staticMenuInactive: false,
@@ -154,54 +236,185 @@ const App = () => {
   // Move initial session check into useEffect
   useEffect(() => {
     const checkInitialSession = async () => {
-      if (!Utils.userHasSubdomain()) {
-        // Only create a new session if none exist
-        const existingSessions = Utils.getAllSessions();
-        if (existingSessions.length === 0) {
-          try {
-            const { subdomain, token } = await Utils.getRandomSubdomain();
+      // Check for shared token in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const sharedToken = urlParams.get('share');
+      
+      if (sharedToken) {
+        try {
+          // Decode the token to get the subdomain
+          const tokenParts = sharedToken.split('.');
+          if (tokenParts.length >= 2) {
+            let subdomain;
+            try {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              subdomain = payload.subdomain;
+            } catch (e) {
+              console.error("Failed to parse token payload:", e);
+              throw new Error("Invalid token format");
+            }
+            
+            if (!subdomain) {
+              throw new Error("Token missing subdomain information");
+            }
+            
+            // Get current sessions from localStorage
+            const existingSessions = Utils.getAllSessions();
+            
+            // Check if this session already exists
+            const sessionExists = existingSessions.some(session => 
+              session.token === sharedToken || session.subdomain === subdomain
+            );
+            
+            if (!sessionExists) {
+              // Create new session object
+              const newSession = {
+                subdomain,
+                token: sharedToken,
+                createdAt: new Date().toISOString(),
+                unseenRequests: 0,
+              };
+              
+              // Add to existing sessions
+              existingSessions.push(newSession);
+              
+              // Save updated sessions
+              localStorage.setItem("sessions", JSON.stringify(existingSessions));
+              
+              // Store active session in sessionStorage to make it tab-specific
+              sessionStorage.setItem("activeSessionSubdomain", subdomain);
+              
+              // Update app state
+              setAppState(prevState => {
+                const newSessions = {
+                  ...prevState.sessions,
+                  [subdomain]: {
+                    url: `${subdomain}.${Utils.siteUrl}`,
+                    domain: Utils.siteUrl,
+                    subdomain: subdomain,
+                    httpRequests: [],
+                    dnsRequests: [],
+                    timestamp: null,
+                    requests: {},
+                    visited: {},
+                    selectedRequest: null,
+                    token: sharedToken,
+                  }
+                };
+                
+                return {
+                  ...prevState,
+                  sessions: newSessions,
+                  activeSession: subdomain,
+                };
+              });
+              
+              // Send token to WebSocket if connected
+              if (websocketRef.current?.readyState === WebSocket.OPEN) {
+                websocketRef.current.send(
+                  JSON.stringify({
+                    cmd: "register_sessions",
+                    sessions: [{ token: sharedToken, subdomain }],
+                  })
+                );
+              }
+              
+              toast.success(`Added shared session: ${subdomain}`);
+            } else {
+              toast.info(`Session ${subdomain} already exists`);
+              // Still make this the active session in this tab
+              sessionStorage.setItem("activeSessionSubdomain", subdomain);
+            }
+            
+            // Remove share parameter from URL without reloading
+            navigate(location.pathname, { replace: true });
+            
+            // Remove share parameter from URL without reloading
+            // Create a clean URL without any query parameters
+            navigate(location.pathname, { 
+              replace: true,
+              search: '' // This explicitly removes all query parameters
+            });
 
-            // Create initial session array
-            const newSession = {
-              subdomain,
-              token,
-              createdAt: new Date().toISOString(),
-              unseenRequests: 0,
-            };
+            // Remove share parameter from URL without triggering re-renders
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } else {
+            throw new Error("Invalid token format");
+          }
+        } catch (error) {
+          console.error("Failed to process shared token:", error);
+          toast.error(`Invalid shared token: ${error.message}`);
+          
+          // Remove share parameter from URL even if processing failed
+          navigate(location.pathname, { replace: true });
+          
+          // Remove share parameter from URL even if processing failed
+          navigate(location.pathname, { 
+            replace: true, 
+            search: '' // Clear all query parameters
+          });
 
-            // Save to localStorage
-            localStorage.setItem("sessions", JSON.stringify([newSession]));
-            localStorage.setItem("selectedSessionIndex", "0");
+          // Remove share parameter from URL even if processing failed
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
 
-            // Update state
-            setState((prevState) => ({
-              ...prevState,
-              sessions: {
-                [subdomain]: {
-                  url: `${subdomain}.${Utils.siteUrl}`,
-                  domain: Utils.siteUrl,
-                  subdomain: subdomain,
-                  httpRequests: [],
-                  dnsRequests: [],
-                  timestamp: null,
-                  requests: {},
-                  visited: {},
-                  selectedRequest: null,
-                  token: token,
+      // Separate logic for first-time users
+      const createInitialSessionIfNeeded = async () => {
+        if (!Utils.userHasSubdomain()) {
+          // Only create a new session if none exist
+          const existingSessions = Utils.getAllSessions();
+          if (existingSessions.length === 0) {
+            try {
+              const { subdomain, token } = await Utils.getRandomSubdomain();
+
+              // Create initial session array
+              const newSession = {
+                subdomain,
+                token,
+                createdAt: new Date().toISOString(),
+                unseenRequests: 0,
+              };
+
+              // Save to localStorage
+              localStorage.setItem("sessions", JSON.stringify([newSession]));
+              localStorage.setItem("selectedSessionIndex", "0");
+
+              // Update state
+              setAppState((prevState) => ({
+                ...prevState,
+                sessions: {
+                  [subdomain]: {
+                    url: `${subdomain}.${Utils.siteUrl}`,
+                    domain: Utils.siteUrl,
+                    subdomain: subdomain,
+                    httpRequests: [],
+                    dnsRequests: [],
+                    timestamp: null,
+                    requests: {},
+                    visited: {},
+                    selectedRequest: null,
+                    token: token,
+                  },
                 },
-              },
-              activeSession: subdomain,
-            }));
-          } catch (error) {
-            console.error("Failed to create initial session:", error);
-            toast.error("Failed to create initial session");
+                activeSession: subdomain,
+              }));
+            } catch (error) {
+              console.error("Failed to create initial session:", error);
+              toast.error("Failed to create initial session");
+            }
           }
         }
+      };
+
+      // Only run the initial session creation if we didn't process a share token
+      if (!sharedToken) {
+        await createInitialSessionIfNeeded();
       }
     };
 
     checkInitialSession();
-  }, []); // Run once on mount
+  }, []); // Include both location and navigate as dependencies
 
   const [themeState, setThemeState] = useState(Utils.getTheme());
   useEffect(() => {
@@ -219,9 +432,21 @@ const App = () => {
   }, []);
   // Function to handle WebSocket data separately
   const handleWebSocketData = (cmd, data, subdomain) => {
-    setState((prevState) => {
+    // Reference the current sharedRequest value
+    const currentSharedRequest = sharedRequest;
+    
+    // Don't process messages with empty subdomain
+    if (!subdomain || subdomain === "") {
+      console.warn("Received WebSocket message with empty subdomain, ignoring");
+      return;
+    }
+    
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const session = newSessions[subdomain] || {
+      
+      // Get existing session or create a new one
+      const existingSession = newSessions[subdomain];
+      const session = existingSession || {
         url: `${subdomain}.${Utils.siteUrl}`,
         domain: Utils.siteUrl,
         subdomain: subdomain,
@@ -233,37 +458,85 @@ const App = () => {
         dnsRecords: [],
       };
 
-      if (cmd === "requests") {
+      if (cmd === "invalid_token") {
+        const token = data["token"];
+        if (token) {
+          try {
+            const subdomain = JSON.parse(atob(token.split(".")[1]))["subdomain"];
+            toast.error(`Invalid token for ${subdomain}, request a new URL`);
+          } catch (err) {
+            console.error("Error parsing token:", err);
+          }
+        }
+      } else if (cmd === "requests") {
         const requests = data["data"].map(JSON.parse);
         requests.forEach((request) => {
           const key = request["_id"];
-          session.requests[key] = request;
-          if (request["type"] === "http") {
-            // Prevent duplicate requests
-            if (!session.httpRequests.find((r) => r["_id"] === key)) {
-              session.httpRequests.push(request);
-            }
-          } else if (request["type"] === "dns") {
-            if (!session.dnsRequests.find((r) => r["_id"] === key)) {
-              session.dnsRequests.push(request);
+          
+          // Add request to the requests object if it doesn't exist
+          if (!session.requests[key]) {
+            session.requests[key] = request;
+            
+            // Add request to the appropriate requests array if it doesn't exist
+            if (request["type"] === "http") {
+              // Prevent duplicate requests by checking ID
+              if (!session.httpRequests.some(r => r["_id"] === key)) {
+                session.httpRequests.push(request);
+              }
+            } else if (request["type"] === "dns") {
+              // Prevent duplicate requests by checking ID
+              if (!session.dnsRequests.some(r => r["_id"] === key)) {
+                session.dnsRequests.push(request);
+              }
             }
           }
         });
       } else if (cmd === "request") {
         const request = JSON.parse(data["data"]);
         const key = request["_id"];
-        request["new"] = true;
-        session.requests[key] = request;
-        if (request["type"] === "http") {
-          session.httpRequests.push(request);
-        } else if (request["type"] === "dns") {
-          session.dnsRequests.push(request);
+        
+        // Only process if this request doesn't already exist
+        if (!session.requests[key]) {
+          request["new"] = true;
+          session.requests[key] = request;
+          
+          // Check if this is the first request for a newly created session
+          const isFirstRequest = session.httpRequests.length === 0 && session.dnsRequests.length === 0;
+          
+          if (request["type"] === "http") {
+            // Ensure no duplicates
+            if (!session.httpRequests.some(r => r["_id"] === key)) {
+              session.httpRequests.push(request);
+            }
+          } else if (request["type"] === "dns") {
+            // Ensure no duplicates
+            if (!session.dnsRequests.some(r => r["_id"] === key)) {
+              session.dnsRequests.push(request);
+            }
+          }
+          
+          // Special handling for first request while viewing a shared request
+          if (isFirstRequest && currentSharedRequest) {
+            // Using setTimeout to ensure toast appears after state update
+            setTimeout(() => {
+              toast.info(
+                `New request received on your subdomain. Click it in the sidebar to view.`, 
+                { autoClose: 8000 }
+              );
+            }, 100);
+          }
+          
+          updateDocumentTitle();
         }
       } else if (cmd === "dns_records") {
         session.dnsRecords = data.records;
       }
 
-      newSessions[subdomain] = session;
+      // Only update the session if it's changed and has a valid subdomain
+      if (subdomain && subdomain !== "") {
+        newSessions[subdomain] = session;
+      }
+      
       return { ...prevState, sessions: newSessions };
     });
   };
@@ -273,7 +546,7 @@ const App = () => {
   const ws_url = `${protocol}://${document.location.host}/api/ws2`;
 
   const onOpen = () => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = {};
       Object.keys(prevState.sessions).forEach((subdomain) => {
         // Preserve existing session data
@@ -292,7 +565,7 @@ const App = () => {
   };
 
   // Use custom WebSocket hook
-  useWebSocket(ws_url, handleMessage, onOpen, state.sessions, websocketRef);
+  useWebSocket(ws_url, handleMessage, onOpen, appState.sessions, websocketRef);
 
   // Initialize sessions in useEffect
   useEffect(() => {
@@ -320,10 +593,12 @@ const App = () => {
 
           // Update localStorage
           localStorage.setItem("sessions", JSON.stringify(sessions));
-          localStorage.setItem("selectedSessionIndex", "0");
+          
+          // Save active session to sessionStorage (tab-specific)
+          sessionStorage.setItem("activeSessionSubdomain", subdomain);
 
           // Update parent component's state via onSessionChange pattern
-          setState((prev) => ({
+          setAppState((prev) => ({
             ...prev,
             sessions: {
               [subdomain]: {
@@ -341,20 +616,22 @@ const App = () => {
             },
             activeSession: subdomain,
           }));
+
+          // Register the new session with WebSocket if already connected
+          if (websocketRef.current?.readyState === WebSocket.OPEN) {
+            websocketRef.current.send(
+              JSON.stringify({
+                cmd: "register_sessions",
+                sessions: [{ token, subdomain }],
+              })
+            );
+          }
         } catch (error) {
           console.error("Error creating default session:", error);
           toast.error("Failed to create initial session");
         }
       } else {
-        // Get the selected session index
-        const selectedIndex = parseInt(
-          localStorage.getItem("selectedSessionIndex") || "0",
-        );
-        const validIndex = Math.max(
-          0,
-          Math.min(selectedIndex, allSessions.length - 1),
-        );
-
+        // Convert array to object format
         const sessions = allSessions.reduce(
           (acc, session) => ({
             ...acc,
@@ -378,13 +655,23 @@ const App = () => {
           {},
         );
 
-        setState((prev) => ({
+        // Get the active session from sessionStorage (tab-specific) or fall back to first session
+        const activeSessionSubdomain = sessionStorage.getItem("activeSessionSubdomain") || 
+          allSessions[0]?.subdomain || "";
+
+        // Validate that the active session actually exists in our sessions
+        const finalActiveSession = sessions[activeSessionSubdomain] ? 
+          activeSessionSubdomain : allSessions[0]?.subdomain || "";
+        
+        if (finalActiveSession && finalActiveSession !== activeSessionSubdomain) {
+          // Update sessionStorage if we had to fall back to a different session
+          sessionStorage.setItem("activeSessionSubdomain", finalActiveSession);
+        }
+
+        setAppState((prev) => ({
           ...prev,
           sessions,
-          activeSession:
-            Utils.getActiveSession()?.subdomain ||
-            Utils.getAllSessions()[0]?.subdomain ||
-            "",
+          activeSession: finalActiveSession,
         }));
       }
     };
@@ -392,9 +679,9 @@ const App = () => {
     initializeSessions();
   }, []); // Run once on mount
 
-  useEffect(() => {
+  const updateDocumentTitle = () => {
     const text = `Dashboard - ${Utils.siteUrl}`;
-    const totalUnseen = Object.values(state.sessions).reduce((sum, session) => {
+    const totalUnseen = Object.values(appState.sessions).reduce((sum, session) => {
       const unseenCount =
         session.httpRequests.length +
         session.dnsRequests.length -
@@ -403,7 +690,87 @@ const App = () => {
     }, 0);
 
     document.title = totalUnseen <= 0 ? text : `(${totalUnseen}) ${text}`;
-  }, [state.sessions]);
+  };
+
+  // State for shared request
+  const [sharedRequest, setSharedRequest] = useState(null);
+
+  useEffect(() => {
+    updateDocumentTitle();
+
+  }, [appState.sessions]);
+
+  // Check for shared request in URL
+  useEffect(() => {
+    const checkSharedRequest = async () => {
+      // Check for shared request in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const requestParam = urlParams.get('request');
+      
+      if (requestParam) {
+        try {
+          // Decode the parameter
+          const decodedData = JSON.parse(atob(requestParam));
+          const { id, subdomain } = decodedData;
+          
+          if (!id || !subdomain) {
+            throw new Error("Invalid request data");
+          }
+          
+          // Fetch the request data
+          const requestData = await Utils.getRequest(id, subdomain);
+          
+          if (requestData) {
+            // Set the shared request data
+            setSharedRequest(requestData);
+            
+            // Navigate to requests page
+            navigate("/requests", { replace: true });
+            
+            // Clean up URL by removing the request parameter
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            toast.info(`Viewing shared request from ${subdomain}.`, { autoClose: 5000 });
+            
+            // If we don't have any sessions yet, wait to make sure 
+            // the session initialization completes before proceeding
+            const sessions = Utils.getAllSessions();
+            if (sessions.length === 0) {
+              // Add a small delay to allow session initialization to complete
+              setTimeout(() => {
+                // Ensure WebSocket registers the new session if it's already connected
+                const newSessions = Utils.getAllSessions();
+                if (newSessions.length > 0 && websocketRef.current?.readyState === WebSocket.OPEN) {
+                  const sessionTokens = newSessions.map(s => ({
+                    token: s.token,
+                    subdomain: s.subdomain,
+                  }));
+                  
+                  // Register sessions with WebSocket
+                  websocketRef.current.send(
+                    JSON.stringify({
+                      cmd: "register_sessions",
+                      sessions: sessionTokens,
+                    })
+                  );
+                  
+                  console.log("Registered new session with WebSocket after shared request view");
+                }
+              }, 1000); // 1 second delay to ensure initialization completed
+            }
+          }
+        } catch (error) {
+          console.error("Failed to process shared request:", error);
+          toast.error(`Invalid shared request: ${error.message}`);
+          
+          // Remove request parameter from URL even if processing failed
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    };
+    
+    checkSharedRequest();
+  }, [navigate]); // Include navigate in dependencies
 
   useEffect(() => {
     Utils.initTheme();
@@ -413,7 +780,7 @@ const App = () => {
 
       if (e.key === "sessions" || e.key === "selectedSessionIndex") {
         // Update state based on new sessions data
-        setState((prevState) => {
+        setAppState((prevState) => {
           try {
             const sessions = JSON.parse(e.newValue || "[]");
             const selectedIndex = parseInt(
@@ -480,7 +847,7 @@ const App = () => {
         });
       } else if (e.key.startsWith("deleteAll_")) {
         const targetSubdomain = e.key.replace("deleteAll_", "");
-        setState((prevState) => {
+        setAppState((prevState) => {
           const newSessions = { ...prevState.sessions };
           if (newSessions[targetSubdomain]) {
             newSessions[targetSubdomain] = {
@@ -501,7 +868,7 @@ const App = () => {
       } else if (e.key.startsWith("visited_") || e.key.startsWith("token_")) {
         if (e.key.startsWith("visited_")) {
           const targetSubdomain = e.key.replace("visited_", "");
-          setState((prevState) => {
+          setAppState((prevState) => {
             const newSessions = { ...prevState.sessions };
             if (newSessions[targetSubdomain]) {
               try {
@@ -527,13 +894,12 @@ const App = () => {
         } else if (e.key.startsWith("token_")) {
           // Only reload if this is a manual token change, not our automatic token refresh
           if (!e.newValue || e.newValue === "") {
-            console.log("Manual token removal detected, reloading");
             document.location.reload();
           }
         }
       } else if (e.key?.startsWith("lastSelectedRequest_")) {
         const targetSubdomain = e.key.replace("lastSelectedRequest_", "");
-        setState((prevState) => {
+        setAppState((prevState) => {
           const newSessions = { ...prevState.sessions };
           if (
             newSessions[targetSubdomain] &&
@@ -547,7 +913,7 @@ const App = () => {
       } else if (e.key?.startsWith("lastDeletedRequest_")) {
         const targetSubdomain = e.key.replace("lastDeletedRequest_", "");
         const requestId = e.newValue;
-        setState((prevState) => {
+        setAppState((prevState) => {
           const newSessions = { ...prevState.sessions };
           if (newSessions[targetSubdomain]) {
             delete newSessions[targetSubdomain].requests[requestId];
@@ -568,12 +934,12 @@ const App = () => {
     return () => {
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, [state.activeSession]); // Add dependency on activeSession
+  }, [appState.activeSession]); // Add dependency on activeSession
 
   const markAllAsVisited = () => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const activeSession = newSessions[state.activeSession];
+      const activeSession = newSessions[appState.activeSession];
 
       if (activeSession) {
         const updatedRequests = {};
@@ -588,7 +954,7 @@ const App = () => {
         activeSession.visited = visited;
 
         localStorage.setItem(
-          `visited_${state.activeSession}`,
+          `visited_${appState.activeSession}`,
           JSON.stringify(visited),
         );
       }
@@ -598,9 +964,14 @@ const App = () => {
   };
 
   const clickRequestAction = (action, id) => {
-    setState((prevState) => {
+    // Clear shared request when a user selects a request from the sidebar
+    if (action === "select") {
+      setSharedRequest(null);
+    }
+    
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const activeSession = newSessions[state.activeSession];
+      const activeSession = newSessions[appState.activeSession];
 
       if (!activeSession) return prevState;
 
@@ -611,12 +982,12 @@ const App = () => {
           if (activeSession.visited[id] === undefined) {
             activeSession.visited[id] = true;
             localStorage.setItem(
-              `visited_${state.activeSession}`,
+              `visited_${appState.activeSession}`,
               JSON.stringify(activeSession.visited),
             );
           }
           localStorage.setItem(
-            `lastSelectedRequest_${state.activeSession}`,
+            `lastSelectedRequest_${appState.activeSession}`,
             id,
           );
         }
@@ -653,26 +1024,26 @@ const App = () => {
 
         if (
           id ===
-          localStorage.getItem(`lastSelectedRequest_${state.activeSession}`)
+          localStorage.getItem(`lastSelectedRequest_${appState.activeSession}`)
         ) {
           localStorage.setItem(
-            `lastSelectedRequest_${state.activeSession}`,
+            `lastSelectedRequest_${appState.activeSession}`,
             nextSelectedId,
           );
           activeSession.selectedRequest = nextSelectedId;
         }
 
-        Utils.deleteRequest(id, state.activeSession).then(() => {
+        Utils.deleteRequest(id, appState.activeSession).then(() => {
           localStorage.setItem(
-            `visited_${state.activeSession}`,
+            `visited_${appState.activeSession}`,
             JSON.stringify(activeSession.visited),
           );
-          localStorage.setItem(`lastDeletedRequest_${state.activeSession}`, id);
+          localStorage.setItem(`lastDeletedRequest_${appState.activeSession}`, id);
         });
       } else if (action === "reset") {
         activeSession.selectedRequest = undefined;
         localStorage.setItem(
-          `lastSelectedRequest_${state.activeSession}`,
+          `lastSelectedRequest_${appState.activeSession}`,
           undefined,
         );
       }
@@ -682,7 +1053,7 @@ const App = () => {
   };
 
   const updateSearchValue = (val) => {
-    setState((prevState) => ({ ...prevState, searchValue: val }));
+    setAppState((prevState) => ({ ...prevState, searchValue: val }));
   };
 
   const copyUrl = () => {
@@ -724,7 +1095,7 @@ const App = () => {
 
   const handleNewURL = async () => {
     try {
-      const activeSession = state.sessions[state.activeSession];
+      const activeSession = appState.sessions[appState.activeSession];
       if (!activeSession) {
         throw new Error("No active session found");
       }
@@ -749,7 +1120,7 @@ const App = () => {
         localStorage.setItem("sessions", JSON.stringify(sessions));
       }
 
-      setState((prevState) => {
+      setAppState((prevState) => {
         const newSessions = Object.keys(prevState.sessions).reduce(
           (acc, key) => {
             if (key === activeSession.subdomain) {
@@ -804,24 +1175,24 @@ const App = () => {
   };
 
   const deleteAllRequests = () => {
-    setState((prevState) => {
+    setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const activeSession = newSessions[state.activeSession];
+      const activeSession = newSessions[appState.activeSession];
 
       if (activeSession) {
         // Call the API to delete all requests
-        Utils.deleteAll(state.activeSession)
+        Utils.deleteAll(appState.activeSession)
           .then(() => {
             // Update the current tab's state
-            setState((prevState) => {
+            setAppState((prevState) => {
               const newSessions = { ...prevState.sessions };
-              if (newSessions[state.activeSession]) {
+              if (newSessions[appState.activeSession]) {
                 // Preserve the session properties while clearing request data
-                newSessions[state.activeSession] = {
-                  ...newSessions[state.activeSession],
-                  url: `${state.activeSession}.${Utils.siteUrl}`,
+                newSessions[appState.activeSession] = {
+                  ...newSessions[appState.activeSession],
+                  url: `${appState.activeSession}.${Utils.siteUrl}`,
                   domain: Utils.siteUrl,
-                  subdomain: state.activeSession,
+                  subdomain: appState.activeSession,
                   httpRequests: [],
                   dnsRequests: [],
                   requests: {},
@@ -833,13 +1204,13 @@ const App = () => {
 
               // Notify other tabs about the deletion for this specific session
               localStorage.setItem(
-                `deleteAll_${state.activeSession}`,
+                `deleteAll_${appState.activeSession}`,
                 Date.now().toString(),
               );
 
               // Clean up the storage item immediately after setting it
               setTimeout(() => {
-                localStorage.removeItem(`deleteAll_${state.activeSession}`);
+                localStorage.removeItem(`deleteAll_${appState.activeSession}`);
               }, 100);
 
               return {
@@ -863,7 +1234,7 @@ const App = () => {
 
   const onToggleMenu = (event) => {
     event.preventDefault();
-    setState((prevState) => {
+    setAppState((prevState) => {
       const isDesktop = window.innerWidth > 768;
       if (isDesktop) {
         if (prevState.layoutMode === "overlay") {
@@ -883,16 +1254,24 @@ const App = () => {
     });
   };
 
+  // Update Utils to use sessionStorage for active session
+  useEffect(() => {
+    // Update sessionStorage whenever active session changes
+    if (appState.activeSession) {
+      sessionStorage.setItem("activeSessionSubdomain", appState.activeSession);
+    }
+  }, [appState.activeSession]);
+
   // Component rendering logic
   return (
     <div className="layout-wrapper layout-static">
       <AppTopbar
         onToggleMenu={onToggleMenu}
         updateSearchValue={updateSearchValue}
-        sessions={state.sessions}
-        activeSession={state.activeSession}
+        sessions={appState.sessions}
+        activeSession={appState.activeSession}
         onSessionChange={(session) =>
-          setState((prev) => {
+          setAppState((prev) => {
             try {
               // Get the session data from localStorage
               const sessionsStr = localStorage.getItem("sessions");
@@ -926,6 +1305,9 @@ const App = () => {
                 );
               }
 
+              // Update session storage with the new active session
+              sessionStorage.setItem("activeSessionSubdomain", session);
+
               return {
                 ...prev,
                 sessions: {
@@ -941,7 +1323,7 @@ const App = () => {
           })
         }
         onSessionRemove={(subdomain) => {
-          setState((prev) => {
+          setAppState((prev) => {
             try {
               const newSessions = { ...prev.sessions };
 
@@ -989,12 +1371,12 @@ const App = () => {
       />
 
       <AppSidebar
-        user={state.sessions[state.activeSession]}
-        searchValue={state.searchValue}
+        user={appState.sessions[appState.activeSession]}
+        searchValue={appState.searchValue}
         clickRequestAction={clickRequestAction}
         deleteAllRequests={deleteAllRequests}
         markAllAsVisited={markAllAsVisited}
-        activeSession={state.activeSession}
+        activeSession={appState.activeSession}
       />
 
       <div className="layout-main">
@@ -1035,8 +1417,8 @@ const App = () => {
                     type="text"
                     placeholder="Your URL"
                     value={
-                      state.sessions[state.activeSession]
-                        ? `${state.sessions[state.activeSession].subdomain}.${state.sessions[state.activeSession].domain}`
+                      appState.sessions[appState.activeSession]
+                        ? `${appState.sessions[appState.activeSession].subdomain}.${appState.sessions[appState.activeSession].domain}`
                         : ""
                     }
                     style={{ width: "300px", marginRight: "1em" }}
@@ -1064,24 +1446,30 @@ const App = () => {
                 exact
                 path="/"
                 element={
-                  <RequestsPage user={state.sessions[state.activeSession]} />
+                  <RequestsPage 
+                    user={appState.sessions[appState.activeSession]} 
+                    sharedRequest={sharedRequest}
+                  />
                 }
               />
               <Route
                 path="/requests"
                 element={
-                  <RequestsPage user={state.sessions[state.activeSession]} />
+                  <RequestsPage 
+                    user={appState.sessions[appState.activeSession]} 
+                    sharedRequest={sharedRequest}
+                  />
                 }
               />
               <Route
                 path="/edit-response"
                 element={
                   <EditResponsePage
-                    content={state.response.raw}
-                    statusCode={state.response.status_code}
-                    headers={state.response.headers}
-                    user={state.sessions[state.activeSession]}
-                    fetched={state.response.fetched}
+                    content={appState.response.raw}
+                    statusCode={appState.response.status_code}
+                    headers={appState.response.headers}
+                    user={appState.sessions[appState.activeSession]}
+                    fetched={appState.response.fetched}
                     toast={toast}
                   />
                 }
@@ -1090,12 +1478,12 @@ const App = () => {
                 path="/dns-settings"
                 element={
                   <DnsSettingsPage
-                    user={state.sessions[state.activeSession]}
+                    user={appState.sessions[appState.activeSession]}
                     dnsRecords={
-                      state.sessions[state.activeSession]?.dnsRecords || []
+                      appState.sessions[appState.activeSession]?.dnsRecords || []
                     }
                     toast={toast}
-                    activeSession={state.sessions[state.activeSession]}
+                    activeSession={appState.sessions[appState.activeSession]}
                   />
                 }
               />

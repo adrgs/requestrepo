@@ -16,6 +16,12 @@ FORMAT_JS_CMD := prettier --write --log-level silent
 REDIS_CONTAINER_NAME := redis-requestrepo-dev
 REDIS_PORT := 6379
 
+# Install dependencies
+.PHONY: install
+install:
+	cd $(BACKEND_DIR) && poetry install
+	cd $(FRONTEND_DIR) && npm install
+
 # Start the backend server
 .PHONY: start-backend
 start-backend: start-redis

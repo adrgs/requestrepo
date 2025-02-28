@@ -2,7 +2,7 @@ version: "3"
 services:
   redisdb:
     image: redis:latest
-    command: redis-server --appendonly yes --maxmemory 8gb --maxclients 1048576
+    command: redis-server --appendonly yes --maxmemory 16gb --maxmemory-policy allkeys-lru --maxclients 1048576
     container_name: requestrepo_redisdb
     restart: always
     volumes:

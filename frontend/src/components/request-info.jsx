@@ -1,6 +1,9 @@
 import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
+import { Button } from "primereact/button";
 import { Utils } from "../utils";
+import { toast } from "react-toastify";
+import { Tag } from "primereact/tag";
 
 export class RequestInfo extends Component {
   constructor(props) {
@@ -29,9 +32,38 @@ export class RequestInfo extends Component {
     return window.innerWidth > 768;
   }
 
+  encodePathWithSlashes(path) {
+    // Split the path by forward slashes
+    const segments = path.split('/');
+    
+    // Encode each segment individually
+    const encodedSegments = segments.map(segment => 
+      segment ? encodeURIComponent(segment) : ''
+    );
+    
+    // Join segments back with slashes
+    return encodedSegments.join('/');
+  }
+
+  shareRequest = () => {
+    const id = this.props.request._id;
+    const subdomain = this.props.request.uid;
+
+    const data = btoa(JSON.stringify({id, subdomain}));
+
+    const url = `${window.location.origin}/?request=${data}`;
+    
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success("Request share link copied to clipboard");
+    }).catch((err) => {
+      toast.error("Failed to copy request share link to clipboard");
+    });
+  };
+
   render() {
     let request = this.props.request;
-    let data = Utils.base64Decode(request.raw);
+    const isShared = this.props.isShared || false;
+    let data = request.raw ? Utils.base64Decode(request.raw) : '';
 
     let headerKeys;
     if (request.headers) headerKeys = Object.keys(request.headers);
@@ -40,7 +72,7 @@ export class RequestInfo extends Component {
       data =
         request.method +
         " " +
-        request.path +
+        this.encodePathWithSlashes(request.path) +
         request.query +
         request.fragment +
         " " +
@@ -65,7 +97,19 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <h1>Request Details</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5em' }}>
+              <h1 style={{ margin: '0' }}>Request Details</h1>
+              {isShared && (
+                <Tag value="Shared" severity="info" />
+              )}
+              <Button 
+                icon="pi pi-share-alt" 
+                className="p-button-text p-button-secondary theme-toggle" 
+                style={{ width: '2rem', height: '2rem', borderRadius: '50%' }}
+                onClick={this.shareRequest} 
+                tooltip="Share request details" 
+              />
+            </div>
             <table className="req-table">
               <tbody>
                 <tr>
@@ -204,7 +248,19 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <h1>Request Details</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5em' }}>
+              <h1 style={{ margin: '0' }}>Request Details</h1>
+              {isShared && (
+                <Tag value="Shared" severity="info" />
+              )}
+              <Button 
+                icon="pi pi-share-alt" 
+                className="p-button-text p-button-secondary theme-toggle" 
+                style={{ width: '2rem', height: '2rem', borderRadius: '50%' }}
+                onClick={this.shareRequest} 
+                tooltip="Share request details" 
+              />
+            </div>
             <table className="req-table">
               <tbody>
                 <tr>

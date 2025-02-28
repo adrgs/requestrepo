@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
+import { toast } from "react-toastify";
 
 export class AppTopbar extends Component {
   constructor(props) {
@@ -19,6 +20,17 @@ export class AppTopbar extends Component {
     this.handleSessionSelect = this.handleSessionSelect.bind(this);
     this.handleSessionRemove = this.handleSessionRemove.bind(this);
     this.handleNewSession = this.handleNewSession.bind(this);
+    this.handleShareSession = this.handleShareSession.bind(this);
+  }
+
+  handleShareSession() {
+    const token = Utils.getSessionToken(this.state.activeSession);
+    const url = `${window.location.origin}/?share=${token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success("Session share link copied to clipboard");
+    }).catch((err) => {
+      toast.error("Failed to copy session share link to clipboard");
+    });
   }
 
   toggleTheme() {
@@ -175,13 +187,17 @@ export class AppTopbar extends Component {
 
         <div className="layout-topbar-session">
           {showTabs && (
-            <div className="session-tabs">
+            <div 
+              className="session-tabs" 
+              title="Your active sessions"
+            >
               {Object.entries(this.state.sessions).map(
                 ([subdomain, session]) => (
                   <div
                     key={subdomain}
                     className={`session-tab ${subdomain === this.state.activeSession ? "active" : ""}`}
                     onClick={() => this.handleSessionSelect(subdomain)}
+                    title={`Switch to ${subdomain} session`}
                   >
                     <span className="session-tab-content">
                       {this.state.unseenRequests[subdomain] > 0 && (
@@ -199,6 +215,7 @@ export class AppTopbar extends Component {
                         }}
                         tooltip="Close Session"
                         tooltipOptions={{ position: "bottom" }}
+                        aria-label="Close session"
                       />
                     </span>
                   </div>
@@ -211,14 +228,21 @@ export class AppTopbar extends Component {
         <div className="layout-topbar-icons">
           {Object.keys(this.state.sessions).length < Utils.MAX_SESSIONS && (
             <Button
-              label="New Session"
               icon="pi pi-plus"
-              className="p-button-text p-button-secondary new-session-button"
+              className="p-button-text p-button-secondary theme-toggle"
               onClick={this.handleNewSession}
               disabled={this.state.isCreatingSession}
               loading={this.state.isCreatingSession}
             />
           )}
+
+          <Button
+            icon="pi pi-share-alt"
+            className="p-button-text p-button-secondary theme-toggle"
+            onClick={this.handleShareSession}
+            disabled={this.state.isCreatingSession}
+            loading={this.state.isCreatingSession}
+          />
 
           <Button
             icon={
