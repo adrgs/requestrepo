@@ -56,7 +56,9 @@ export class RequestInfo extends Component {
     navigator.clipboard
       .writeText(url)
       .then(() => {
-        toast.success("Request share link copied to clipboard");
+        toast.success("Request share link copied to clipboard", {
+          autoClose: 2000,
+        });
       })
       .catch((err) => {
         toast.error("Failed to copy request share link to clipboard");

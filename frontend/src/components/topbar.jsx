@@ -29,7 +29,9 @@ export class AppTopbar extends Component {
     navigator.clipboard
       .writeText(url)
       .then(() => {
-        toast.success("Session share link copied to clipboard");
+        toast.success("Session share link copied to clipboard", {
+          autoClose: 2000,
+        });
       })
       .catch((err) => {
         toast.error("Failed to copy session share link to clipboard");

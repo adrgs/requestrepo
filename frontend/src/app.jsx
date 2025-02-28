@@ -762,7 +762,7 @@ const App = () => {
             );
 
             toast.info(`Viewing shared request from ${subdomain}.`, {
-              autoClose: 5000,
+              autoClose: 1000,
             });
 
             // If we don't have any sessions yet, wait to make sure
