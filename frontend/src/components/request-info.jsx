@@ -3,6 +3,7 @@ import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
 import { toast } from "react-toastify";
+import { Tag } from "primereact/tag";
 
 export class RequestInfo extends Component {
   constructor(props) {
@@ -61,7 +62,8 @@ export class RequestInfo extends Component {
 
   render() {
     let request = this.props.request;
-    let data = Utils.base64Decode(request.raw);
+    const isShared = this.props.isShared || false;
+    let data = request.raw ? Utils.base64Decode(request.raw) : '';
 
     let headerKeys;
     if (request.headers) headerKeys = Object.keys(request.headers);
@@ -95,9 +97,18 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1>Request Details</h1>
-              <Button icon="pi pi-share-alt" className="p-button-text p-button-secondary theme-toggle" style={{ width: '2rem', height: '2rem', borderRadius: '50%' }} onClick={this.shareRequest} tooltip="Share request details" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5em' }}>
+              <h1 style={{ margin: '0' }}>Request Details</h1>
+              {isShared && (
+                <Tag value="Shared" severity="info" />
+              )}
+              <Button 
+                icon="pi pi-share-alt" 
+                className="p-button-text p-button-secondary theme-toggle" 
+                style={{ width: '2rem', height: '2rem', borderRadius: '50%' }}
+                onClick={this.shareRequest} 
+                tooltip="Share request details" 
+              />
             </div>
             <table className="req-table">
               <tbody>
@@ -237,9 +248,18 @@ export class RequestInfo extends Component {
       out = (
         <div className="grid">
           <div className="col-12">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1>Request Details</h1>
-              <Button icon="pi pi-share-alt" className="p-button-rounded" onClick={this.shareRequest} tooltip="Share request details" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5em' }}>
+              <h1 style={{ margin: '0' }}>Request Details</h1>
+              {isShared && (
+                <Tag value="Shared" severity="info" />
+              )}
+              <Button 
+                icon="pi pi-share-alt" 
+                className="p-button-text p-button-secondary theme-toggle" 
+                style={{ width: '2rem', height: '2rem', borderRadius: '50%' }}
+                onClick={this.shareRequest} 
+                tooltip="Share request details" 
+              />
             </div>
             <table className="req-table">
               <tbody>

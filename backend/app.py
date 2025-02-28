@@ -60,7 +60,7 @@ class SessionManager:
 
             # If this subdomain is already in a session, don't add it again
             if subdomain in self.sessions:
-                return False
+                return True
 
             # Create pubsub if it doesn't exist
             if self.pubsub is None:
@@ -402,7 +402,7 @@ async def old_websocket_endpoint(
         subdomain = verify_jwt(token)
 
         if subdomain is None:
-            await websocket.send_json({"cmd": "invalid_token"})
+            await websocket.send_json({"cmd": "invalid_token", "token": token})
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 

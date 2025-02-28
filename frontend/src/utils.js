@@ -16,6 +16,7 @@ export class Utils {
   static updateFileEndpoint = "/api/update_file";
   static DNSRecordsEndpoint = "/api/get_dns";
   static updateDNSRecordsEndpoint = "/api/update_dns";
+  static getRequestEndpoint = "/api/get_request";
   static subdomain = "";
   static pendingSessionPromise = null;
   static MAX_SESSIONS = 5;

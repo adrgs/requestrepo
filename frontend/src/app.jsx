@@ -432,9 +432,21 @@ const App = () => {
   }, []);
   // Function to handle WebSocket data separately
   const handleWebSocketData = (cmd, data, subdomain) => {
+    // Reference the current sharedRequest value
+    const currentSharedRequest = sharedRequest;
+    
+    // Don't process messages with empty subdomain
+    if (!subdomain || subdomain === "") {
+      console.warn("Received WebSocket message with empty subdomain, ignoring");
+      return;
+    }
+    
     setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
-      const session = newSessions[subdomain] || {
+      
+      // Get existing session or create a new one
+      const existingSession = newSessions[subdomain];
+      const session = existingSession || {
         url: `${subdomain}.${Utils.siteUrl}`,
         domain: Utils.siteUrl,
         subdomain: subdomain,
@@ -448,41 +460,83 @@ const App = () => {
 
       if (cmd === "invalid_token") {
         const token = data["token"];
-        const subdomain = JSON.parse(atob(token.split(".")[1]))["subdomain"];
-        toast.error(`Invalid token for ${subdomain}, request a new URL`);
-      }
-      if (cmd === "requests") {
+        if (token) {
+          try {
+            const subdomain = JSON.parse(atob(token.split(".")[1]))["subdomain"];
+            toast.error(`Invalid token for ${subdomain}, request a new URL`);
+          } catch (err) {
+            console.error("Error parsing token:", err);
+          }
+        }
+      } else if (cmd === "requests") {
         const requests = data["data"].map(JSON.parse);
         requests.forEach((request) => {
           const key = request["_id"];
-          session.requests[key] = request;
-          if (request["type"] === "http") {
-            // Prevent duplicate requests
-            if (!session.httpRequests.find((r) => r["_id"] === key)) {
-              session.httpRequests.push(request);
-            }
-          } else if (request["type"] === "dns") {
-            if (!session.dnsRequests.find((r) => r["_id"] === key)) {
-              session.dnsRequests.push(request);
+          
+          // Add request to the requests object if it doesn't exist
+          if (!session.requests[key]) {
+            session.requests[key] = request;
+            
+            // Add request to the appropriate requests array if it doesn't exist
+            if (request["type"] === "http") {
+              // Prevent duplicate requests by checking ID
+              if (!session.httpRequests.some(r => r["_id"] === key)) {
+                session.httpRequests.push(request);
+              }
+            } else if (request["type"] === "dns") {
+              // Prevent duplicate requests by checking ID
+              if (!session.dnsRequests.some(r => r["_id"] === key)) {
+                session.dnsRequests.push(request);
+              }
             }
           }
         });
       } else if (cmd === "request") {
         const request = JSON.parse(data["data"]);
         const key = request["_id"];
-        request["new"] = true;
-        session.requests[key] = request;
-        if (request["type"] === "http") {
-          session.httpRequests.push(request);
-        } else if (request["type"] === "dns") {
-          session.dnsRequests.push(request);
+        
+        // Only process if this request doesn't already exist
+        if (!session.requests[key]) {
+          request["new"] = true;
+          session.requests[key] = request;
+          
+          // Check if this is the first request for a newly created session
+          const isFirstRequest = session.httpRequests.length === 0 && session.dnsRequests.length === 0;
+          
+          if (request["type"] === "http") {
+            // Ensure no duplicates
+            if (!session.httpRequests.some(r => r["_id"] === key)) {
+              session.httpRequests.push(request);
+            }
+          } else if (request["type"] === "dns") {
+            // Ensure no duplicates
+            if (!session.dnsRequests.some(r => r["_id"] === key)) {
+              session.dnsRequests.push(request);
+            }
+          }
+          
+          // Special handling for first request while viewing a shared request
+          if (isFirstRequest && currentSharedRequest) {
+            // Using setTimeout to ensure toast appears after state update
+            setTimeout(() => {
+              toast.info(
+                `New request received on your subdomain. Click it in the sidebar to view.`, 
+                { autoClose: 8000 }
+              );
+            }, 100);
+          }
+          
+          updateDocumentTitle();
         }
-        updateDocumentTitle();
       } else if (cmd === "dns_records") {
         session.dnsRecords = data.records;
       }
 
-      newSessions[subdomain] = session;
+      // Only update the session if it's changed and has a valid subdomain
+      if (subdomain && subdomain !== "") {
+        newSessions[subdomain] = session;
+      }
+      
       return { ...prevState, sessions: newSessions };
     });
   };
@@ -562,6 +616,16 @@ const App = () => {
             },
             activeSession: subdomain,
           }));
+
+          // Register the new session with WebSocket if already connected
+          if (websocketRef.current?.readyState === WebSocket.OPEN) {
+            websocketRef.current.send(
+              JSON.stringify({
+                cmd: "register_sessions",
+                sessions: [{ token, subdomain }],
+              })
+            );
+          }
         } catch (error) {
           console.error("Error creating default session:", error);
           toast.error("Failed to create initial session");
@@ -628,10 +692,85 @@ const App = () => {
     document.title = totalUnseen <= 0 ? text : `(${totalUnseen}) ${text}`;
   };
 
+  // State for shared request
+  const [sharedRequest, setSharedRequest] = useState(null);
+
   useEffect(() => {
     updateDocumentTitle();
 
   }, [appState.sessions]);
+
+  // Check for shared request in URL
+  useEffect(() => {
+    const checkSharedRequest = async () => {
+      // Check for shared request in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const requestParam = urlParams.get('request');
+      
+      if (requestParam) {
+        try {
+          // Decode the parameter
+          const decodedData = JSON.parse(atob(requestParam));
+          const { id, subdomain } = decodedData;
+          
+          if (!id || !subdomain) {
+            throw new Error("Invalid request data");
+          }
+          
+          // Fetch the request data
+          const requestData = await Utils.getRequest(id, subdomain);
+          
+          if (requestData) {
+            // Set the shared request data
+            setSharedRequest(requestData);
+            
+            // Navigate to requests page
+            navigate("/requests", { replace: true });
+            
+            // Clean up URL by removing the request parameter
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            toast.info(`Viewing shared request from ${subdomain}.`, { autoClose: 5000 });
+            
+            // If we don't have any sessions yet, wait to make sure 
+            // the session initialization completes before proceeding
+            const sessions = Utils.getAllSessions();
+            if (sessions.length === 0) {
+              // Add a small delay to allow session initialization to complete
+              setTimeout(() => {
+                // Ensure WebSocket registers the new session if it's already connected
+                const newSessions = Utils.getAllSessions();
+                if (newSessions.length > 0 && websocketRef.current?.readyState === WebSocket.OPEN) {
+                  const sessionTokens = newSessions.map(s => ({
+                    token: s.token,
+                    subdomain: s.subdomain,
+                  }));
+                  
+                  // Register sessions with WebSocket
+                  websocketRef.current.send(
+                    JSON.stringify({
+                      cmd: "register_sessions",
+                      sessions: sessionTokens,
+                    })
+                  );
+                  
+                  console.log("Registered new session with WebSocket after shared request view");
+                }
+              }, 1000); // 1 second delay to ensure initialization completed
+            }
+          }
+        } catch (error) {
+          console.error("Failed to process shared request:", error);
+          toast.error(`Invalid shared request: ${error.message}`);
+          
+          // Remove request parameter from URL even if processing failed
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    };
+    
+    checkSharedRequest();
+  }, [navigate]); // Include navigate in dependencies
 
   useEffect(() => {
     Utils.initTheme();
@@ -825,6 +964,11 @@ const App = () => {
   };
 
   const clickRequestAction = (action, id) => {
+    // Clear shared request when a user selects a request from the sidebar
+    if (action === "select") {
+      setSharedRequest(null);
+    }
+    
     setAppState((prevState) => {
       const newSessions = { ...prevState.sessions };
       const activeSession = newSessions[appState.activeSession];
@@ -1302,13 +1446,19 @@ const App = () => {
                 exact
                 path="/"
                 element={
-                  <RequestsPage user={appState.sessions[appState.activeSession]} />
+                  <RequestsPage 
+                    user={appState.sessions[appState.activeSession]} 
+                    sharedRequest={sharedRequest}
+                  />
                 }
               />
               <Route
                 path="/requests"
                 element={
-                  <RequestsPage user={appState.sessions[appState.activeSession]} />
+                  <RequestsPage 
+                    user={appState.sessions[appState.activeSession]} 
+                    sharedRequest={sharedRequest}
+                  />
                 }
               />
               <Route
