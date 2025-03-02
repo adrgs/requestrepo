@@ -22,8 +22,6 @@ from models import (
     DeleteRequest,
     DnsRecords,
     File,
-    FileTree,
-    FileTreeItem,
     HttpRequestLog,
 )
 from pydantic import BaseModel
@@ -97,13 +95,30 @@ class SessionManager:
             logger.error(f"Error removing session: {e}")
 
     async def remove_all_sessions(self) -> None:
-        for subdomain in self.sessions:
-            if self.pubsub:
-                await self.pubsub.unsubscribe(f"pubsub:{subdomain}")
-        self.sessions.clear()
+        try:
+            if self.pubsub and self.sessions:
+                # Unsubscribe from all channels
+                channels = [f"pubsub:{subdomain}" for subdomain in self.sessions]
+                if channels:
+                    await self.pubsub.unsubscribe(*channels)
+            self.sessions.clear()
+        except Exception as e:
+            logger.error(f"Error removing all sessions: {e}")
+            # Still clear sessions even if there's an error
+            self.sessions.clear()
 
     def get_subdomain(self, token: str) -> str:
         return verify_jwt(token)
+
+    async def cleanup(self) -> None:
+        """Clean up all resources properly"""
+        try:
+            await self.remove_all_sessions()
+            if self.pubsub:
+                await self.pubsub.close()
+                self.pubsub = None
+        except Exception as e:
+            logger.error(f"Error in SessionManager cleanup: {e}")
 
 
 class RedisDependency:
@@ -117,6 +132,9 @@ class RedisDependency:
 
     async def get_redis(self) -> aioredis.Redis:
         return aioredis.Redis(connection_pool=self.pool)
+
+    async def close_pool(self):
+        await self.pool.disconnect()
 
 
 redis_dependency = RedisDependency()
@@ -163,6 +181,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     await redis.close()
+    await redis_dependency.close_pool()  # Close the entire pool on shutdown
 
 
 def validation_error(msg: str) -> Response:
@@ -397,6 +416,7 @@ async def get_token(
 async def old_websocket_endpoint(
     websocket: WebSocket, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> None:
+    pubsub = None
     try:
         await websocket.accept()
 
@@ -422,10 +442,16 @@ async def old_websocket_endpoint(
     except (WebSocketDisconnect, ConnectionClosed):
         # Handle the disconnection gracefully
         pass
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
     finally:
-        # Perform any necessary cleanup
-        if "pubsub" in locals():
-            await pubsub.unsubscribe(f"pubsub:{subdomain}")
+        # Properly clean up resources
+        if pubsub:
+            try:
+                await pubsub.unsubscribe(f"pubsub:{subdomain}")
+                await pubsub.close()
+            except Exception as e:
+                logger.error(f"Error closing pubsub: {e}")
 
 
 @app.websocket("/api/ws2")
@@ -466,9 +492,6 @@ async def websocket_endpoint(
             await websocket.send_json({"error": "No valid sessions provided"})
             return
 
-        # Setup pubsub
-        session_manager.pubsub = redis.pubsub()
-
         # Send initial data and subscribe to channels for each session
         for session in valid_sessions:
             subdomain = session_manager.get_subdomain(session["token"])
@@ -479,9 +502,6 @@ async def websocket_endpoint(
                 await websocket.send_json(
                     {"cmd": "requests", "data": requests, "subdomain": subdomain}
                 )
-
-                # Subscribe to channel
-                await session_manager.pubsub.subscribe(f"pubsub:{subdomain}")
 
         # Main message loop
         while True:
@@ -511,26 +531,27 @@ async def websocket_endpoint(
                     pass
 
                 # Handle pub/sub messages
-                message = await session_manager.pubsub.get_message(timeout=0.1)
-                if message and message["type"] == "message":
-                    channel = message["channel"]
-                    subdomain = (
-                        channel.decode().split(":")[1]
-                        if isinstance(channel, bytes)
-                        else channel.split(":")[1]
-                    )
-                    try:
-                        await websocket.send_json(
-                            {
-                                "cmd": "request",
-                                "data": message["data"],
-                                "subdomain": subdomain,
-                            }
+                if session_manager.pubsub:
+                    message = await session_manager.pubsub.get_message(timeout=0.1)
+                    if message and message["type"] == "message":
+                        channel = message["channel"]
+                        subdomain = (
+                            channel.decode().split(":")[1]
+                            if isinstance(channel, bytes)
+                            else channel.split(":")[1]
                         )
-                    except Exception as e:
-                        logger.error(
-                            f"Error sending pubsub message for {subdomain}: {e}"
-                        )
+                        try:
+                            await websocket.send_json(
+                                {
+                                    "cmd": "request",
+                                    "data": message["data"],
+                                    "subdomain": subdomain,
+                                }
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Error sending pubsub message for {subdomain}: {e}"
+                            )
 
                 # Small delay to prevent CPU spinning
                 await asyncio.sleep(0.01)
@@ -550,12 +571,8 @@ async def websocket_endpoint(
         raise
     finally:
         logger.info("WebSocket connection closed")
-        # Cleanup
-        if session_manager.pubsub:
-            try:
-                await session_manager.pubsub.close()
-            except Exception as e:
-                logger.error(f"Error closing pubsub: {e}")
+        # Use the new cleanup method to ensure all resources are properly closed
+        await session_manager.cleanup()
 
 
 @app.get("/api/files")
