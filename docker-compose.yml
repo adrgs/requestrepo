@@ -56,7 +56,7 @@ services:
       - REDIS_HOST=requestrepo_redisdb
     depends_on:
       - redisdb
-   healthcheck:
+    healthcheck:
       test: ["CMD", "pgrep", "python3"]
       interval: 60s
       timeout: 20s
