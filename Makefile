@@ -41,6 +41,15 @@ start-redis:
 		fi \
 	fi
 
+# Stop the Redis container
+.PHONY: stop-redis
+stop-redis:
+	@if [ `docker ps -q -f name=$(REDIS_CONTAINER_NAME)` ]; then \
+		docker stop $(REDIS_CONTAINER_NAME); \
+	else \
+		echo "$(REDIS_CONTAINER_NAME) is not running"; \
+	fi
+
 # Start the frontend application
 .PHONY: start-frontend
 start-frontend:
