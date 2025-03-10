@@ -131,7 +131,7 @@ export const FileTree = ({
 
     // If the new name already exists, don't overwrite it
     if (newPart in current) {
-      toast.error("A file with that name already exists");
+      toast.error("A file with that name already exists", Utils.toastOptions);
       return;
     }
 
@@ -496,26 +496,18 @@ export const FileTree = ({
 
   const handleFileUpdate = async (newFiles) => {
     if (!activeSession?.token) {
-      toast.error("No active session selected");
+      toast.error("No active session selected", Utils.toastOptions);
       return;
     }
     try {
       await Utils.updateFiles(newFiles, activeSession.subdomain);
-      toast.success("Files updated successfully!", {
-        position: "bottom-center",
-        autoClose: 4000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        dark: Utils.isDarkTheme(),
-      });
+      toast.success("Files updated successfully!", Utils.toastOptions);
     } catch (error) {
       const errorMsg =
         error.response?.status === 403
           ? "Session token is invalid. Please request a new URL"
           : "Failed to update files";
-      toast.error(errorMsg);
+      toast.error(errorMsg, Utils.toastOptions);
     }
   };
 

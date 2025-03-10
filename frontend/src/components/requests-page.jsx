@@ -195,26 +195,13 @@ export const CopyButton = ({ text }) => {
     navigator.clipboard
       .writeText(text)
       .then(() =>
-        toast.info("Python code copied to clipboard!", {
-          position: "bottom-center",
-          autoClose: 2500,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        }),
+        toast.info("Python code copied to clipboard!", Utils.toastOptions),
       )
       .catch(() =>
-        toast.error("Failed to copy Python code to clipboard!", {
-          position: "bottom-center",
-          autoClose: 2500,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        }),
+        toast.error(
+          "Failed to copy Python code to clipboard!",
+          Utils.toastOptions,
+        ),
       );
   };
 

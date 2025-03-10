@@ -326,9 +326,15 @@ const App = () => {
                 );
               }
 
-              toast.success(`Added shared session: ${subdomain}`);
+              toast.success(
+                `Added shared session: ${subdomain}`,
+                Utils.toastOptions,
+              );
             } else {
-              toast.info(`Session ${subdomain} already exists`);
+              toast.info(
+                `Session ${subdomain} already exists`,
+                Utils.toastOptions,
+              );
               // Still make this the active session in this tab
               sessionStorage.setItem("activeSessionSubdomain", subdomain);
             }
@@ -354,7 +360,10 @@ const App = () => {
           }
         } catch (error) {
           console.error("Failed to process shared token:", error);
-          toast.error(`Invalid shared token: ${error.message}`);
+          toast.error(
+            `Invalid shared token: ${error.message}`,
+            Utils.toastOptions,
+          );
 
           // Remove share parameter from URL even if processing failed
           navigate(location.pathname, { replace: true });
@@ -416,7 +425,10 @@ const App = () => {
               }));
             } catch (error) {
               console.error("Failed to create initial session:", error);
-              toast.error("Failed to create initial session");
+              toast.error(
+                "Failed to create initial session",
+                Utils.toastOptions,
+              );
             }
           }
         }
@@ -480,7 +492,10 @@ const App = () => {
             const subdomain = JSON.parse(atob(token.split(".")[1]))[
               "subdomain"
             ];
-            toast.error(`Invalid token for ${subdomain}, request a new URL`);
+            toast.error(
+              `Invalid token for ${subdomain}, request a new URL`,
+              Utils.toastOptions,
+            );
           } catch (err) {
             console.error("Error parsing token:", err);
           }
@@ -540,7 +555,7 @@ const App = () => {
             setTimeout(() => {
               toast.info(
                 `New request received on your subdomain. Click it in the sidebar to view.`,
-                { autoClose: 8000 },
+                Utils.toastOptions,
               );
             }, 100);
           }
@@ -647,7 +662,7 @@ const App = () => {
           }
         } catch (error) {
           console.error("Error creating default session:", error);
-          toast.error("Failed to create initial session");
+          toast.error("Failed to create initial session", Utils.toastOptions);
         }
       } else {
         // Convert array to object format
@@ -761,9 +776,10 @@ const App = () => {
               window.location.pathname,
             );
 
-            toast.info(`Viewing shared request from ${subdomain}.`, {
-              autoClose: 1000,
-            });
+            toast.info(
+              `Viewing shared request from ${subdomain}.`,
+              Utils.toastOptions,
+            );
 
             // If we don't have any sessions yet, wait to make sure
             // the session initialization completes before proceeding
@@ -799,7 +815,10 @@ const App = () => {
           }
         } catch (error) {
           console.error("Failed to process shared request:", error);
-          toast.error(`Invalid shared request: ${error.message}`);
+          toast.error(
+            `Invalid shared request: ${error.message}`,
+            Utils.toastOptions,
+          );
 
           // Remove request parameter from URL even if processing failed
           window.history.replaceState(
@@ -1109,15 +1128,7 @@ const App = () => {
     } else {
       navigator.clipboard.writeText(fullUrl);
     }
-    toast.info("URL copied to clipboard!", {
-      position: "bottom-center",
-      autoClose: 2500,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      dark: Utils.isDarkTheme(),
-    });
+    toast.info("URL copied to clipboard!", Utils.toastOptions);
   };
 
   const copyDomain = () => {
@@ -1127,15 +1138,7 @@ const App = () => {
     } else {
       navigator.clipboard.writeText(urlArea.current.value);
     }
-    toast.info("Domain copied to clipboard!", {
-      position: "bottom-center",
-      autoClose: 2500,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      dark: Utils.isDarkTheme(),
-    });
+    toast.info("Domain copied to clipboard!", Utils.toastOptions);
   };
 
   const handleNewURL = async () => {
@@ -1215,7 +1218,10 @@ const App = () => {
         };
       });
     } catch (error) {
-      toast.error(`Failed to update session URL: ${error.message}`);
+      toast.error(
+        `Failed to update session URL: ${error.message}`,
+        Utils.toastOptions,
+      );
     }
   };
 
@@ -1266,7 +1272,7 @@ const App = () => {
           })
           .catch((error) => {
             console.error("Failed to delete all requests:", error);
-            toast.error("Failed to delete all requests");
+            toast.error("Failed to delete all requests", Utils.toastOptions);
           });
       }
 
@@ -1374,7 +1380,10 @@ const App = () => {
 
               // Don't allow removing the last session
               if (Object.keys(newSessions).length <= 1) {
-                toast.warn("Cannot remove the last session");
+                toast.warn(
+                  "Cannot remove the last session",
+                  Utils.toastOptions,
+                );
                 return prev;
               }
 

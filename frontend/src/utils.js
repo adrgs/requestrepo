@@ -225,6 +225,7 @@ export class Utils {
       } catch (error) {
         toast.error(
           "Maximum number of sessions reached. Please close an existing session first.",
+          Utils.toastOptions,
         );
         throw error;
       }
@@ -558,4 +559,14 @@ export class Utils {
       console.error("Error updating sessions in localStorage:", error);
     }
   }
+
+  static toastOptions = {
+    position: "bottom-center",
+    autoClose: 2000,
+    hideProgressBar: false,
+    closeOnClick: true,
+    pauseOnHover: true,
+    draggable: true,
+    dark: Utils.isDarkTheme(),
+  };
 }

@@ -103,15 +103,7 @@ export const EditResponsePage = ({
             ? "Your session token is invalid. Please request a new URL"
             : error.message || "Failed to fetch files";
 
-        toast.error(msg, {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
+        toast.error(msg, Utils.toastOptions);
       }
     };
 
@@ -126,11 +118,7 @@ export const EditResponsePage = ({
         const data = await new HeaderService().getHeaders();
         setHeadersData(data);
       } catch (error) {
-        toast.error("Failed to fetch headers", {
-          position: "bottom-center",
-          autoClose: 4000,
-          dark: Utils.isDarkTheme(),
-        });
+        toast.error("Failed to fetch headers", Utils.toastOptions);
       }
     };
 
@@ -139,35 +127,19 @@ export const EditResponsePage = ({
 
   const handleFileUpdate = async (newFiles) => {
     if (!user) {
-      toast.error("No active session");
+      toast.error("No active session", Utils.toastOptions);
       return;
     }
     try {
       await Utils.updateFiles(newFiles, user.subdomain);
       setFiles(newFiles);
-      toast.success("Files updated successfully!", {
-        position: "bottom-center",
-        autoClose: 4000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        dark: Utils.isDarkTheme(),
-      });
+      toast.success("Files updated successfully!", Utils.toastOptions);
     } catch (error) {
       const errorMsg =
         error.response?.status === 403
           ? "Session token is invalid. Please request a new URL"
           : "Failed to update files";
-      toast.error(errorMsg, {
-        position: "bottom-center",
-        autoClose: 4000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        dark: Utils.isDarkTheme(),
-      });
+      toast.error(errorMsg, Utils.toastOptions);
     }
   };
 
@@ -188,7 +160,7 @@ export const EditResponsePage = ({
 
   const handleFileSelect = (file) => {
     if (!user) {
-      toast.error("No active session");
+      toast.error("No active session", Utils.toastOptions);
       return;
     }
     setSelectedFile(file);
@@ -199,14 +171,14 @@ export const EditResponsePage = ({
 
   const saveChanges = async () => {
     if (!user?.subdomain) {
-      toast.error("No active session");
+      toast.error("No active session", Utils.toastOptions);
       return;
     }
 
     // Check for valid token
     const token = Utils.getSessionToken(user.subdomain);
     if (!token) {
-      toast.error("Invalid session token");
+      toast.error("Invalid session token", Utils.toastOptions);
       return;
     }
 
@@ -228,33 +200,17 @@ export const EditResponsePage = ({
 
         await Utils.updateFiles(updatedFiles, user.subdomain);
 
-        toast.success("Changes saved successfully", {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
+        toast.success("Changes saved successfully", Utils.toastOptions);
       }
     } catch (error) {
       console.error("Error saving changes:", error);
-      toast.error("Failed to save changes", {
-        position: "bottom-center",
-        autoClose: 4000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        dark: Utils.isDarkTheme(),
-      });
+      toast.error("Failed to save changes", Utils.toastOptions);
     }
   };
 
   const addHeader = () => {
     if (!user) {
-      toast.error("No active session");
+      toast.error("No active session", Utils.toastOptions);
       return;
     }
     setHeaders([...headers, { header: "", value: "" }]);

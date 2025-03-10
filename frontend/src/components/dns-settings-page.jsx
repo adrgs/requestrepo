@@ -56,7 +56,7 @@ export const DnsSettingsPage = ({
   const add = useCallback(
     (domain = "", type = 0, value = "") => {
       if (!activeSession?.token) {
-        toast.error("No active session selected");
+        toast.error("No active session selected", Utils.toastOptions);
         return;
       }
       setDnsRecords((prevRecords) => [
@@ -70,7 +70,7 @@ export const DnsSettingsPage = ({
   const handleRecordInputChange = useCallback(
     (index, domain, type, value, toDelete) => {
       if (!activeSession?.token) {
-        toast.error("No active session selected");
+        toast.error("No active session selected", Utils.toastOptions);
         return;
       }
       setDnsRecords((prevRecords) => {
@@ -93,7 +93,7 @@ export const DnsSettingsPage = ({
 
   const saveChanges = useCallback(() => {
     if (!activeSession?.token) {
-      toast.error("No active session selected");
+      toast.error("No active session selected", Utils.toastOptions);
       return;
     }
     const filteredRecords = dnsRecords.filter(
@@ -108,25 +108,9 @@ export const DnsSettingsPage = ({
 
     Utils.updateDNSRecords(obj, activeSession.subdomain).then((res) => {
       if (res.error) {
-        toast.error(res.error, {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
+        toast.error(res.error, Utils.toastOptions);
       } else {
-        toast.success(res.msg, {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
+        toast.success(res.msg, Utils.toastOptions);
       }
     });
   }, [dnsRecords, toast, activeSession]);
