@@ -55,7 +55,9 @@ export const EditResponsePage = ({
   };
   // Reset state when user changes
   useEffect(() => {
-    if (!user) return;
+    if (!user?.subdomain) {
+      return;
+    }
 
     setContent("");
     setHeaders([]);
@@ -67,7 +69,7 @@ export const EditResponsePage = ({
     return () => {
       // Cleanup when user changes or component unmounts
     };
-  }, [user]);
+  }, [user?.subdomain]);
 
   // Fetch data when component mounts or user changes
   useEffect(() => {
