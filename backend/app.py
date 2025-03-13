@@ -568,7 +568,6 @@ async def websocket_endpoint(
 
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        raise
     finally:
         logger.info("WebSocket connection closed")
         # Use the new cleanup method to ensure all resources are properly closed
