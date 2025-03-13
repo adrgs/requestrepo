@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           poetry install
-          cd frontend && npm install
+          cd frontend && npm install --legacy-peer-deps
           
       - name: Check Python formatting
         run: poetry run ruff format --check backend

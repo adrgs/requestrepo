@@ -25,7 +25,7 @@ install: install-deps install-hooks
 .PHONY: install-deps
 install-deps:
 	poetry install
-	cd $(FRONTEND_DIR) && npm install
+	cd $(FRONTEND_DIR) && npm install --legacy-peer-deps
 
 # Install git hooks
 .PHONY: install-hooks
