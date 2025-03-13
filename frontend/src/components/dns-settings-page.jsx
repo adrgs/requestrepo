@@ -10,11 +10,17 @@ export const DnsSettingsPage = ({
   activeSession,
 }) => {
   const [dnsRecords, setDnsRecords] = useState(propDnsRecords);
+  const [fetched, setFetched] = useState(false);
 
+  // Update from props when they change
   useEffect(() => {
-    setDnsRecords(propDnsRecords);
+    if (propDnsRecords && propDnsRecords.length > 0) {
+      setDnsRecords(propDnsRecords);
+      setFetched(true);
+    }
   }, [propDnsRecords]);
 
+  // Fetch data when activeSession changes or if no data from props
   useEffect(() => {
     const fetchData = async () => {
       if (!activeSession?.subdomain) {
@@ -30,6 +36,7 @@ export const DnsSettingsPage = ({
 
         const res = await Utils.getDNSRecords(activeSession.subdomain);
         setDnsRecords(res);
+        setFetched(true);
       } catch (error) {
         let msg;
         if (error.response?.status === 403) {
@@ -50,8 +57,16 @@ export const DnsSettingsPage = ({
       }
     };
 
-    fetchData();
-  }, [activeSession, toast]);
+    // Only fetch if we don't already have data or if the session changed
+    if (!fetched || !dnsRecords.length) {
+      fetchData();
+    }
+  }, [activeSession, fetched, dnsRecords.length]);
+
+  // Reset state when session changes
+  useEffect(() => {
+    setFetched(false);
+  }, [activeSession?.subdomain]);
 
   const add = useCallback(
     (domain = "", type = 0, value = "") => {
@@ -64,7 +79,7 @@ export const DnsSettingsPage = ({
         { domain, type, value, subdomain: activeSession.subdomain },
       ]);
     },
-    [activeSession, toast],
+    [activeSession],
   );
 
   const handleRecordInputChange = useCallback(
@@ -113,7 +128,7 @@ export const DnsSettingsPage = ({
         toast.success(res.msg, Utils.toastOptions);
       }
     });
-  }, [dnsRecords, toast, activeSession]);
+  }, [dnsRecords, activeSession]);
 
   const renderedDnsRecords = dnsRecords.map((element, index) => {
     try {
