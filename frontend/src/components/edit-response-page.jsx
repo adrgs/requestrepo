@@ -48,6 +48,8 @@ export const EditResponsePage = ({
       current[parts[parts.length - 1]] = {
         ...current[parts[parts.length - 1]],
         raw: Utils.base64Encode(value),
+        headers: headers.filter((h) => h.header.length > 0),
+        status_code: Number(statusCode) || 200
       };
 
       setFiles(updatedFiles);
@@ -163,6 +165,27 @@ export const EditResponsePage = ({
       toast.error("No active session", Utils.toastOptions);
       return;
     }
+    
+    // Save current file's headers and status code before switching
+    if (selectedFile) {
+      const updatedFiles = { ...files };
+      let current = updatedFiles;
+      const parts = selectedFile.path.split("/").filter((p) => p);
+
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current[parts[i] + "/"];
+      }
+
+      current[parts[parts.length - 1]] = {
+        ...current[parts[parts.length - 1]],
+        raw: Utils.base64Encode(content),
+        headers: headers.filter((h) => h.header.length > 0),
+        status_code: Number(statusCode) || 200
+      };
+
+      setFiles(updatedFiles);
+    }
+    
     setSelectedFile(file);
     setContent(Utils.base64Decode(file.raw));
     setHeaders(file.headers || []);
