@@ -35,9 +35,8 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests", "dns/tests"]
-markers = [
-    "asyncio",
-]
+testpaths = []
 python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
 pythonpath = "." 

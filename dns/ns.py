@@ -9,7 +9,7 @@ from dnslib import A, AAAA, CNAME, TXT
 from dnslib.server import DNSServer
 from config import config
 from utils import get_subdomain
-from typing import Any
+from typing import Any, Union
 from models import DnsRequestLog, DnsEntry, Record
 import json
 import redis
@@ -156,7 +156,7 @@ def insert_into_db(value: DnsRequestLog) -> None:
     r.set(f"request:{subdomain}:{value['_id']}", idx)
 
 
-def get_dns_record(domain: str, dtype: str) -> list[str] | None:
+def get_dns_record(domain: str, dtype: str) -> Union[list[str], None]:
     r = redis.Redis(connection_pool=pool)
 
     domain = domain.lower()

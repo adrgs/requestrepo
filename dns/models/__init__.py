@@ -1,6 +1,6 @@
 from dnslib import DNSRecord, QTYPE, RD, RR
 from dnslib import A, AAAA, CNAME, MX, NS, SOA, TXT
-from typing import TypedDict
+from typing import TypedDict, Dict, List, Optional, Union, Any
 import datetime
 import sys
 
@@ -34,7 +34,7 @@ class DnsRequestLog(TypedDict):
 EPOCH: datetime.datetime = datetime.datetime(1970, 1, 1)
 SERIAL: int = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
-TYPE_LOOKUP: dict[A | AAAA | CNAME | MX | NS | SOA | TXT, int] = {
+TYPE_LOOKUP: Dict[Union[A, AAAA, CNAME, MX, NS, SOA, TXT], int] = {
     A: QTYPE.A,
     AAAA: QTYPE.AAAA,
     CNAME: QTYPE.CNAME,
@@ -48,7 +48,7 @@ TYPE_LOOKUP: dict[A | AAAA | CNAME | MX | NS | SOA | TXT, int] = {
 class Record:
     def __init__(
         self,
-        rdata_type: RD | A | AAAA | CNAME | MX | NS | SOA | TXT,
+        rdata_type: Union[RD, A, AAAA, CNAME, MX, NS, SOA, TXT],
         *args,
         rtype=None,
         rname=None,
@@ -79,7 +79,7 @@ class Record:
             rdata=rdata, ttl=self.sensible_ttl() if ttl is None else ttl, **kwargs
         )
 
-    def try_rr(self, q) -> RR | None:
+    def try_rr(self, q) -> Union[RR, None]:
         if q.qtype == QTYPE.ANY or q.qtype == self._rtype:
             return self.as_rr(q.qname)
         return None

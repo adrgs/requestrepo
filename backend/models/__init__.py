@@ -1,5 +1,5 @@
 import sys
-from typing import TypedDict, List
+from typing import TypedDict, List, Dict, Optional, Union
 from pydantic import BaseModel
 
 if sys.version_info < (3, 11):
@@ -16,7 +16,7 @@ class HttpRequestLog(TypedDict):
     ip: str
     country: NotRequired[str]
     port: int
-    headers: dict[str, str]
+    headers: Dict[str, str]
     method: str
     protocol: str
     path: str
@@ -58,7 +58,7 @@ class RequestRepoHeader(TypedDict):
 
 class RequestRepoResponse(TypedDict):
     raw: str
-    headers: list[RequestRepoHeader]
+    headers: List[RequestRepoHeader]
     status_code: int
 
 
