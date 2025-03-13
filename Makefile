@@ -5,6 +5,7 @@ FRONTEND_DIR := frontend
 BACKEND_DIR := backend
 PYTHON_DIR := backend  # Assuming your Python code is in the backend directory
 LINT_PATHS := $(FRONTEND_DIR) $(BACKEND_DIR)
+HOOKS_DIR := .git/hooks
 
 # Commands
 FRONTEND_START_CMD := npm run dev
@@ -16,11 +17,34 @@ FORMAT_JS_CMD := prettier --write --log-level silent
 REDIS_CONTAINER_NAME := redis-requestrepo-dev
 REDIS_PORT := 6379
 
-# Install dependencies
+# Install dependencies and git hooks
 .PHONY: install
-install:
-	cd $(BACKEND_DIR) && poetry install
+install: install-deps install-hooks
+
+# Install dependencies only
+.PHONY: install-deps
+install-deps:
+	poetry install
 	cd $(FRONTEND_DIR) && npm install
+
+# Install git hooks
+.PHONY: install-hooks
+install-hooks:
+	@mkdir -p $(HOOKS_DIR)
+	@echo "#!/bin/sh\nmake pre-commit" > $(HOOKS_DIR)/pre-commit
+	@echo "#!/bin/sh\nmake pre-push" > $(HOOKS_DIR)/pre-push
+	@chmod +x $(HOOKS_DIR)/pre-commit $(HOOKS_DIR)/pre-push
+	@echo "Git hooks installed successfully"
+
+# Pre-commit hook: format and lint
+.PHONY: pre-commit
+pre-commit: format lint
+	@echo "Pre-commit checks passed!"
+
+# Pre-push hook: format, lint, and test
+.PHONY: pre-push
+pre-push: format lint test
+	@echo "Pre-push checks passed!"
 
 # Start the backend server
 .PHONY: start-backend
