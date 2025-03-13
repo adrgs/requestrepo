@@ -8,4 +8,4 @@ backend_dir = project_root / "backend"
 
 # Add backend directory to Python path
 if backend_dir.exists():
-    sys.path.insert(0, str(backend_dir)) 
+    sys.path.insert(0, str(backend_dir))

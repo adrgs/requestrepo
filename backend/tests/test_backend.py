@@ -132,17 +132,19 @@ async def test_update_dns():
     # Configure mock Redis for this test
     mock_redis.get.return_value = None  # No existing records
     pipeline_mock = mock_redis.pipeline.return_value
-    
-    with patch("backend.app.config.jwt_secret", "test-secret"), \
-         patch("backend.app.redis_dependency.get_redis", return_value=mock_redis):
+
+    with (
+        patch("backend.app.config.jwt_secret", "test-secret"),
+        patch("backend.app.redis_dependency.get_redis", return_value=mock_redis),
+    ):
         response = client.post(
             "/api/update_dns", params={"token": token}, json=dns_records
         )
-        
+
         # Verify the response
         assert response.status_code == 200
         assert response.json() == {"msg": "Updated DNS records"}
-        
+
         # Verify Redis operations were called
         pipeline_mock.set.assert_called()
         pipeline_mock.execute.assert_called_once()
@@ -232,10 +234,14 @@ async def test_update_and_retrieve_file():
 
     # Mock Redis get to return our file
     tree_data = {"index.html": file_data}
-    mock_redis.get.side_effect = lambda key: json.dumps(tree_data) if key.startswith("files:") else None
+    mock_redis.get.side_effect = (
+        lambda key: json.dumps(tree_data) if key.startswith("files:") else None
+    )
 
-    with patch("backend.app.config.jwt_secret", "test-secret"), \
-         patch("backend.app.redis_dependency.get_redis", return_value=mock_redis):
+    with (
+        patch("backend.app.config.jwt_secret", "test-secret"),
+        patch("backend.app.redis_dependency.get_redis", return_value=mock_redis),
+    ):
         # Update the file
         response = client.post(
             "/api/update_file", params={"token": token}, json=file_data
@@ -270,13 +276,17 @@ async def test_update_and_retrieve_dns():
         {"domain": "test.abcd1234.localhost.", "type": "A", "value": "1.2.3.4"},
         {"domain": "www.abcd1234.localhost.", "type": "CNAME", "value": "example.com"},
     ]
-    
+
     # Configure mock Redis for this test
-    mock_redis.get.side_effect = lambda key: json.dumps(stored_records) if key == "dns:abcd1234" else None
+    mock_redis.get.side_effect = (
+        lambda key: json.dumps(stored_records) if key == "dns:abcd1234" else None
+    )
     pipeline_mock = mock_redis.pipeline.return_value
-    
-    with patch("backend.app.config.jwt_secret", "test-secret"), \
-         patch("backend.app.redis_dependency.get_redis", return_value=mock_redis):
+
+    with (
+        patch("backend.app.config.jwt_secret", "test-secret"),
+        patch("backend.app.redis_dependency.get_redis", return_value=mock_redis),
+    ):
         # Update DNS records
         response = client.post(
             "/api/update_dns", params={"token": token}, json=dns_records
@@ -328,7 +338,7 @@ async def test_catch_all_endpoint():
     mock_redis.get.reset_mock()
     mock_redis.get.side_effect = None
     mock_redis.get.return_value = json.dumps({"index.html": file_data})
-    
+
     # Make sure the app is using our mock Redis
     app.dependency_overrides[redis_dependency.get_redis] = override_get_redis
 
@@ -338,12 +348,12 @@ async def test_catch_all_endpoint():
         print("\nTrying with subdomain in host header:")
         response = client.get("/", headers={"host": "abcd1234.localhost"})
         print(f"Response status: {response.status_code}")
-        
+
         # Print mock calls
         print("\nMock Redis get calls:")
         for call in mock_redis.get.call_args_list:
             print(f"Called with: {call}")
-        
+
         assert response.status_code == 200
         assert response.headers["Content-Type"] == "text/plain"
         assert response.text == "Hello World"

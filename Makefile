@@ -55,6 +55,18 @@ stop-redis:
 start-frontend:
 	cd $(FRONTEND_DIR) && $(FRONTEND_START_CMD)
 
+# Run tests
+.PHONY: test
+test: test-backend test-dns
+
+.PHONY: test-backend
+test-backend:
+	poetry run pytest backend/tests
+
+.PHONY: test-dns
+test-dns:
+	poetry run pytest dns/tests
+
 # Lint the codebase
 .PHONY: lint
 lint: lint-js lint-python

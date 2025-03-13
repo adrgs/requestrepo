@@ -258,7 +258,9 @@ async def update_dns(
         await pipeline.set(key, json.dumps(value), ex=config.redis_ttl)
 
     # Store all records for this subdomain
-    await pipeline.set(f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl)
+    await pipeline.set(
+        f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl
+    )
 
     await pipeline.execute()
 
@@ -644,7 +646,9 @@ async def update_files(
 
 
 @app.api_route("/{path:path}")
-async def catch_all(request: Request, redis: aioredis.Redis = Depends(redis_dependency.get_redis)) -> Response:
+async def catch_all(
+    request: Request, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
+) -> Response:
     host = request.headers.get("host") or config.server_domain
     subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
         request.url.path
@@ -721,11 +725,14 @@ async def catch_all(request: Request, redis: aioredis.Redis = Depends(redis_depe
 
     return resp
 
+
 class AlwaysTrueSet(set):
     def __contains__(self, item):
         return True
 
+
 list(filter(lambda r: r.name == "catch_all", app.routes))[0].methods = AlwaysTrueSet()
+
 
 async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -> None:
     ip, port = (

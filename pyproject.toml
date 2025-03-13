@@ -39,4 +39,6 @@ testpaths = []
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-pythonpath = "." 
+pythonpath = "."
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function" 
