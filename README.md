@@ -2,6 +2,8 @@
 
 <img src="https://rasp.go.ro/reqlogo.svg" width="420">
 
+[![CI/CD](https://github.com/adrgs/requestrepo/actions/workflows/quality-checks.yml/badge.svg)](https://github.com/adrgs/requestrepo/actions/workflows/quality-checks.yml)
+
 🔍 Analyze HTTP and DNS requests and create custom DNS records for your subdomain.
 
 ## 🏁 Getting Started
