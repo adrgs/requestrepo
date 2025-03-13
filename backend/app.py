@@ -240,7 +240,7 @@ async def update_dns(
 
     values = defaultdict(list)
 
-    pipeline = redis.pipeline()
+    pipeline = await redis.pipeline()
 
     for record in records.records:
         new_domain = f"{record.domain.lower()}.{subdomain}.{config.server_domain}."
@@ -255,13 +255,14 @@ async def update_dns(
         values[key].append(new_value)
 
     for key, value in values.items():
-        pipeline.set(key, json.dumps(value), ex=config.redis_ttl)
+        await pipeline.set(key, json.dumps(value), ex=config.redis_ttl)
 
-    pipeline.set(f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl)
+    # Store all records for this subdomain
+    await pipeline.set(f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl)
 
     await pipeline.execute()
 
-    return JSONResponse({"msg": "Updated records"})
+    return JSONResponse({"msg": "Updated DNS records"})
 
 
 @app.get("/api/get_dns")
@@ -642,7 +643,8 @@ async def update_files(
     return JSONResponse({"msg": "Updated files"})
 
 
-async def catch_all(request: Request) -> Response:
+@app.api_route("/{path:path}")
+async def catch_all(request: Request, redis: aioredis.Redis = Depends(redis_dependency.get_redis)) -> Response:
     host = request.headers.get("host") or config.server_domain
     subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
         request.url.path
@@ -653,13 +655,14 @@ async def catch_all(request: Request) -> Response:
         public = Path("public/").resolve()
         path = (public / path.relative_to(path.anchor)).resolve()
         if not path.exists() or path.is_dir() or not path.is_relative_to(public):
-            response = FileResponse("public/index.html")
+            if Path("public/index.html").exists():
+                response = FileResponse("public/index.html")
+            else:
+                response = JSONResponse({"error": "Not found"}, status_code=404)
         else:
             response = FileResponse(path)
         response.headers["Access-Control-Allow-Origin"] = "*"
         return response
-
-    redis: aioredis.Redis = await redis_dependency.get_redis()
 
     data = await redis.get(f"files:{subdomain}")
     if not data:
@@ -718,10 +721,11 @@ async def catch_all(request: Request) -> Response:
 
     return resp
 
+class AlwaysTrueSet(set):
+    def __contains__(self, item):
+        return True
 
-catch_all_route = Route("/{path:path}", endpoint=catch_all, methods=[])
-app.router.routes.append(catch_all_route)
-
+list(filter(lambda r: r.name == "catch_all", app.routes))[0].methods = AlwaysTrueSet()
 
 async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -> None:
     ip, port = (
