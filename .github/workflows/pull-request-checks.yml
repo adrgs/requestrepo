@@ -1,0 +1,58 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality-checks:
+    name: Format, Lint, and Test
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: '1.5.1'
+          
+      - name: Install dependencies
+        run: |
+          poetry install
+          cd frontend && npm install
+          
+      # Format checks
+      - name: Check Python formatting
+        run: poetry run ruff format --check backend
+        
+      - name: Check JavaScript formatting
+        run: cd frontend && npx prettier --check .
+      
+      # Lint checks
+      - name: Lint Python code
+        run: poetry run ruff check backend
+        
+      - name: Lint JavaScript code
+        run: cd frontend && npm run lint
+      
+      # Test checks
+      - name: Run backend tests
+        run: poetry run pytest backend/tests
+        
+      - name: Run DNS tests
+        run: poetry run pytest dns/tests 

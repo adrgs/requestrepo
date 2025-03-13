@@ -1,0 +1,102 @@
+name: Quality Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  format:
+    name: Code Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: '1.5.1'
+          
+      - name: Install dependencies
+        run: |
+          poetry install
+          cd frontend && npm install
+          
+      - name: Check Python formatting
+        run: poetry run ruff format --check backend
+        
+      - name: Check JavaScript formatting
+        run: cd frontend && npx prettier --check .
+  
+  lint:
+    name: Code Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: '1.5.1'
+          
+      - name: Install dependencies
+        run: |
+          poetry install
+          cd frontend && npm install
+          
+      - name: Lint Python code
+        run: poetry run ruff check backend
+        
+      - name: Lint JavaScript code
+        run: cd frontend && npm run lint
+  
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: '1.5.1'
+          
+      - name: Install dependencies
+        run: poetry install
+          
+      - name: Run backend tests
+        run: poetry run pytest backend/tests
+        
+      - name: Run DNS tests
+        run: poetry run pytest dns/tests 
