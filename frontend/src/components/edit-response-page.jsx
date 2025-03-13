@@ -11,14 +11,12 @@ import { FileTree } from "./file-tree";
 export const EditResponsePage = ({
   headers: propHeaders = [],
   content: propContent = "",
-  fetched: propFetched = false,
   statusCode: propStatusCode = 200,
   toast,
   user,
 }) => {
   const [headers, setHeaders] = useState(propHeaders);
   const [content, setContent] = useState(propContent);
-  const [fetched, setFetched] = useState(propFetched);
   const [statusCode, setStatusCode] = useState(propStatusCode);
   const [headersData, setHeadersData] = useState([]);
   const fileInput = useRef(null);
@@ -66,7 +64,6 @@ export const EditResponsePage = ({
     setStatusCode(200);
     setFiles({});
     setSelectedFile(null);
-    setFetched(false);
 
     return () => {
       // Cleanup when user changes or component unmounts
@@ -98,7 +95,6 @@ export const EditResponsePage = ({
           });
         }
         setFiles(files);
-        setFetched(true);
       } catch (error) {
         const msg =
           error.response?.status === 403

@@ -334,43 +334,30 @@ export class Utils {
     }
 
     // Create new promise for session creation
-    this.pendingSessionPromise = new Promise(async (resolve, reject) => {
-      try {
-        // Check if we've reached the maximum number of sessions
-        const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
-        if (sessions.length >= this.MAX_SESSIONS) {
-          throw new Error("Maximum number of sessions reached");
-        }
-
-        const response = await axios.post(reqUrl, null, {
-          withCredentials: true,
-        });
-        const token = response.data.token;
-
-        if (!token) {
-          throw new Error("No token received from server");
-        }
-
-        const tokenData = JSON.parse(Utils.base64Decode(token.split(".")[1]));
-        const subdomain = tokenData.subdomain;
-
-        if (!subdomain) {
-          throw new Error("Invalid token format: no subdomain found");
-        }
-
-        resolve({ subdomain, token });
-      } catch (error) {
-        console.error("Error in getRandomSubdomain:", error);
-        reject(
-          new Error(
-            error.response?.data?.message ||
-              error.message ||
-              "Failed to initialize session",
-          ),
-        );
+    this.pendingSessionPromise = new Promise((resolve, reject) => {
+      // Check if we've reached the maximum number of sessions
+      const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
+      if (sessions.length >= this.MAX_SESSIONS) {
+        reject(new Error("Maximum number of sessions reached"));
+        return;
       }
-    }).finally(() => {
-      this.pendingSessionPromise = null;
+
+      axios
+        .post(reqUrl, null, {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+        .then((response) => {
+          const { subdomain, token } = response.data;
+          resolve({ subdomain, token });
+        })
+        .catch((error) => {
+          reject(error);
+        })
+        .finally(() => {
+          this.pendingSessionPromise = null;
+        });
     });
 
     return this.pendingSessionPromise;

@@ -119,7 +119,7 @@ def save_into_db(reply: DNSRecord, ip: str, port: int, raw: bytes) -> None:
     )
 
     country = ip2country.ip_to_country(ip)
-    if not country is None:
+    if country is not None:
         dns_log["country"] = country
 
     insert_into_db(dns_log)

@@ -1,5 +1,5 @@
 import sys
-from typing import TypedDict, List, Dict, Optional, Union
+from typing import TypedDict, List, Dict
 from pydantic import BaseModel
 
 if sys.version_info < (3, 11):

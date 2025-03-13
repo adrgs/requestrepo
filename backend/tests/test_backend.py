@@ -281,7 +281,6 @@ async def test_update_and_retrieve_dns():
     mock_redis.get.side_effect = (
         lambda key: json.dumps(stored_records) if key == "dns:abcd1234" else None
     )
-    pipeline_mock = mock_redis.pipeline.return_value
 
     with (
         patch("backend.app.config.jwt_secret", "test-secret"),

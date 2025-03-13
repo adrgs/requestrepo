@@ -61,7 +61,7 @@ export class RequestInfo extends Component {
           Utils.toastOptions,
         );
       })
-      .catch((err) => {
+      .catch(() => {
         toast.error(
           "Failed to copy request share link to clipboard",
           Utils.toastOptions,

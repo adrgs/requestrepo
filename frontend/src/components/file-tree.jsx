@@ -12,7 +12,6 @@ export const FileTree = ({
   onSelect,
   onUpdate,
   toast,
-  activeSession,
 }) => {
   const [editingNode, setEditingNode] = useState(null);
   const [editingText, setEditingText] = useState("");
@@ -492,23 +491,6 @@ export const FileTree = ({
 
     const lastPart = parts[parts.length - 1];
     return current[lastPart] || null;
-  };
-
-  const handleFileUpdate = async (newFiles) => {
-    if (!activeSession?.token) {
-      toast.error("No active session selected", Utils.toastOptions);
-      return;
-    }
-    try {
-      await Utils.updateFiles(newFiles, activeSession.subdomain);
-      toast.success("Files updated successfully!", Utils.toastOptions);
-    } catch (error) {
-      const errorMsg =
-        error.response?.status === 403
-          ? "Session token is invalid. Please request a new URL"
-          : "Failed to update files";
-      toast.error(errorMsg, Utils.toastOptions);
-    }
   };
 
   return (

@@ -1,24 +1,20 @@
-import React, { Component, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { RequestInfo } from "./request-info";
 import { EditorComponent } from "./editor";
 import { Button } from "primereact/button";
 import { toast } from "react-toastify";
 import { Utils } from "../utils";
-import { Badge } from "primereact/badge";
 
 export function RequestsPage({ user, sharedRequest }) {
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [hasUserRequests, setHasUserRequests] = useState(false);
 
   // Check if user has any requests (for notification purposes)
   useEffect(() => {
+    // This effect is kept for future use but the state variable is removed
+    // since it's currently unused
     if (user && user.requests && Object.keys(user.requests).length > 0) {
-      setHasUserRequests(true);
-    } else {
-      setHasUserRequests(false);
+      // Logic preserved for future use
     }
   }, [user?.requests ? Object.keys(user.requests).length : 0]);
 

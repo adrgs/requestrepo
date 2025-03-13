@@ -200,10 +200,6 @@ export class AppSidebar extends Component {
   }
   render() {
     const hasValue = this.hasValue;
-    const activeSession =
-      this.props.sessions && this.props.activeSession
-        ? this.props.sessions[this.props.activeSession]
-        : null;
 
     let requests = this.getRequests();
 

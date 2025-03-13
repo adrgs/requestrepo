@@ -34,7 +34,7 @@ export class AppTopbar extends Component {
           Utils.toastOptions,
         );
       })
-      .catch((err) => {
+      .catch(() => {
         toast.error(
           "Failed to copy session share link to clipboard",
           Utils.toastOptions,
@@ -197,36 +197,34 @@ export class AppTopbar extends Component {
         <div className="layout-topbar-session">
           {showTabs && (
             <div className="session-tabs" title="Your active sessions">
-              {Object.entries(this.state.sessions).map(
-                ([subdomain, session]) => (
-                  <div
-                    key={subdomain}
-                    className={`session-tab ${subdomain === this.state.activeSession ? "active" : ""}`}
-                    onClick={() => this.handleSessionSelect(subdomain)}
-                    title={`Switch to ${subdomain} session`}
-                  >
-                    <span className="session-tab-content">
-                      {this.state.unseenRequests[subdomain] > 0 && (
-                        <span className="unseen-count">
-                          {this.state.unseenRequests[subdomain]}
-                        </span>
-                      )}
-                      <span className="subdomain">{subdomain}</span>
-                      <Button
-                        icon="pi pi-times"
-                        className="p-button-text p-button-secondary p-button-sm close-tab"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          this.handleSessionRemove(subdomain);
-                        }}
-                        tooltip="Close Session"
-                        tooltipOptions={{ position: "bottom" }}
-                        aria-label="Close session"
-                      />
-                    </span>
-                  </div>
-                ),
-              )}
+              {Object.entries(this.state.sessions).map(([subdomain]) => (
+                <div
+                  key={subdomain}
+                  className={`session-tab ${subdomain === this.state.activeSession ? "active" : ""}`}
+                  onClick={() => this.handleSessionSelect(subdomain)}
+                  title={`Switch to ${subdomain} session`}
+                >
+                  <span className="session-tab-content">
+                    {this.state.unseenRequests[subdomain] > 0 && (
+                      <span className="unseen-count">
+                        {this.state.unseenRequests[subdomain]}
+                      </span>
+                    )}
+                    <span className="subdomain">{subdomain}</span>
+                    <Button
+                      icon="pi pi-times"
+                      className="p-button-text p-button-secondary p-button-sm close-tab"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        this.handleSessionRemove(subdomain);
+                      }}
+                      tooltip="Close Session"
+                      tooltipOptions={{ position: "bottom" }}
+                      aria-label="Close session"
+                    />
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>

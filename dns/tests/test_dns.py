@@ -5,7 +5,7 @@ from dnslib import DNSRecord, DNSHeader, DNSQuestion, QTYPE
 from unittest.mock import Mock, patch, MagicMock
 import json
 import redis
-from models import DnsRequestLog, DnsEntry
+from models import DnsRequestLog
 import base64
 
 # Setup mock Redis

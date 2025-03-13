@@ -115,7 +115,7 @@ function useWebSocket(ws_url, onUpdate, onOpen, sessions, websocketRef) {
       try {
         // Send all valid session tokens on connect
         const sessionTokens = Object.entries(sessionsRef.current)
-          .filter(([_, session]) => session && session.token)
+          .filter(([, session]) => session && session.token)
           .map(([subdomain, session]) => ({
             token: session.token,
             subdomain: subdomain,

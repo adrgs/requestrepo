@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Union
+from typing import Any, AsyncIterator, Dict
 
 import asyncio
 import ip2country
@@ -24,12 +24,9 @@ from models import (
     File,
     HttpRequestLog,
 )
-from pydantic import BaseModel
 from redis import asyncio as aioredis
 from starlette import status
 from starlette.requests import ClientDisconnect
-from starlette.responses import JSONResponse
-from starlette.routing import Route
 from utils import (
     get_random_subdomain,
     get_subdomain_from_hostname,
@@ -615,15 +612,15 @@ async def update_files(
                 else:
                     if not all(k in value for k in ["raw", "headers", "status_code"]):
                         raise ValueError(f"Invalid file structure for {current_path}")
-                    if type(value["raw"]) != str:
+                    if not isinstance(value["raw"], str):
                         raise ValueError(
                             f"Invalid raw file structure for {current_path}"
                         )
-                    if type(value["headers"]) != list:
+                    if not isinstance(value["headers"], list):
                         raise ValueError(
                             f"Invalid headers file structure for {current_path}"
                         )
-                    if type(value["status_code"]) != int:
+                    if not isinstance(value["status_code"], int):
                         raise ValueError(
                             f"Invalid status_code file structure for {current_path}"
                         )
