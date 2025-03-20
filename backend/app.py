@@ -35,7 +35,11 @@ from utils import (
     verify_subdomain,
     write_basic_file,
 )
-from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
+from websockets.exceptions import (
+    ConnectionClosed,
+    ConnectionClosedError,
+    ConnectionClosedOK,
+)
 
 app = FastAPI(server_header=False)
 
@@ -439,7 +443,12 @@ async def old_websocket_endpoint(
             if message["type"] == "message":
                 await websocket.send_json({"cmd": "request", "data": message["data"]})
 
-    except (WebSocketDisconnect, ConnectionClosed, ConnectionClosedError, ConnectionClosedOK):
+    except (
+        WebSocketDisconnect,
+        ConnectionClosed,
+        ConnectionClosedError,
+        ConnectionClosedOK,
+    ):
         # Handle the disconnection gracefully
         pass
     except Exception as e:
