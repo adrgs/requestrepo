@@ -35,7 +35,7 @@ from utils import (
     verify_subdomain,
     write_basic_file,
 )
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
 
 app = FastAPI(server_header=False)
 
@@ -76,7 +76,7 @@ class SessionManager:
 
             return True
         except Exception as e:
-            logger.error(f"Error adding session: {e}")
+            logger.error(f"Error adding session: {type(e)} {e}")
             if subdomain in self.sessions:
                 self.sessions.remove(subdomain)
             return False
@@ -89,7 +89,7 @@ class SessionManager:
                     await self.pubsub.unsubscribe(f"pubsub:{subdomain}")
                 self.sessions.remove(subdomain)
         except Exception as e:
-            logger.error(f"Error removing session: {e}")
+            logger.error(f"Error removing session: {type(e)} {e}")
 
     async def remove_all_sessions(self) -> None:
         try:
@@ -100,7 +100,7 @@ class SessionManager:
                     await self.pubsub.unsubscribe(*channels)
             self.sessions.clear()
         except Exception as e:
-            logger.error(f"Error removing all sessions: {e}")
+            logger.error(f"Error removing all sessions: {type(e)} {e}")
             # Still clear sessions even if there's an error
             self.sessions.clear()
 
@@ -115,7 +115,7 @@ class SessionManager:
                 await self.pubsub.close()
                 self.pubsub = None
         except Exception as e:
-            logger.error(f"Error in SessionManager cleanup: {e}")
+            logger.error(f"Error in SessionManager cleanup: {type(e)} {e}")
 
 
 class RedisDependency:
@@ -164,7 +164,7 @@ async def renew_certificate() -> None:
 
         # await get_certificate(config.server_domain, "/app/cert/", update_dns)
     except Exception as e:
-        logger.error(f"Error in renewer: {e}")
+        logger.error(f"Error in renewer: {type(e)} {e}")
     finally:
         await lock.release()
         logger.info("Released lock for renewer")
@@ -439,7 +439,7 @@ async def old_websocket_endpoint(
             if message["type"] == "message":
                 await websocket.send_json({"cmd": "request", "data": message["data"]})
 
-    except (WebSocketDisconnect, ConnectionClosed):
+    except (WebSocketDisconnect, ConnectionClosed, ConnectionClosedError, ConnectionClosedOK):
         # Handle the disconnection gracefully
         pass
     except Exception as e:
@@ -459,9 +459,11 @@ async def websocket_endpoint(
     websocket: WebSocket, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> None:
     session_manager = SessionManager(websocket=websocket, redis=redis)
+    connection_accepted = False
     try:
         await websocket.accept()
         logger.info("WebSocket connected")
+        connection_accepted = True
 
         # Receive initial message
         init_data = await websocket.receive_json()
@@ -550,7 +552,7 @@ async def websocket_endpoint(
                             )
                         except Exception as e:
                             logger.error(
-                                f"Error sending pubsub message for {subdomain}: {e}"
+                                f"Error sending pubsub message for {subdomain}: {type(e)} {e}"
                             )
 
                 # Small delay to prevent CPU spinning
@@ -567,11 +569,12 @@ async def websocket_endpoint(
                 break
 
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.info(f"WebSocket error: {e}")
     finally:
         logger.info("WebSocket connection closed")
         # Use the new cleanup method to ensure all resources are properly closed
-        await session_manager.cleanup()
+        if connection_accepted:
+            await session_manager.cleanup()
 
 
 @app.get("/api/files")
