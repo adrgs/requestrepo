@@ -79,8 +79,8 @@ class SessionManager:
             )
 
             return True
-        except Exception as e:
-            logger.error(f"Error adding session: {type(e)} {e}")
+        except Exception:
+            logger.exception("Error adding session")
             if subdomain in self.sessions:
                 self.sessions.remove(subdomain)
             return False
@@ -92,8 +92,8 @@ class SessionManager:
                 if self.pubsub:
                     await self.pubsub.unsubscribe(f"pubsub:{subdomain}")
                 self.sessions.remove(subdomain)
-        except Exception as e:
-            logger.error(f"Error removing session: {type(e)} {e}")
+        except Exception:
+            logger.exception("Error removing session")
 
     async def remove_all_sessions(self) -> None:
         try:
@@ -103,8 +103,8 @@ class SessionManager:
                 if channels:
                     await self.pubsub.unsubscribe(*channels)
             self.sessions.clear()
-        except Exception as e:
-            logger.error(f"Error removing all sessions: {type(e)} {e}")
+        except Exception:
+            logger.exception("Error removing all sessions")
             # Still clear sessions even if there's an error
             self.sessions.clear()
 
@@ -118,8 +118,8 @@ class SessionManager:
             if self.pubsub:
                 await self.pubsub.close()
                 self.pubsub = None
-        except Exception as e:
-            logger.error(f"Error in SessionManager cleanup: {type(e)} {e}")
+        except Exception:
+            logger.exception("Error in SessionManager cleanup")
 
 
 class RedisDependency:
@@ -167,8 +167,8 @@ async def renew_certificate() -> None:
             logger.info(f"Updated DNS for {domain} with tokens {tokens}")
 
         # await get_certificate(config.server_domain, "/app/cert/", update_dns)
-    except Exception as e:
-        logger.error(f"Error in renewer: {type(e)} {e}")
+    except Exception:
+        logger.exception("Error in renewer")
     finally:
         await lock.release()
         logger.info("Released lock for renewer")
@@ -451,16 +451,16 @@ async def old_websocket_endpoint(
     ):
         # Handle the disconnection gracefully
         pass
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+    except Exception:
+        logger.exception("Old WebSocket error")
     finally:
         # Properly clean up resources
         if pubsub:
             try:
                 await pubsub.unsubscribe(f"pubsub:{subdomain}")
                 await pubsub.close()
-            except Exception as e:
-                logger.error(f"Error closing pubsub: {e}")
+            except Exception:
+                logger.exception("Old Error closing pubsub")
 
 
 @app.websocket("/api/ws2")
@@ -559,9 +559,9 @@ async def websocket_endpoint(
                                     "subdomain": subdomain,
                                 }
                             )
-                        except Exception as e:
-                            logger.error(
-                                f"Error sending pubsub message for {subdomain}: {type(e)} {e}"
+                        except Exception:
+                            logger.exception(
+                                f"Error sending pubsub message for {subdomain}"
                             )
 
                 # Small delay to prevent CPU spinning
@@ -573,12 +573,12 @@ async def websocket_endpoint(
             except ConnectionClosed:
                 logger.info("Connection closed")
                 break
-            except Exception as e:
-                logger.error(f"WebSocket error: {e}")
+            except Exception:
+                logger.exception("New WebSocket 1 error")
                 break
 
-    except Exception as e:
-        logger.info(f"WebSocket error: {e}")
+    except Exception:
+        logger.exception("New WebSocket 2 error")
     finally:
         logger.info("WebSocket connection closed")
         # Use the new cleanup method to ensure all resources are properly closed
