@@ -256,11 +256,11 @@ async def update_dns(
         values[key].append(new_value)
 
     for key, value in values.items():
-        await pipeline.set(key, json.dumps(value), ex=config.redis_ttl)
+        await pipeline.set(key, json.dumps(value))
 
     # Store all records for this subdomain
     await pipeline.set(
-        f"dns:{subdomain}", json.dumps(final_records), ex=config.redis_ttl
+        f"dns:{subdomain}", json.dumps(final_records)
     )
 
     await pipeline.execute()
@@ -388,7 +388,7 @@ async def update_file(
     # Update index.html in the tree
     tree["index.html"] = file.model_dump()
 
-    await redis.set(f"files:{subdomain}", json.dumps(tree), ex=config.redis_ttl)
+    await redis.set(f"files:{subdomain}", json.dumps(tree))
 
     return JSONResponse({"msg": "Updated response"})
 
@@ -402,7 +402,7 @@ async def get_token(
     while await redis.exists(f"subdomain:{subdomain}"):
         subdomain = get_random_subdomain()
 
-    await redis.set(f"subdomain:{subdomain}", 1, ex=config.redis_ttl)
+    await redis.set(f"subdomain:{subdomain}", 1)
 
     await write_basic_file(subdomain, redis)
 
@@ -692,7 +692,7 @@ async def update_files(
         return JSONResponse({"error": "index.html cannot be deleted"})
 
     # Store the file tree
-    await redis.set(f"files:{subdomain}", json.dumps(tree), ex=config.redis_ttl)
+    await redis.set(f"files:{subdomain}", json.dumps(tree))
 
     return JSONResponse({"msg": "Updated files"})
 
@@ -829,5 +829,4 @@ async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -
 
     await redis.publish(f"pubsub:{subdomain}", data)
     idx = await redis.rpush(f"requests:{subdomain}", data) - 1
-    await redis.expire(f"requests:{subdomain}", config.redis_ttl)
     await redis.set(f"request:{subdomain}:{request_log['_id']}", idx)

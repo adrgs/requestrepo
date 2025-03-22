@@ -141,7 +141,7 @@ def update_dns_record(domain: str, dtype: str, newval: str) -> None:
         data = json.loads(result)
         dns_entry["_id"] = data["_id"]
 
-    r.set(f"dns:{dtype}:{domain}", json.dumps(dns_entry), ex=config.redis_ttl)
+    r.set(f"dns:{dtype}:{domain}", json.dumps(dns_entry))
 
 
 def insert_into_db(value: DnsRequestLog) -> None:

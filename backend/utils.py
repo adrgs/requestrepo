@@ -116,4 +116,4 @@ async def write_basic_file(subdomain: str, redis: aioredis.Redis) -> None:
 
     tree = {"index.html": file_data}
 
-    await redis.set(f"files:{subdomain}", json.dumps(tree), ex=config.redis_ttl)
+    await redis.set(f"files:{subdomain}", json.dumps(tree))
