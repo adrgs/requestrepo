@@ -259,9 +259,7 @@ async def update_dns(
         await pipeline.set(key, json.dumps(value))
 
     # Store all records for this subdomain
-    await pipeline.set(
-        f"dns:{subdomain}", json.dumps(final_records)
-    )
+    await pipeline.set(f"dns:{subdomain}", json.dumps(final_records))
 
     await pipeline.execute()
 
