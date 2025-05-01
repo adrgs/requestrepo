@@ -69,7 +69,8 @@ class Resolver:
 
     def resolve(self, request: DNSRecord, handler: Any) -> DNSRecord:
         reply: DNSRecord = request.reply()
-
+        reply.header.ra = 0
+        reply.header.ad = 0
         # We assume that the data in the DB is correct (using server side checks)
         new_records: list[Record] = []
 
