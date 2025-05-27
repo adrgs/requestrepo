@@ -7,42 +7,45 @@ module.exports = {
     jest: true,
   },
   extends: [
-    'eslint:recommended',
-    'plugin:react/recommended',
-    'plugin:react-hooks/recommended',
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
   ],
   parserOptions: {
     ecmaFeatures: {
       jsx: true,
     },
-    ecmaVersion: 'latest',
-    sourceType: 'module',
+    ecmaVersion: "latest",
+    sourceType: "module",
   },
-  plugins: ['react'],
+  plugins: ["react"],
   settings: {
     react: {
-      version: 'detect',
+      version: "detect",
     },
   },
   rules: {
-    'no-unused-vars': ['error', { 
-      'argsIgnorePattern': '^_',
-      'varsIgnorePattern': '^_',
-      'ignoreRestSiblings': true 
-    }],
+    "no-unused-vars": [
+      "error",
+      {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        ignoreRestSiblings: true,
+      },
+    ],
   },
   overrides: [
     {
       files: [
-        '**/__tests__/**/*.[jt]s?(x)', 
-        '**/?(*.)+(spec|test).[jt]s?(x)', 
-        '**/__mocks__/**/*.[jt]s?(x)',
-        'jest.config.js',
-        '.eslintrc.js'
+        "**/__tests__/**/*.[jt]s?(x)",
+        "**/?(*.)+(spec|test).[jt]s?(x)",
+        "**/__mocks__/**/*.[jt]s?(x)",
+        "jest.config.js",
+        ".eslintrc.js",
       ],
       rules: {
-        'no-undef': 'off',
-        'no-unused-vars': 'off',
+        "no-undef": "off",
+        "no-unused-vars": "off",
       },
     },
   ],
