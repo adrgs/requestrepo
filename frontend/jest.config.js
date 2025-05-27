@@ -1,7 +1,7 @@
 module.exports = {
   testEnvironment: "jsdom",
   transform: {
-    "^.+\\.(js|jsx)$": "babel-jest",
+    "^.+\\.(js|jsx|ts|tsx)$": "babel-jest",
   },
   moduleNameMapper: {
     "\\.(css|less|scss|sass)$": "identity-obj-proxy",
@@ -9,12 +9,15 @@ module.exports = {
     "^../utils$": "<rootDir>/src/__mocks__/utils.js",
   },
   setupFilesAfterEnv: ["<rootDir>/src/setupTests.js"],
-  testMatch: ["**/__tests__/**/*.js?(x)", "**/?(*.)+(spec|test).js?(x)"],
+  testMatch: [
+    "**/__tests__/**/*.{js,jsx,ts,tsx}",
+    "**/?(*.)+(spec|test).{js,jsx,ts,tsx}",
+  ],
   collectCoverage: true,
   collectCoverageFrom: [
-    "src/**/*.{js,jsx}",
+    "src/**/*.{js,jsx,ts,tsx}",
     "!src/**/*.d.ts",
-    "!src/index.jsx",
+    "!src/index.{jsx,tsx}",
     "!src/vite-env.d.ts",
     "!src/__mocks__/**",
   ],

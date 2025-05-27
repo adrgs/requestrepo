@@ -10,7 +10,9 @@ module.exports = {
     "eslint:recommended",
     "plugin:react/recommended",
     "plugin:react-hooks/recommended",
+    "plugin:@typescript-eslint/recommended",
   ],
+  parser: "@typescript-eslint/parser",
   parserOptions: {
     ecmaFeatures: {
       jsx: true,
@@ -18,14 +20,15 @@ module.exports = {
     ecmaVersion: "latest",
     sourceType: "module",
   },
-  plugins: ["react"],
+  plugins: ["react", "@typescript-eslint"],
   settings: {
     react: {
       version: "detect",
     },
   },
   rules: {
-    "no-unused-vars": [
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": [
       "error",
       {
         argsIgnorePattern: "^_",
@@ -46,6 +49,7 @@ module.exports = {
       rules: {
         "no-undef": "off",
         "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": "off",
       },
     },
   ],
