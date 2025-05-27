@@ -15,6 +15,7 @@ export interface WebSocketState {
   isConnecting: boolean;
   lastPongTime: number;
   reconnectAttempts: number;
+  connectionError: boolean;
 }
 
 export interface WebSocketServiceProps {
@@ -25,9 +26,10 @@ export interface WebSocketServiceProps {
   debug?: boolean;
 }
 
-const MAX_RECONNECT_DELAY = 30000; // 30 seconds
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds (increased from 5 seconds)
-const PONG_TIMEOUT = 10000; // 10 seconds
+const MAX_RECONNECT_DELAY = 60000; // 60 seconds (increased from 30 seconds)
+const HEARTBEAT_INTERVAL = 60000; // 60 seconds (increased from 30 seconds)
+const PONG_TIMEOUT = 15000; // 15 seconds (increased from 10 seconds)
+const MAX_RECONNECT_ATTEMPTS = 5; // Limit reconnection attempts
 
 export function useWebSocketService({
   url,
@@ -49,6 +51,7 @@ export function useWebSocketService({
     isConnecting: false,
     lastPongTime: Date.now(),
     reconnectAttempts: 0,
+    connectionError: false,
   });
 
   const log = useCallback(
@@ -122,13 +125,21 @@ export function useWebSocketService({
 
   const getReconnectDelay = useCallback(() => {
     const baseDelay = Math.min(
-      1000 * Math.pow(1.5, stateRef.current.reconnectAttempts),
+      2000 * Math.pow(2, stateRef.current.reconnectAttempts),
       MAX_RECONNECT_DELAY,
     );
     return baseDelay * (0.8 + Math.random() * 0.4);
   }, []);
 
   const connect = useCallback(() => {
+    if (stateRef.current.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      log(
+        `Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached, giving up`,
+      );
+      stateRef.current.connectionError = true;
+      return;
+    }
+
     if (stateRef.current.isConnecting) {
       log("Already connecting, skipping connect call");
       return;
@@ -170,6 +181,7 @@ export function useWebSocketService({
         stateRef.current.isConnecting = false;
         stateRef.current.lastPongTime = Date.now();
         stateRef.current.reconnectAttempts = 0;
+        stateRef.current.connectionError = false;
 
         if (sessionsRef.current.length > 0) {
           sendMessage({
@@ -217,9 +229,15 @@ export function useWebSocketService({
           const delay = getReconnectDelay();
 
           log(
-            `Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts})`,
+            `Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
           );
-          reconnectTimeoutRef.current = setTimeout(connect, delay);
+
+          if (stateRef.current.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectTimeoutRef.current = setTimeout(connect, delay);
+          } else {
+            log("Max reconnection attempts reached, giving up");
+            stateRef.current.connectionError = true;
+          }
         }
       };
 
@@ -234,11 +252,26 @@ export function useWebSocketService({
       stateRef.current.reconnectAttempts++;
       const delay = getReconnectDelay();
       log(
-        `Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts})`,
+        `Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
       );
-      reconnectTimeoutRef.current = setTimeout(connect, delay);
+
+      if (stateRef.current.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectTimeoutRef.current = setTimeout(connect, delay);
+      } else {
+        log("Max reconnection attempts reached, giving up");
+        stateRef.current.connectionError = true;
+      }
     }
-  }, [url, onOpen, onMessage, sendMessage, resetState, getReconnectDelay, log]);
+  }, [
+    url,
+    onOpen,
+    onMessage,
+    sendMessage,
+    resetState,
+    getReconnectDelay,
+    log,
+    sendHeartbeat,
+  ]);
 
   useEffect(() => {
     connect();
@@ -246,6 +279,7 @@ export function useWebSocketService({
     const handleVisibilityChange = () => {
       if (
         document.visibilityState === "visible" &&
+        stateRef.current.reconnectAttempts < MAX_RECONNECT_ATTEMPTS &&
         (!socketRef.current ||
           socketRef.current.readyState === WebSocket.CLOSED ||
           socketRef.current.readyState === WebSocket.CLOSING)

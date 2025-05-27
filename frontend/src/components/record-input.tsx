@@ -9,13 +9,13 @@ interface RecordInputProps {
   domain: string;
   value: string;
   index: number;
-  subdomain: string;
+  subdomain: string | null;
   handleRecordInputChange: (
     index: number,
     domain: string,
     type: number,
     value: string,
-    toDelete: boolean,
+    toDelete?: boolean,
   ) => void;
 }
 
@@ -39,11 +39,14 @@ export class RecordInput extends Component<RecordInputProps, RecordInputState> {
   }
 
   changeEvent(
-    event: React.ChangeEvent<HTMLInputElement> | { value: number } | React.MouseEvent<HTMLButtonElement>,
-    action: string
+    event:
+      | React.ChangeEvent<HTMLInputElement>
+      | { value: number }
+      | React.MouseEvent<HTMLButtonElement>,
+    action: string,
   ): void {
     if (action === "domain") {
-      if ('target' in event && 'value' in event.target) {
+      if ("target" in event && "value" in event.target) {
         const value = event.target.value || "";
         this.props.handleRecordInputChange(
           this.props.index,
@@ -55,7 +58,7 @@ export class RecordInput extends Component<RecordInputProps, RecordInputState> {
         this.setState({ domain: value });
       }
     } else if (action === "type") {
-      if ('value' in event) {
+      if ("value" in event) {
         this.props.handleRecordInputChange(
           this.props.index,
           this.state.domain,
@@ -66,7 +69,7 @@ export class RecordInput extends Component<RecordInputProps, RecordInputState> {
         this.setState({ type: event.value });
       }
     } else if (action === "value") {
-      if ('target' in event && 'value' in event.target) {
+      if ("target" in event && "value" in event.target) {
         const value = event.target.value || "";
         this.props.handleRecordInputChange(
           this.props.index,
@@ -135,7 +138,9 @@ export class RecordInput extends Component<RecordInputProps, RecordInputState> {
               if (e.target.value.length < 64) this.changeEvent(e, "domain");
             }}
           />
-          .{this.props.subdomain}.{Utils.domain}
+          .
+          {typeof this.props.subdomain === "string" ? this.props.subdomain : ""}
+          .{Utils.domain}
         </div>
         <div className="col">
           <label>Value: </label>

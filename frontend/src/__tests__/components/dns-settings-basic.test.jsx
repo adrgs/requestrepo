@@ -33,7 +33,7 @@ describe("DnsSettingsPage Basic Tests", () => {
       error: jest.fn(),
       success: jest.fn(),
     },
-    activeSession: { subdomain: "test123", token: "test-token" },
+    activeSession: "test123",
   };
 
   beforeEach(() => {

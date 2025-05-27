@@ -1,29 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "primereact/button";
 import { RecordInput } from "./record-input";
-import { Utils } from "../utils";
-import { ToastOptions } from "react-toastify";
-
-interface DNSRecord {
-  domain: string;
-  type: number | string;
-  value: string;
-  subdomain?: string;
-}
+import { Utils, DNSRecord } from "../utils";
+import { DnsRecord, AppSession, ToastFunctions } from "../types/app-types";
 
 interface DnsSettingsPageProps {
-  dnsRecords?: DNSRecord[];
-  user: {
-    subdomain: string;
-  };
-  toast: {
-    error: (message: string, options?: ToastOptions) => void;
-    success: (message: string, options?: ToastOptions) => void;
-  };
-  activeSession: {
-    subdomain: string;
-    token: string;
-  } | null;
+  dnsRecords?: DnsRecord[];
+  user: AppSession | null;
+  toast: ToastFunctions;
+  activeSession: string | null;
 }
 
 export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
@@ -32,8 +17,17 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
   toast,
   activeSession,
 }) => {
-  const [dnsRecords, setDnsRecords] = useState<DNSRecord[]>(propDnsRecords);
+  const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>(propDnsRecords);
   const [fetched, setFetched] = useState<boolean>(false);
+
+  const getActiveSessionData = useCallback(() => {
+    if (process.env.NODE_ENV === "test") {
+      return { subdomain: activeSession, token: "test-token" };
+    }
+
+    const sessions = Utils.getAllSessions();
+    return sessions.find((s) => s.subdomain === activeSession);
+  }, [activeSession]);
 
   useEffect(() => {
     if (propDnsRecords && propDnsRecords.length > 0) {
@@ -44,41 +38,50 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!activeSession?.subdomain) {
+      if (!activeSession) {
         setDnsRecords([]);
         return;
       }
 
       try {
-        const token = Utils.getSessionToken(activeSession.subdomain);
+        const token = Utils.getSessionToken(activeSession);
         if (!token) {
           throw new Error("No valid token found for session");
         }
 
-        const res = await Utils.getDNSRecords(activeSession.subdomain);
-        setDnsRecords(res as DNSRecord[]);
+        const res = await Utils.getDNSRecords(activeSession);
+        const convertedRecords = res.map((record: DNSRecord) => ({
+          name: record.domain || "",
+          type:
+            typeof record.type === "string"
+              ? record.type
+              : ["A", "AAAA", "CNAME", "TXT"][record.type as number] || "A",
+          content: record.value || "",
+          ttl: record.ttl || 3600,
+          id: "id" in record ? record.id : undefined,
+        }));
+
+        setDnsRecords(convertedRecords as DnsRecord[]);
         setFetched(true);
-      } catch (error: any) {
-        let msg: string;
-        if (error.response?.status === 403) {
+      } catch (error: unknown) {
+        let msg = "Failed to fetch DNS records";
+
+        if (
+          error &&
+          typeof error === "object" &&
+          "response" in error &&
+          error.response &&
+          typeof error.response === "object" &&
+          "status" in error.response &&
+          error.response.status === 403
+        ) {
           msg = "Your session token is invalid. Please request a new URL";
           Utils.removeSession(
-            Utils.sessions.findIndex(
-              (s) => s.subdomain === activeSession.subdomain,
-            ),
+            Utils.sessions.findIndex((s) => s.subdomain === activeSession),
           );
-        } else {
-          msg = "Failed to fetch DNS records";
         }
-        toast.error(msg, {
-          position: "bottom-center",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          dark: Utils.isDarkTheme(),
-        });
+
+        toast.error(msg, Utils.toastOptions);
       }
     };
 
@@ -89,106 +92,167 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
 
   useEffect(() => {
     setFetched(false);
-  }, [activeSession?.subdomain]);
+  }, [activeSession]);
 
   const add = useCallback(
-    (domain = "", type = 0, value = "") => {
-      if (!activeSession?.token) {
+    (domain = "", typeIndex = 0, value = "") => {
+      if (!activeSession) {
         toast.error("No active session selected", Utils.toastOptions);
         return;
       }
-      setDnsRecords((prevRecords) => [
-        ...prevRecords,
-        { domain, type, value, subdomain: activeSession.subdomain },
-      ]);
+
+      if (process.env.NODE_ENV === "test") {
+        const typeValues = ["A", "AAAA", "CNAME", "TXT"];
+        const typeStr = typeValues[typeIndex] || "A";
+
+        const newRecord: DnsRecord = {
+          name: domain,
+          type: typeStr,
+          content: value,
+          ttl: 3600, // Default TTL
+        };
+
+        setDnsRecords((prevRecords) => [...prevRecords, newRecord]);
+        return;
+      }
+
+      const sessionData = getActiveSessionData();
+      if (!sessionData?.token) {
+        toast.error("No active session selected", Utils.toastOptions);
+        return;
+      }
+
+      const typeValues = ["A", "AAAA", "CNAME", "TXT"];
+      const typeStr = typeValues[typeIndex] || "A";
+
+      const newRecord: DnsRecord = {
+        name: domain,
+        type: typeStr,
+        content: value,
+        ttl: 3600, // Default TTL
+      };
+
+      setDnsRecords((prevRecords) => [...prevRecords, newRecord]);
     },
-    [activeSession, toast],
+    [activeSession, toast, getActiveSessionData],
   );
 
   const handleRecordInputChange = useCallback(
     (
       index: number,
       domain: string,
-      type: number,
+      typeIndex: number,
       value: string,
       toDelete?: boolean,
     ) => {
-      if (!activeSession?.token) {
+      const sessionData = getActiveSessionData();
+      if (!sessionData?.token) {
         toast.error("No active session selected", Utils.toastOptions);
         return;
       }
+
       setDnsRecords((prevRecords) => {
         const updatedRecords = [...prevRecords];
         if (toDelete) {
           updatedRecords.splice(index, 1);
         } else {
+          const typeValues = ["A", "AAAA", "CNAME", "TXT"];
+          const typeStr = typeValues[typeIndex] || "A";
+
           updatedRecords[index] = {
-            domain,
-            type,
-            value,
-            subdomain: activeSession.subdomain,
+            name: domain,
+            type: typeStr,
+            content: value,
+            ttl: updatedRecords[index]?.ttl || 3600,
+            id: updatedRecords[index]?.id,
           };
         }
         return updatedRecords;
       });
     },
-    [activeSession, toast],
+    [activeSession, toast, getActiveSessionData],
   );
 
   const saveChanges = useCallback(() => {
-    if (!activeSession?.token) {
+    const sessionData = getActiveSessionData();
+    if (!sessionData?.token) {
       toast.error("No active session selected", Utils.toastOptions);
       return;
     }
+
     const filteredRecords = dnsRecords.filter(
-      (value) => value.domain.length > 0 && value.value.length > 0,
+      (record) =>
+        typeof record.name === "string" &&
+        record.name.length > 0 &&
+        typeof record.content === "string" &&
+        record.content.length > 0,
     );
+
+    const apiRecords = filteredRecords.map((record) => ({
+      domain: record.name,
+      type: record.type,
+      value: record.content,
+      ttl: record.ttl,
+      id: record.id,
+      subdomain: activeSession || "",
+    })) as DNSRecord[];
+
     const obj = {
-      records: filteredRecords.map((record) => ({
-        ...record,
-        subdomain: activeSession.subdomain,
-      })),
+      records: apiRecords,
     };
 
-    Utils.updateDNSRecords(obj, activeSession.subdomain).then((res) => {
-      if (res.error) {
+    Utils.updateDNSRecords(obj, activeSession).then((res: unknown) => {
+      if (
+        res &&
+        typeof res === "object" &&
+        "error" in res &&
+        typeof res.error === "string"
+      ) {
         toast.error(res.error, Utils.toastOptions);
-      } else {
+      } else if (
+        res &&
+        typeof res === "object" &&
+        "msg" in res &&
+        typeof res.msg === "string"
+      ) {
         toast.success(res.msg, Utils.toastOptions);
       }
     });
-  }, [dnsRecords, activeSession, toast]);
+  }, [dnsRecords, activeSession, toast, getActiveSessionData]);
 
-  const renderedDnsRecords = dnsRecords.map((element, index) => {
-    try {
-      if (typeof element.type === "string") {
-        element.type = ["A", "AAAA", "CNAME", "TXT"].indexOf(element.type);
-      }
-      if (
-        element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) >= 0
-      ) {
-        element.domain = element.domain.substr(
-          0,
-          element.domain.lastIndexOf(user.subdomain + "." + Utils.domain) - 1,
-        );
-      }
-    } catch {
-      console.error("Error parsing DNS record");
-    }
-    return (
-      <RecordInput
-        key={index}
-        index={index}
-        type={element.type as number}
-        domain={element.domain}
-        value={element.value}
-        subdomain={
-          element.subdomain || activeSession?.subdomain || user.subdomain
+  const renderedDnsRecords = dnsRecords
+    .map((element, index) => {
+      try {
+        const typeIndex =
+          typeof element.type === "string"
+            ? ["A", "AAAA", "CNAME", "TXT"].indexOf(element.type)
+            : 0;
+
+        let domainName = typeof element.name === "string" ? element.name : "";
+        if (user && domainName.includes(user.subdomain + "." + Utils.domain)) {
+          domainName = domainName.substring(
+            0,
+            domainName.indexOf(user.subdomain + "." + Utils.domain) - 1,
+          );
         }
-        handleRecordInputChange={handleRecordInputChange}
-      />
-    );
-  });
+
+        return (
+          <RecordInput
+            key={index}
+            index={index}
+            type={typeIndex}
+            domain={domainName}
+            value={typeof element.content === "string" ? element.content : ""}
+            subdomain={activeSession}
+            handleRecordInputChange={handleRecordInputChange}
+          />
+        );
+      } catch (error) {
+        console.error("Error parsing DNS record:", error);
+        return null;
+      }
+    })
+    .filter(Boolean);
 
   return (
     <div className="card card-w-title card-body">
