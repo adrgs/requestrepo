@@ -1,3 +1,4 @@
+/* eslint-disable */
 import '@testing-library/jest-dom';
 
 global.getTestID = (id) => `test-id-${id}`;

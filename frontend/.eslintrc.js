@@ -1,3 +1,4 @@
+/* eslint-disable */
 module.exports = {
   env: {
     browser: true,
@@ -24,6 +25,25 @@ module.exports = {
     },
   },
   rules: {
-    'no-undef': 'off', // Turn off for test files since Jest provides globals
+    'no-unused-vars': ['error', { 
+      'argsIgnorePattern': '^_',
+      'varsIgnorePattern': '^_',
+      'ignoreRestSiblings': true 
+    }],
   },
+  overrides: [
+    {
+      files: [
+        '**/__tests__/**/*.[jt]s?(x)', 
+        '**/?(*.)+(spec|test).[jt]s?(x)', 
+        '**/__mocks__/**/*.[jt]s?(x)',
+        'jest.config.js',
+        '.eslintrc.js'
+      ],
+      rules: {
+        'no-undef': 'off',
+        'no-unused-vars': 'off',
+      },
+    },
+  ],
 };

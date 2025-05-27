@@ -8,7 +8,8 @@ jest.mock('../../utils', () => ({
     toastOptions: {},
     getSessionToken: jest.fn(() => 'test-token'),
     base64Decode: jest.fn(str => str),
-    isDarkTheme: jest.fn(() => false)
+    isDarkTheme: jest.fn(() => false),
+    getTestID: jest.fn(id => `test-id-${id}`)
   }
 }));
 

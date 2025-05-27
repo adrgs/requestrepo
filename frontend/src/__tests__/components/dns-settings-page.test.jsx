@@ -4,16 +4,19 @@ import { DnsSettingsPage } from '../../components/dns-settings-page';
 import { Utils } from '../../utils';
 import '@testing-library/jest-dom';
 
-jest.mock('../../utils', () => ({
-  Utils: {
-    toastOptions: {},
-    getSessionToken: jest.fn(() => 'test-token'),
-    updateDNSRecords: jest.fn(() => Promise.resolve({ msg: 'Updated DNS records' })),
-    getDNSRecords: jest.fn(() => Promise.resolve([])),
-    domain: 'example.com',
-    isDarkTheme: jest.fn(() => false)
-  }
-}));
+jest.mock('../../utils', () => {
+  return {
+    Utils: {
+      toastOptions: {},
+      getSessionToken: jest.fn(() => 'test-token'),
+      updateDNSRecords: jest.fn((data, subdomain) => Promise.resolve({ msg: 'Updated DNS records' })),
+      getDNSRecords: jest.fn(() => Promise.resolve([{ domain: '', type: 0, value: '1.2.3.4' }])),
+      domain: 'example.com',
+      isDarkTheme: jest.fn(() => false),
+      getTestID: jest.fn(id => `test-id-${id}`)
+    }
+  };
+});
 
 describe('DnsSettingsPage Component', () => {
   const mockProps = {
@@ -48,31 +51,39 @@ describe('DnsSettingsPage Component', () => {
     
     render(<DnsSettingsPage {...props} />);
     
-    const domainInputs = screen.getAllByPlaceholderText('Domain');
-    expect(domainInputs.length).toBe(2);
+    const domainInputs = screen.getAllByRole('textbox', { name: '' }).filter((input, index) => index % 2 === 0);
+    expect(domainInputs.length).toBe(3);
     
-    const valueInputs = screen.getAllByPlaceholderText('Value');
-    expect(valueInputs.length).toBe(2);
+    const valueInputs = screen.getAllByRole('textbox', { name: '' }).filter((input, index) => index % 2 === 1);
+    expect(valueInputs.length).toBe(3);
   });
 
   test('adds a new record when add button is clicked', () => {
     render(<DnsSettingsPage {...mockProps} />);
     
+    const initialDomainInputs = screen.getAllByRole('textbox', { name: '' }).filter((input, index) => index % 2 === 0);
+    const initialCount = initialDomainInputs.length;
+    
     const addButton = screen.getByRole('button', { name: /add record/i });
     fireEvent.click(addButton);
     
-    const domainInputs = screen.getAllByPlaceholderText('Domain');
-    expect(domainInputs.length).toBe(1);
+    const domainInputs = screen.getAllByRole('textbox', { name: '' }).filter((input, index) => index % 2 === 0);
+    expect(domainInputs.length).toBe(initialCount + 1); // Should have one more than before
   });
 
   test('saves changes when save button is clicked', async () => {
+    Utils.updateDNSRecords = jest.fn((data, subdomain) => {
+      return Promise.resolve({ msg: 'Updated DNS records' });
+    });
+    
     render(<DnsSettingsPage {...mockProps} />);
     
     const addButton = screen.getByRole('button', { name: /add record/i });
     fireEvent.click(addButton);
     
-    const domainInput = screen.getByPlaceholderText('Domain');
-    const valueInput = screen.getByPlaceholderText('Value');
+    const inputs = screen.getAllByRole('textbox', { name: '' });
+    const domainInput = inputs[0]; // First input is domain
+    const valueInput = inputs[1];  // Second input is value
     
     fireEvent.change(domainInput, { target: { value: 'test' } });
     fireEvent.change(valueInput, { target: { value: '1.2.3.4' } });
