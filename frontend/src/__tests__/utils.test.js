@@ -117,22 +117,24 @@ describe("Utils", () => {
     test("getSessionToken should return token for active session", () => {
       const subdomain = "test123";
       const token = "test-token";
-      
-      Utils.sessions = [{
-        subdomain,
-        token,
-        createdAt: new Date().toISOString(),
-        unseenRequests: 0,
-      }];
-      
+
+      Utils.sessions = [
+        {
+          subdomain,
+          token,
+          createdAt: new Date().toISOString(),
+          unseenRequests: 0,
+        },
+      ];
+
       Utils.selectedSessionIndex = 0;
-      
+
       const activeToken = Utils.getSessionToken();
       expect(activeToken).toBe(token);
-      
+
       const specificToken = Utils.getSessionToken(subdomain);
       expect(specificToken).toBe(token);
-      
+
       const nonExistentToken = Utils.getSessionToken("nonexistent");
       expect(nonExistentToken).toBeNull();
     });

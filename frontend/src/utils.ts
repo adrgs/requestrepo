@@ -291,8 +291,8 @@ export class Utils {
   static async getDNSRecords(
     subdomain: string | null = null,
   ): Promise<DNSRecord[]> {
-    let reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
-    let res = await axios.get(reqUrl, {
+    const reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
+    const res = await axios.get(reqUrl, {
       params: { token: this.getSessionToken(subdomain) },
     });
     return res.data;
@@ -301,39 +301,44 @@ export class Utils {
   static async updateDNSRecords(
     data: { records: DNSRecord[] },
     subdomain: string | null = null,
-  ): Promise<any> {
-    let reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
-    let res = await axios.post(reqUrl, data, {
+  ): Promise<Record<string, unknown>> {
+    const reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
+    const res = await axios.post(reqUrl, data, {
       params: { token: this.getSessionToken(subdomain) },
     });
     return res.data;
   }
 
-  static async getFile(): Promise<any> {
-    let reqUrl = this.apiUrl + this.fileEndpoint;
-    let res = await axios.get(reqUrl, {
+  static async getFile(): Promise<Record<string, unknown>> {
+    const reqUrl = this.apiUrl + this.fileEndpoint;
+    const res = await axios.get(reqUrl, {
       params: { token: this.getSessionToken(this.subdomain) },
     });
     return res.data;
   }
 
-  static async getRequest(id: string, subdomain: string): Promise<any> {
-    let reqUrl = this.apiUrl + this.getRequestEndpoint;
-    let res = await axios.get(reqUrl, {
+  static async getRequest(id: string, subdomain: string): Promise<Record<string, unknown>> {
+    const reqUrl = this.apiUrl + this.getRequestEndpoint;
+    const res = await axios.get(reqUrl, {
       params: { id, subdomain },
     });
     return res.data;
   }
 
-  static async updateFile(data: any): Promise<any> {
-    let reqUrl = this.apiUrl + this.updateFileEndpoint;
-    let res = await axios.post(reqUrl, data, {
+  static async updateFile(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const reqUrl = this.apiUrl + this.updateFileEndpoint;
+    const res = await axios.post(reqUrl, data, {
       params: { token: this.getSessionToken(this.subdomain) },
     });
     return res.data;
   }
 
-  static async fetchResponse(subdomain: string): Promise<any> {
+  static async fetchResponse(subdomain: string): Promise<{
+    raw: string;
+    headers: Array<{ key: string; value: string }>;
+    status_code: number;
+    fetched: boolean;
+  }> {
     try {
       const token = this.getSessionToken(subdomain);
       const response = await fetch(`/api/response?token=${token}`);
@@ -349,7 +354,7 @@ export class Utils {
     }
   }
 
-  static async updateResponse(subdomain: string, data: any): Promise<any> {
+  static async updateResponse(subdomain: string, data: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const token = this.getSessionToken(subdomain);
       const response = await fetch(`/api/response?token=${token}`, {
@@ -394,7 +399,7 @@ export class Utils {
     subdomain: string;
     token: string;
   }> {
-    let reqUrl = this.apiUrl + this.subdomainEndpoint;
+    const reqUrl = this.apiUrl + this.subdomainEndpoint;
 
     if (this.pendingSessionPromise) {
       return this.pendingSessionPromise;
@@ -433,8 +438,8 @@ export class Utils {
   static deleteRequest(
     id: string,
     subdomain: string | null = null,
-  ): Promise<any> {
-    let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
+  ): Promise<Record<string, unknown>> {
+    const reqUrl = this.apiUrl + this.deleteRequestEndpoint;
     return axios.post(
       reqUrl,
       { id: id },
@@ -442,8 +447,8 @@ export class Utils {
     );
   }
 
-  static deleteAll(subdomain: string | null = null): Promise<any> {
-    let reqUrl = this.apiUrl + this.deleteAllEndpoint;
+  static deleteAll(subdomain: string | null = null): Promise<Record<string, unknown>> {
+    const reqUrl = this.apiUrl + this.deleteAllEndpoint;
     return axios.post(reqUrl, null, {
       params: { token: this.getSessionToken(subdomain) },
     });
@@ -451,9 +456,9 @@ export class Utils {
 
   static isValidUTF8(input: string): boolean {
     try {
-      let buf = new ArrayBuffer(input.length);
-      let bufView = new Uint8Array(buf);
-      for (var i = 0, strLen = input.length; i < strLen; i++) {
+      const buf = new ArrayBuffer(input.length);
+      const bufView = new Uint8Array(buf);
+      for (let i = 0, strLen = input.length; i < strLen; i++) {
         const val = input.charCodeAt(i);
         if (val > 255) return true;
         bufView[i] = val;
@@ -545,7 +550,7 @@ export class Utils {
     return this.getTheme() === "light";
   }
 
-  static async getFiles(subdomain: string | null = null): Promise<any> {
+  static async getFiles(subdomain: string | null = null): Promise<Record<string, unknown>> {
     const token = this.getSessionToken(subdomain);
     const response = await fetch(`/api/files?token=${token}`);
     if (!response.ok) throw new Error("Failed to fetch files");
@@ -553,9 +558,9 @@ export class Utils {
   }
 
   static async updateFiles(
-    files: any,
+    files: Record<string, unknown>,
     subdomain: string | null = null,
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     const token = this.getSessionToken(subdomain);
     const response = await fetch(`/api/files?token=${token}`, {
       method: "POST",

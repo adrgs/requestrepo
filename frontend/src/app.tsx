@@ -23,7 +23,7 @@ interface Request {
   _id: string;
   type: string;
   new?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface AppSession {
@@ -37,7 +37,7 @@ interface AppSession {
   visited: Record<string, boolean>;
   selectedRequest: string | null;
   token: string;
-  dnsRecords?: any[];
+  dnsRecords?: Array<Record<string, unknown>>;
 }
 
 interface AppState {
@@ -51,11 +51,11 @@ interface AppState {
   searchValue: string;
   response: {
     raw: string;
-    headers: any[];
+    headers: Array<{ key: string; value: string }>;
     status_code: number;
     fetched: boolean;
   };
-  dnsRecords: any[];
+  dnsRecords: Array<Record<string, unknown>>;
   dnsFetched: boolean;
 }
 

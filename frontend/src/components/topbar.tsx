@@ -8,10 +8,10 @@ interface AppSession {
   url: string;
   domain: string;
   subdomain: string;
-  httpRequests: any[];
-  dnsRequests: any[];
+  httpRequests: Array<{ _id: string; date: string }>;
+  dnsRequests: Array<{ _id: string; date: string }>;
   timestamp: string | null;
-  requests: Record<string, any>;
+  requests: Record<string, Record<string, unknown>>;
   visited: Record<string, boolean>;
   selectedRequest: string | null;
   token: string;
@@ -35,7 +35,6 @@ interface AppTopbarState {
 }
 
 export class AppTopbar extends Component<AppTopbarProps, AppTopbarState> {
-  static defaultProps = {};
 
   constructor(props: AppTopbarProps) {
     super(props);

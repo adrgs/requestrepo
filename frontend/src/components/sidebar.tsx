@@ -8,10 +8,10 @@ interface AppSession {
   url: string;
   domain: string;
   subdomain: string;
-  httpRequests: any[];
-  dnsRequests: any[];
+  httpRequests: Array<{ _id: string; date: string }>;
+  dnsRequests: Array<{ _id: string; date: string }>;
   timestamp: string | null;
-  requests: Record<string, any>;
+  requests: Record<string, Record<string, unknown>>;
   visited: Record<string, boolean>;
   selectedRequest: string | null;
   token: string;
@@ -98,8 +98,8 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
   }
 
   convertUTCDateToLocalDate(date: number): Date {
-    var utcSeconds = date;
-    var d = new Date(0);
+    const utcSeconds = date;
+    const d = new Date(0);
     d.setUTCSeconds(utcSeconds);
     return d;
   }
@@ -115,7 +115,7 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
     type: string;
     new?: boolean;
   }> {
-    let requests: Array<{
+    const requests: Array<{
       title: string;
       method: string;
       time: string;
@@ -143,7 +143,7 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
         i < session.httpRequests.length ||
         j < session.dnsRequests.length
       ) {
-        let obj: {
+        const obj: {
           title: string | null;
           method: string | null;
           time: string | null;
@@ -175,41 +175,65 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
           (j >= session.dnsRequests.length || dateA < dateB) &&
           i < session.httpRequests.length
         ) {
-          let req =
+          const req = (
             (session.requests &&
               session.requests[session.httpRequests[i]["_id"]]) ||
-            {};
+            {}
+          ) as Record<string, string | boolean>;
+          
           obj["title"] =
-            req["path"] +
-            (req["query"] ? req["query"] : "") +
-            (req["fragment"] ? req["fragment"] : "");
-          obj["method"] = req["method"];
+            ((req["path"] as string) || "") +
+            ((req["query"] ? req["query"] as string : "")) +
+            ((req["fragment"] ? req["fragment"] as string : ""));
+          obj["method"] = req["method"] as string;
           obj["time"] = this.convertUTCDateToLocalDate(dateA).toLocaleString();
-          obj["detail"] = req["ip"];
-          obj["country"] = req["country"];
-          obj["id"] = req["_id"];
+          obj["detail"] = req["ip"] as string;
+          obj["country"] = req["country"] as string;
+          obj["id"] = req["_id"] as string;
           obj["key"] = obj["id"] as string;
           obj["type"] = "HTTP";
-          obj["new"] = req["new"];
+          obj["new"] = req["new"] as boolean;
 
-          requests.push(obj as any);
+          requests.push(obj as {
+            title: string;
+            method: string;
+            time: string;
+            detail: string;
+            country?: string;
+            id: string;
+            key: string;
+            type: string;
+            new?: boolean;
+          });
           i++;
         } else {
-          let req =
+          const req = (
             (session.requests &&
               session.requests[session.dnsRequests[j]["_id"]]) ||
-            {};
-          obj["title"] = req["name"];
+            {}
+          ) as Record<string, string | boolean>;
+          
+          obj["title"] = req["name"] as string;
           obj["method"] = "DNS";
           obj["time"] = this.convertUTCDateToLocalDate(dateB).toLocaleString();
-          obj["detail"] = req["ip"];
-          obj["country"] = req["country"];
-          obj["id"] = req["_id"];
+          obj["detail"] = req["ip"] as string;
+          obj["country"] = req["country"] as string;
+          obj["id"] = req["_id"] as string;
           obj["key"] = obj["id"] as string;
           obj["type"] = "DNS";
-          obj["new"] = req["new"];
+          obj["new"] = req["new"] as boolean;
 
-          requests.push(obj as any);
+          requests.push(obj as {
+            title: string;
+            method: string;
+            time: string;
+            detail: string;
+            country?: string;
+            id: string;
+            key: string;
+            type: string;
+            new?: boolean;
+          });
 
           j++;
         }
@@ -228,7 +252,7 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
     this.props.deleteAllRequests();
   }
 
-  hasValue(item: any, needle: string): boolean {
+  hasValue(item: Record<string, unknown>, needle: string): boolean {
     if (!needle) return true;
     if (item["name"] !== undefined) {
       if ("dns".indexOf(needle) >= 0) return true;
@@ -236,46 +260,52 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
       if ("http".indexOf(needle) >= 0) return true;
     }
     needle = needle.toLowerCase();
-    for (let property in item) {
-      let val = item[property];
-      if (property === "raw") {
-        val = Utils.base64Decode(item[property]).toString().toLowerCase();
-        if (val.indexOf(needle) >= 0) return true;
+    for (const property in item) {
+      const val = item[property];
+      if (property === "raw" && typeof val === "string") {
+        const decodedVal = Utils.base64Decode(val).toString().toLowerCase();
+        if (decodedVal.indexOf(needle) >= 0) return true;
         continue;
       }
-      if (property === "date") {
-        val = this.convertUTCDateToLocalDate(parseInt(val))
+      if (property === "date" && (typeof val === "string" || typeof val === "number")) {
+        const dateVal = this.convertUTCDateToLocalDate(parseInt(String(val)))
           .toLocaleString()
           .toLowerCase();
-        if (val.indexOf(needle) >= 0) return true;
+        if (dateVal.indexOf(needle) >= 0) return true;
         continue;
       }
 
-      if (typeof val === "object") {
-        for (let prop in val) {
-          let val2 = val[prop].toString().toLowerCase();
-          let val3 = prop.toString().toLowerCase();
-          if (val2.indexOf(needle) >= 0) return true;
-          if (val3.indexOf(needle) >= 0) return true;
+      if (typeof val === "object" && val !== null) {
+        const objVal = val as Record<string, unknown>;
+        for (const prop in objVal) {
+          if (Object.prototype.hasOwnProperty.call(objVal, prop)) {
+            const propValue = objVal[prop];
+            if (propValue !== null && propValue !== undefined) {
+              const val2 = String(propValue).toLowerCase();
+              const val3 = String(prop).toLowerCase();
+              if (val2.indexOf(needle) >= 0) return true;
+              if (val3.indexOf(needle) >= 0) return true;
+            }
+          }
         }
-      } else {
-        val = val.toString().toLowerCase();
-        if (val.indexOf(needle) >= 0) return true;
+      } else if (val !== null && val !== undefined) {
+        const strVal = String(val).toLowerCase();
+        if (strVal.indexOf(needle) >= 0) return true;
       }
     }
-
+    
     return false;
   }
 
   render(): React.ReactNode {
     const hasValue = this.hasValue;
 
-    let requests = this.getRequests();
+    let requestsList = this.getRequests();
 
-    let searchValue = this.props.searchValue;
-    let dns_filter = this.state.dns_filter;
-    let http_filter = this.state.http_filter;
-    requests = requests.filter(
+    const searchValue = this.props.searchValue;
+    const dns_filter = this.state.dns_filter;
+    const http_filter = this.state.http_filter;
+    requestsList = requestsList.filter(
       function (this: AppSidebar, item: { id: string; type: string }) {
         return (
           hasValue(
@@ -300,7 +330,7 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
             />
           </div>
           <div style={{ padding: "0.85rem" }}>
-            <b style={{ marginRight: "20px" }}>Requests ({requests.length})</b>
+            <b style={{ marginRight: "20px" }}>Requests ({requestsList.length})</b>
             <Checkbox
               value="HTTP"
               inputId="cbHTTP"
@@ -326,7 +356,17 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
           </div>
         </div>
         <div className="requests-box">
-          {requests.map((item) => {
+          {requestsList.map((item: {
+            title: string;
+            method: string;
+            time: string;
+            detail: string;
+            country?: string;
+            id: string;
+            key: string;
+            type: string;
+            new?: boolean;
+          }) => {
             return (
               <RequestCard
                 active={this.props.user?.selectedRequest === item.id}

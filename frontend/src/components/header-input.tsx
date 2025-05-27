@@ -2,8 +2,27 @@ import React, { Component } from "react";
 import { AutoComplete } from "primereact/autocomplete";
 import { Button } from "primereact/button";
 
-export class HeaderInput extends Component {
-  constructor(props) {
+interface HeaderInputProps {
+  header: string;
+  value: string;
+  index: number;
+  headersData?: Array<{ name: string; value: string }>;
+  handleHeaderInputChange: (
+    index: number,
+    header: string,
+    value: string,
+    isDelete: boolean
+  ) => void;
+}
+
+interface HeaderInputState {
+  header: string;
+  value: string;
+  filteredHeaders: string[] | null;
+}
+
+export class HeaderInput extends Component<HeaderInputProps, HeaderInputState> {
+  constructor(props: HeaderInputProps) {
     super(props);
     this.state = {
       header: this.props.header,
@@ -14,7 +33,7 @@ export class HeaderInput extends Component {
     this.changeEvent = this.changeEvent.bind(this);
   }
 
-  filterHeader = (event) => {
+  filterHeader = (event: { query: string }): void => {
     if (this.props.headersData) {
       let results = this.props.headersData
         .filter((header) => {
@@ -29,18 +48,15 @@ export class HeaderInput extends Component {
     }
   };
 
-  UNSAFE_componentWillReceiveProps(newProps) {
+  UNSAFE_componentWillReceiveProps(newProps: HeaderInputProps): void {
     this.setState({
       header: newProps.header,
       value: newProps.value,
     });
   }
 
-  //shouldComponentUpdate(nextProps) {
-  //    return this.state.header != nextProps.header || this.state.value != nextProps.value || this.filteredHeaders != null;
-  //}
 
-  changeEvent(event, header) {
+  changeEvent(event: any, header: boolean | "delete"): void {
     if (header === true) {
       this.props.handleHeaderInputChange(
         this.props.index,
@@ -67,23 +83,23 @@ export class HeaderInput extends Component {
     }
   }
 
-  isDesktop() {
+  isDesktop(): boolean {
     return window.innerWidth > 1180;
   }
 
-  render() {
+  render(): React.ReactNode {
     return (
       <div className="grid">
         <div className={this.isDesktop() ? "col-6" : "col-12"}>
           <div className="grid">
             <div className="col-5">
               <AutoComplete
-                width={"100%"}
+                style={{ width: "100%" }}
                 delay={0}
                 minLength={1}
                 placeholder="Header-Name"
                 size={30}
-                suggestions={this.state.filteredHeaders}
+                suggestions={this.state.filteredHeaders || []}
                 completeMethod={this.filterHeader}
                 value={this.state.header}
                 onChange={(event) => this.changeEvent(event, true)}
@@ -91,7 +107,7 @@ export class HeaderInput extends Component {
             </div>
             <div className="col-5">
               <AutoComplete
-                width={"100%"}
+                style={{ width: "100%" }}
                 minLength={1}
                 placeholder="Value"
                 value={this.state.value}

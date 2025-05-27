@@ -5,47 +5,96 @@ import { Utils } from "../utils";
 import { toast } from "react-toastify";
 import { Tag } from "primereact/tag";
 
-export class RequestInfo extends Component {
-  constructor(props) {
+interface HttpRequest {
+  _id: string;
+  method: string;
+  path: string;
+  query: string;
+  fragment: string;
+  protocol: string;
+  headers: Record<string, string>;
+  raw?: string;
+  url?: string;
+  ip: string;
+  port: string;
+  date: number;
+  country?: string;
+  uid: string;
+  new?: boolean;
+  name?: undefined; // To distinguish from DnsRequest
+}
+
+interface DnsRequest {
+  _id: string;
+  name: string;
+  ip: string;
+  port: string;
+  date: number;
+  country?: string;
+  dtype: string;
+  reply: string;
+  raw?: string;
+  uid: string;
+  new?: boolean;
+}
+
+function isHttpRequest(req: HttpRequest | DnsRequest): req is HttpRequest {
+  return req.name === undefined;
+}
+
+function isDnsRequest(req: HttpRequest | DnsRequest): req is DnsRequest {
+  return req.name !== undefined;
+}
+
+interface RequestInfoProps {
+  request: HttpRequest | DnsRequest;
+  isShared?: boolean;
+}
+
+interface RequestInfoState {
+  [key: string]: unknown;
+}
+
+export class RequestInfo extends Component<RequestInfoProps, RequestInfoState> {
+  constructor(props: RequestInfoProps) {
     super(props);
     this.state = { ...props };
   }
 
-  updateDimensions = () => {
+  updateDimensions = (): void => {
     this.setState(this.state);
   };
-  componentDidMount() {
+
+  componentDidMount(): void {
     window.addEventListener("resize", this.updateDimensions);
   }
-  componentWillUnmount() {
+
+  componentWillUnmount(): void {
     window.removeEventListener("resize", this.updateDimensions);
   }
 
-  convertUTCDateToLocalDate(date) {
-    var utcSeconds = date;
-    var d = new Date(0);
+  convertUTCDateToLocalDate(date: number): Date {
+    const utcSeconds = date;
+    const d = new Date(0);
     d.setUTCSeconds(utcSeconds);
     return d;
   }
 
-  isDesktop() {
+  isDesktop(): boolean {
     return window.innerWidth > 768;
   }
 
-  encodePathWithSlashes(path) {
-    // Split the path by forward slashes
+  encodePathWithSlashes(path: string): string {
     const segments = path.split("/");
 
-    // Encode each segment individually
     const encodedSegments = segments.map((segment) =>
       segment ? encodeURIComponent(segment) : "",
     );
 
-    // Join segments back with slashes
     return encodedSegments.join("/");
   }
 
-  shareRequest = () => {
+  shareRequest = (): void => {
     const id = this.props.request._id;
     const subdomain = this.props.request.uid;
 
@@ -69,15 +118,18 @@ export class RequestInfo extends Component {
       });
   };
 
-  render() {
-    let request = this.props.request;
+  render(): React.ReactNode {
+    const request = this.props.request;
     const isShared = this.props.isShared || false;
     let data = request.raw ? Utils.base64Decode(request.raw) : "";
 
-    let headerKeys;
-    if (request.headers) headerKeys = Object.keys(request.headers);
+    let headerKeys: string[] = [];
+    
+    if (isHttpRequest(request) && request.headers) {
+      headerKeys = Object.keys(request.headers);
+    }
 
-    if (request.name === undefined) {
+    if (isHttpRequest(request)) {
       data =
         request.method +
         " " +
@@ -209,18 +261,20 @@ export class RequestInfo extends Component {
             <h1>Query Parameters</h1>
             {request.query ? (
               <table className="req-table">
-                {request.query
-                  .substring(1)
-                  .split("&")
-                  .map((dict, index) => {
-                    let q = dict.split("=");
-                    return (
-                      <tr key={index}>
-                        <td className="req-table-a">{q[0]}</td>
-                        <td className="req-table-b">{q[1]}</td>
-                      </tr>
-                    );
-                  })}
+                <tbody>
+                  {request.query
+                    .substring(1)
+                    .split("&")
+                    .map((dict: string, index: number) => {
+                      const q = dict.split("=");
+                      return (
+                        <tr key={index}>
+                          <td className="req-table-a">{q[0]}</td>
+                          <td className="req-table-b">{q[1]}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
               </table>
             ) : (
               <p>(empty)</p>
@@ -258,7 +312,7 @@ export class RequestInfo extends Component {
           </div>
         </div>
       );
-    } else {
+    } else if (isDnsRequest(request)) {
       out = (
         <div className="grid">
           <div className="col-12">

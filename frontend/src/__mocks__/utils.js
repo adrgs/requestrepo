@@ -78,8 +78,8 @@ const Utils = {
       const activeSession = Utils.getActiveSession();
       return activeSession ? activeSession.token : null;
     }
-    
-    const session = Utils.sessions.find(s => s.subdomain === subdomain);
+
+    const session = Utils.sessions.find((s) => s.subdomain === subdomain);
     return session ? session.token : null;
   }),
 

@@ -15,7 +15,20 @@ interface RequestCardProps {
   sessionId?: string;
 }
 
-interface RequestCardState extends RequestCardProps {}
+interface RequestCardState {
+  active: boolean;
+  visited: boolean;
+  title: string;
+  time: string;
+  new?: boolean;
+  method: string;
+  country?: string;
+  detail: string;
+  id: string;
+  key: string;
+  clickRequestAction: (action: string, id: string) => void;
+  sessionId?: string;
+}
 
 export class RequestCard extends Component<RequestCardProps, RequestCardState> {
   constructor(props: RequestCardProps) {

