@@ -4,8 +4,12 @@ import { DnsSettingsPage } from "../../components/dns-settings-page";
 import "@testing-library/jest-dom";
 
 const mockGetSessionToken = jest.fn(() => "test-token");
-const mockUpdateDNSRecords = jest.fn(() => Promise.resolve({ msg: "Updated DNS records" }));
-const mockGetDNSRecords = jest.fn(() => Promise.resolve([{ domain: "", type: 0, value: "1.2.3.4" }]));
+const mockUpdateDNSRecords = jest.fn(() =>
+  Promise.resolve({ msg: "Updated DNS records" }),
+);
+const mockGetDNSRecords = jest.fn(() =>
+  Promise.resolve([{ domain: "", type: 0, value: "1.2.3.4" }]),
+);
 const mockIsDarkTheme = jest.fn(() => false);
 
 jest.mock("../../utils", () => ({
@@ -19,7 +23,7 @@ jest.mock("../../utils", () => ({
   },
 }));
 
-const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("DnsSettingsPage Basic Tests", () => {
   const mockProps = {

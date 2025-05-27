@@ -15,8 +15,12 @@ jest.mock("primereact/button", () => ({
   ),
 }));
 
-const mockUpdateDNSRecords = jest.fn().mockResolvedValue({ msg: "Updated DNS records" });
-const mockGetDNSRecords = jest.fn().mockResolvedValue([{ domain: "", type: 0, value: "1.2.3.4" }]);
+const mockUpdateDNSRecords = jest
+  .fn()
+  .mockResolvedValue({ msg: "Updated DNS records" });
+const mockGetDNSRecords = jest
+  .fn()
+  .mockResolvedValue([{ domain: "", type: 0, value: "1.2.3.4" }]);
 const mockGetSessionToken = jest.fn(() => "test-token");
 const mockIsDarkTheme = jest.fn(() => false);
 const mockRemoveSession = jest.fn();
@@ -33,7 +37,7 @@ jest.mock("../../utils", () => ({
   },
 }));
 
-const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("DnsSettingsPage Component", () => {
   const mockProps = {
@@ -57,7 +61,7 @@ describe("DnsSettingsPage Component", () => {
       container = result.container;
       await flushPromises();
     });
-    
+
     expect(screen.getByText("DNS Records")).toBeInTheDocument();
   });
 

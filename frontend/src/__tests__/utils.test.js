@@ -3,50 +3,50 @@ import { Base64 } from "js-base64";
 
 const localStorageMock = {
   store: {},
-  getItem: jest.fn(function(key) {
+  getItem: jest.fn(function (key) {
     return this.store[key] || null;
   }),
-  setItem: jest.fn(function(key, value) {
+  setItem: jest.fn(function (key, value) {
     this.store[key] = String(value);
   }),
-  removeItem: jest.fn(function(key) {
+  removeItem: jest.fn(function (key) {
     delete this.store[key];
   }),
-  clear: jest.fn(function() {
+  clear: jest.fn(function () {
     this.store = {};
   }),
-  key: jest.fn(function(index) {
+  key: jest.fn(function (index) {
     return Object.keys(this.store)[index] || null;
   }),
   get length() {
     return Object.keys(this.store).length;
-  }
+  },
 };
 
 jest.mock("js-base64", () => ({
   Base64: {
-    encode: jest.fn(str => btoa(str)),
-    decode: jest.fn(str => atob(str)),
-    atob: jest.fn(str => atob(str)),
-    btoa: jest.fn(str => btoa(str))
-  }
+    encode: jest.fn((str) => btoa(str)),
+    decode: jest.fn((str) => atob(str)),
+    atob: jest.fn((str) => atob(str)),
+    btoa: jest.fn((str) => btoa(str)),
+  },
 }));
 
 jest.mock("axios", () => ({
   get: jest.fn(() => Promise.resolve({ data: {} })),
-  post: jest.fn(() => Promise.resolve({ data: {} }))
+  post: jest.fn(() => Promise.resolve({ data: {} })),
 }));
 
 describe("Utils", () => {
   beforeEach(() => {
-    Object.defineProperty(window, "localStorage", { 
+    Object.defineProperty(window, "localStorage", {
       value: localStorageMock,
-      writable: true
+      writable: true,
     });
-    
+
     Object.defineProperty(window, "sessionStorage", {
       value: { ...localStorageMock },
-      writable: true
+      writable: true,
     });
 
     localStorageMock.store = {};
@@ -66,7 +66,7 @@ describe("Utils", () => {
     test.skip("addSession should add a new session", () => {
       const subdomain = "test123";
       const token = "test-token";
-      
+
       Utils.addSession(subdomain, token);
 
       expect(Utils.sessions.length).toBe(1);
@@ -85,7 +85,7 @@ describe("Utils", () => {
         }));
 
       expect(() => Utils.addSession("newtest", "newtoken")).toThrow(
-        "Maximum number of sessions reached"
+        "Maximum number of sessions reached",
       );
     });
 
@@ -114,28 +114,25 @@ describe("Utils", () => {
       expect(Utils.selectedSessionIndex).toBe(0);
     });
 
-    test.skip("getSessionToken should return token for active session", () => {
-    });
+    test.skip("getSessionToken should return token for active session", () => {});
   });
 
   describe("Encoding and Decoding", () => {
-    test.skip("base64Encode should encode strings correctly", () => {
-    });
+    test.skip("base64Encode should encode strings correctly", () => {});
 
-    test.skip("base64Decode should decode strings correctly", () => {
-    });
+    test.skip("base64Decode should decode strings correctly", () => {});
 
     test("arrayBufferToString should convert ArrayBuffer to string", () => {
       const buffer = new ArrayBuffer(5);
       const view = new Uint8Array(buffer);
-      view[0] = 72;  // H
+      view[0] = 72; // H
       view[1] = 101; // e
       view[2] = 108; // l
       view[3] = 108; // l
       view[4] = 111; // o
 
       const result = Utils.arrayBufferToString(buffer);
-      
+
       expect(result).toBe("Hello");
     });
   });
