@@ -58,7 +58,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [editMode]);
 
-  const convertToTreeNodes = (data: Record<string, any>, parentPath = ""): TreeNode[] => {
+  const convertToTreeNodes = (
+    data: Record<string, any>,
+    parentPath = "",
+  ): TreeNode[] => {
     return Object.entries(data).map(([key, value]) => {
       const currentPath = parentPath + key;
       const isDirectory = key.endsWith("/");
@@ -131,7 +134,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
     const newName = isDirectory ? editingText + "/" : editingText;
 
     if (newName in current) {
-      toast.error("A file with this name already exists", Utils.toastOptions as any);
+      toast.error(
+        "A file with this name already exists",
+        Utils.toastOptions as any,
+      );
       return;
     }
 
@@ -272,7 +278,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });`;
 
               onUpdate(newFiles);
-              toast.success("JavaScript file created", Utils.toastOptions as any);
+              toast.success(
+                "JavaScript file created",
+                Utils.toastOptions as any,
+              );
             },
           },
           {
@@ -405,7 +414,10 @@ Content-Length: 0
 
     const lastPart = editingText;
     if (lastPart in current) {
-      toast.error("A file with this name already exists", Utils.toastOptions as any);
+      toast.error(
+        "A file with this name already exists",
+        Utils.toastOptions as any,
+      );
       return;
     }
 
@@ -459,7 +471,10 @@ Content-Length: 0
           onContextMenu={handleContextMenu}
           className={isDark ? "dark-tree" : ""}
         />
-        <ContextMenu model={editingNode ? getContextMenuItems(editingNode) : []} ref={cm} />
+        <ContextMenu
+          model={editingNode ? getContextMenuItems(editingNode) : []}
+          ref={cm}
+        />
 
         {editMode === "rename" && (
           <div className="p-dialog-mask">

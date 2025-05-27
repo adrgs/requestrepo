@@ -237,8 +237,12 @@ export function EditResponsePage({
                           : "plaintext"
                 }
                 commands={[]}
-                onFocus={() => { /* intentionally empty */ }}
-                onBlur={() => { /* intentionally empty */ }}
+                onFocus={() => {
+                  /* intentionally empty */
+                }}
+                onBlur={() => {
+                  /* intentionally empty */
+                }}
               />
             </div>
             <div className="field col-12">

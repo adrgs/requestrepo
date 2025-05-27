@@ -35,7 +35,6 @@ interface AppTopbarState {
 }
 
 export class AppTopbar extends Component<AppTopbarProps, AppTopbarState> {
-
   constructor(props: AppTopbarProps) {
     super(props);
     this.state = {

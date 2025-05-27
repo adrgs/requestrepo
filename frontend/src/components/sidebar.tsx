@@ -175,16 +175,14 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
           (j >= session.dnsRequests.length || dateA < dateB) &&
           i < session.httpRequests.length
         ) {
-          const req = (
-            (session.requests &&
-              session.requests[session.httpRequests[i]["_id"]]) ||
-            {}
-          ) as Record<string, string | boolean>;
-          
+          const req = ((session.requests &&
+            session.requests[session.httpRequests[i]["_id"]]) ||
+            {}) as Record<string, string | boolean>;
+
           obj["title"] =
             ((req["path"] as string) || "") +
-            ((req["query"] ? req["query"] as string : "")) +
-            ((req["fragment"] ? req["fragment"] as string : ""));
+            (req["query"] ? (req["query"] as string) : "") +
+            (req["fragment"] ? (req["fragment"] as string) : "");
           obj["method"] = req["method"] as string;
           obj["time"] = this.convertUTCDateToLocalDate(dateA).toLocaleString();
           obj["detail"] = req["ip"] as string;
@@ -194,25 +192,25 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
           obj["type"] = "HTTP";
           obj["new"] = req["new"] as boolean;
 
-          requests.push(obj as {
-            title: string;
-            method: string;
-            time: string;
-            detail: string;
-            country?: string;
-            id: string;
-            key: string;
-            type: string;
-            new?: boolean;
-          });
+          requests.push(
+            obj as {
+              title: string;
+              method: string;
+              time: string;
+              detail: string;
+              country?: string;
+              id: string;
+              key: string;
+              type: string;
+              new?: boolean;
+            },
+          );
           i++;
         } else {
-          const req = (
-            (session.requests &&
-              session.requests[session.dnsRequests[j]["_id"]]) ||
-            {}
-          ) as Record<string, string | boolean>;
-          
+          const req = ((session.requests &&
+            session.requests[session.dnsRequests[j]["_id"]]) ||
+            {}) as Record<string, string | boolean>;
+
           obj["title"] = req["name"] as string;
           obj["method"] = "DNS";
           obj["time"] = this.convertUTCDateToLocalDate(dateB).toLocaleString();
@@ -223,17 +221,19 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
           obj["type"] = "DNS";
           obj["new"] = req["new"] as boolean;
 
-          requests.push(obj as {
-            title: string;
-            method: string;
-            time: string;
-            detail: string;
-            country?: string;
-            id: string;
-            key: string;
-            type: string;
-            new?: boolean;
-          });
+          requests.push(
+            obj as {
+              title: string;
+              method: string;
+              time: string;
+              detail: string;
+              country?: string;
+              id: string;
+              key: string;
+              type: string;
+              new?: boolean;
+            },
+          );
 
           j++;
         }
@@ -267,7 +267,10 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
         if (decodedVal.indexOf(needle) >= 0) return true;
         continue;
       }
-      if (property === "date" && (typeof val === "string" || typeof val === "number")) {
+      if (
+        property === "date" &&
+        (typeof val === "string" || typeof val === "number")
+      ) {
         const dateVal = this.convertUTCDateToLocalDate(parseInt(String(val)))
           .toLocaleString()
           .toLowerCase();
@@ -293,7 +296,7 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
         if (strVal.indexOf(needle) >= 0) return true;
       }
     }
-    
+
     return false;
   }
 
@@ -330,7 +333,9 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
             />
           </div>
           <div style={{ padding: "0.85rem" }}>
-            <b style={{ marginRight: "20px" }}>Requests ({requestsList.length})</b>
+            <b style={{ marginRight: "20px" }}>
+              Requests ({requestsList.length})
+            </b>
             <Checkbox
               value="HTTP"
               inputId="cbHTTP"
@@ -356,34 +361,36 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
           </div>
         </div>
         <div className="requests-box">
-          {requestsList.map((item: {
-            title: string;
-            method: string;
-            time: string;
-            detail: string;
-            country?: string;
-            id: string;
-            key: string;
-            type: string;
-            new?: boolean;
-          }) => {
-            return (
-              <RequestCard
-                active={this.props.user?.selectedRequest === item.id}
-                visited={this.props.user?.visited?.[item.id] !== undefined}
-                title={item.title}
-                time={item.time}
-                new={item.new}
-                method={item.method}
-                country={item.country}
-                detail={item.detail}
-                id={item.id}
-                key={item.key}
-                clickRequestAction={this.props.clickRequestAction}
-                sessionId={this.props.user?.subdomain}
-              />
-            );
-          })}
+          {requestsList.map(
+            (item: {
+              title: string;
+              method: string;
+              time: string;
+              detail: string;
+              country?: string;
+              id: string;
+              key: string;
+              type: string;
+              new?: boolean;
+            }) => {
+              return (
+                <RequestCard
+                  active={this.props.user?.selectedRequest === item.id}
+                  visited={this.props.user?.visited?.[item.id] !== undefined}
+                  title={item.title}
+                  time={item.time}
+                  new={item.new}
+                  method={item.method}
+                  country={item.country}
+                  detail={item.detail}
+                  id={item.id}
+                  key={item.key}
+                  clickRequestAction={this.props.clickRequestAction}
+                  sessionId={this.props.user?.subdomain}
+                />
+              );
+            },
+          )}
           <div
             style={{ float: "left", clear: "both" }}
             ref={(el) => {

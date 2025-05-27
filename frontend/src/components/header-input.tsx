@@ -11,7 +11,7 @@ interface HeaderInputProps {
     index: number,
     header: string,
     value: string,
-    isDelete: boolean
+    isDelete: boolean,
   ) => void;
 }
 
@@ -54,7 +54,6 @@ export class HeaderInput extends Component<HeaderInputProps, HeaderInputState> {
       value: newProps.value,
     });
   }
-
 
   changeEvent(event: any, header: boolean | "delete"): void {
     if (header === true) {

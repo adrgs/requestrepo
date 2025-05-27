@@ -317,7 +317,10 @@ export class Utils {
     return res.data;
   }
 
-  static async getRequest(id: string, subdomain: string): Promise<Record<string, unknown>> {
+  static async getRequest(
+    id: string,
+    subdomain: string,
+  ): Promise<Record<string, unknown>> {
     const reqUrl = this.apiUrl + this.getRequestEndpoint;
     const res = await axios.get(reqUrl, {
       params: { id, subdomain },
@@ -325,7 +328,9 @@ export class Utils {
     return res.data;
   }
 
-  static async updateFile(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+  static async updateFile(
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     const reqUrl = this.apiUrl + this.updateFileEndpoint;
     const res = await axios.post(reqUrl, data, {
       params: { token: this.getSessionToken(this.subdomain) },
@@ -354,7 +359,10 @@ export class Utils {
     }
   }
 
-  static async updateResponse(subdomain: string, data: Record<string, unknown>): Promise<Record<string, unknown>> {
+  static async updateResponse(
+    subdomain: string,
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     try {
       const token = this.getSessionToken(subdomain);
       const response = await fetch(`/api/response?token=${token}`, {
@@ -447,7 +455,9 @@ export class Utils {
     );
   }
 
-  static deleteAll(subdomain: string | null = null): Promise<Record<string, unknown>> {
+  static deleteAll(
+    subdomain: string | null = null,
+  ): Promise<Record<string, unknown>> {
     const reqUrl = this.apiUrl + this.deleteAllEndpoint;
     return axios.post(reqUrl, null, {
       params: { token: this.getSessionToken(subdomain) },
@@ -550,7 +560,9 @@ export class Utils {
     return this.getTheme() === "light";
   }
 
-  static async getFiles(subdomain: string | null = null): Promise<Record<string, unknown>> {
+  static async getFiles(
+    subdomain: string | null = null,
+  ): Promise<Record<string, unknown>> {
     const token = this.getSessionToken(subdomain);
     const response = await fetch(`/api/files?token=${token}`);
     if (!response.ok) throw new Error("Failed to fetch files");

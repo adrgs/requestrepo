@@ -28,8 +28,10 @@ export function RequestsPage({
   sharedRequest,
 }: RequestsPageProps): React.ReactElement {
   const [isEditorFocused, setIsEditorFocused] = useState<boolean>(false);
-  const [selectedRequest, setSelectedRequest] = useState<Record<string, unknown> | null>(null);
-
+  const [selectedRequest, setSelectedRequest] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -175,7 +177,9 @@ print("Latest Request:", new_request)`;
             />
             <EditorComponent
               value={content}
-              onChange={() => { /* No changes needed */ }}
+              onChange={() => {
+                /* No changes needed */
+              }}
               commands={[]}
               language={"python"}
               onFocus={handleEditorFocus}

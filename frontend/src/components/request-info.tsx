@@ -124,7 +124,7 @@ export class RequestInfo extends Component<RequestInfoProps, RequestInfoState> {
     let data = request.raw ? Utils.base64Decode(request.raw) : "";
 
     let headerKeys: string[] = [];
-    
+
     if (isHttpRequest(request) && request.headers) {
       headerKeys = Object.keys(request.headers);
     }
