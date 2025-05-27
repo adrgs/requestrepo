@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint --ignore-pattern '**/__tests__/**' --ignore-pattern '**/__mocks__/**' --ignore-pattern 'jest.config.js' --ignore-pattern '.eslintrc.js' --ignore-pattern 'setupTests.js' .",
     "preview": "vite preview",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -49,6 +49,7 @@
     "@babel/preset-env": "^7.27.2",
     "@babel/preset-react": "^7.27.1",
     "@eslint/js": "^9.6.0",
+    "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
