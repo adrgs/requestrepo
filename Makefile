@@ -13,7 +13,7 @@ BACKEND_START_CMD := poetry run uvicorn app:app --port 21337 --no-server-header 
 FRONTEND_LINT_CMD := npm run lint
 PYTHON_LINT_CMD := poetry run ruff check
 FORMAT_PYTHON := poetry run ruff format
-FORMAT_JS_CMD := prettier --write --log-level silent
+FORMAT_JS_CMD := cd $(FRONTEND_DIR) && npx prettier --write --log-level silent
 REDIS_CONTAINER_NAME := redis-requestrepo-dev
 REDIS_PORT := 6379
 
@@ -81,7 +81,7 @@ start-frontend:
 
 # Run tests
 .PHONY: test
-test: test-backend test-dns
+test: test-backend test-dns test-frontend
 
 .PHONY: test-backend
 test-backend:
@@ -90,6 +90,10 @@ test-backend:
 .PHONY: test-dns
 test-dns:
 	poetry run pytest dns/tests
+
+.PHONY: test-frontend
+test-frontend:
+	cd $(FRONTEND_DIR) && npm test
 
 # Lint the codebase
 .PHONY: lint
@@ -109,7 +113,7 @@ format: format-js format-python
 
 .PHONY: format-js
 format-js:
-	$(FORMAT_JS_CMD) $(FRONTEND_DIR)
+	$(FORMAT_JS_CMD) .
 
 .PHONY: format-python
 format-python:
