@@ -3,26 +3,19 @@ import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils, Session } from "../utils";
 import { toast } from "react-toastify";
-
-interface AppSession {
-  url: string;
-  domain: string;
-  subdomain: string;
-  httpRequests: Array<{ _id: string; date: string }>;
-  dnsRequests: Array<{ _id: string; date: string }>;
-  timestamp: string | null;
-  requests: Record<string, Record<string, unknown>>;
-  visited: Record<string, boolean>;
-  selectedRequest: string | null;
-  token: string;
-}
+import { AppSession } from "../types/app-types";
 
 interface AppTopbarProps {
   sessions?: Record<string, AppSession>;
   activeSession?: string;
   onSessionChange?: (subdomain: string) => void;
   onSessionRemove?: (subdomain: string) => void;
-  updateSearchValue: (value: string) => void;
+  updateSearchValue?: (value: string) => void;
+  onToggleMenu?: () => void;
+  staticMenuInactive?: boolean;
+  copyUrl?: () => void;
+  copyDomain?: () => void;
+  handleNewURL?: () => Promise<void>;
 }
 
 interface AppTopbarState {
@@ -198,7 +191,9 @@ export class AppTopbar extends Component<AppTopbarProps, AppTopbarState> {
 
   handleSearchValueChange(event: React.ChangeEvent<HTMLInputElement>): void {
     this.setState({ searchValue: event.target.value });
-    this.props.updateSearchValue(event.target.value);
+    if (this.props.updateSearchValue) {
+      this.props.updateSearchValue(event.target.value);
+    }
   }
 
   render(): React.ReactNode {

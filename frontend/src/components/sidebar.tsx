@@ -3,19 +3,7 @@ import { RequestCard } from "./request-card";
 import { Checkbox } from "primereact/checkbox";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
-
-interface AppSession {
-  url: string;
-  domain: string;
-  subdomain: string;
-  httpRequests: Array<{ _id: string; date: string }>;
-  dnsRequests: Array<{ _id: string; date: string }>;
-  timestamp: string | null;
-  requests: Record<string, Record<string, unknown>>;
-  visited: Record<string, boolean>;
-  selectedRequest: string | null;
-  token: string;
-}
+import { AppSession } from "../types/app-types";
 
 interface AppSidebarProps {
   user: AppSession | null;
@@ -24,7 +12,8 @@ interface AppSidebarProps {
   searchValue: string;
   deleteAllRequests: () => void;
   markAllAsVisited: () => void;
-  clickRequestAction: (id: string, action: string) => void;
+  clickRequestAction: (action: string, id: string) => void;
+  updateSearchValue?: (value: string) => void;
 }
 
 interface AppSidebarState {
@@ -165,10 +154,10 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
         let dateA = 0;
         let dateB = 0;
         if (i < session.httpRequests.length) {
-          dateA = parseInt(session.httpRequests[i].date);
+          dateA = parseInt(String(session.httpRequests[i].date));
         }
         if (j < session.dnsRequests.length) {
-          dateB = parseInt(session.dnsRequests[j].date);
+          dateB = parseInt(String(session.dnsRequests[j].date));
         }
 
         if (

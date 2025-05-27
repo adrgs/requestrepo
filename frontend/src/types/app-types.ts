@@ -10,7 +10,6 @@ export interface HttpRequest {
   ip: string;
   timestamp: string;
   country?: string;
-  [key: string]: unknown;
 }
 
 export interface DnsRequest {
@@ -20,7 +19,6 @@ export interface DnsRequest {
   query: string;
   record_type: string;
   timestamp: string;
-  [key: string]: unknown;
 }
 
 export type Request = HttpRequest | DnsRequest;
@@ -45,7 +43,6 @@ export interface DnsRecord {
   content: string;
   ttl: number;
   id?: string;
-  [key: string]: unknown;
 }
 
 export interface AppState {

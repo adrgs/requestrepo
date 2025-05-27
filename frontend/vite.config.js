@@ -13,6 +13,8 @@ export default defineConfig({
       "/api/ws2": {
         target: "ws://localhost:21337", // Replace with your WebSocket server URL
         ws: true,
+        changeOrigin: true,
+        secure: false,
         rewrite: (path) => path.replace(/^\/api\/ws2/, "/api/ws2"),
         onError: () => {
           console.error("WebSocket proxy error (limited logging)");

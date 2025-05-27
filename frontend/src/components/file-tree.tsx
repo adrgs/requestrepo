@@ -76,7 +76,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
           label,
           data: currentPath,
           icon: "pi pi-fw pi-folder" + (isDark ? "-open" : ""),
-          children: convertToTreeNodes(value as Record<string, unknown>, currentPath),
+          children: convertToTreeNodes(
+            value as Record<string, unknown>,
+            currentPath,
+          ),
         };
       } else {
         return {
@@ -137,10 +140,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     const newName = isDirectory ? editingText + "/" : editingText;
 
     if (newName in current) {
-      toast.error(
-        "A file with this name already exists",
-        Utils.toastOptions,
-      );
+      toast.error("A file with this name already exists", Utils.toastOptions);
       return;
     }
 
@@ -190,7 +190,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         command?: () => void;
         items?: MenuItem[];
       }
-      
+
       (items as MenuItem[]).push({
         label: "New File with Template",
         icon: "pi pi-fw pi-file-o",
@@ -288,10 +288,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });`;
 
               onUpdate(newFiles);
-              toast.success(
-                "JavaScript file created",
-                Utils.toastOptions,
-              );
+              toast.success("JavaScript file created", Utils.toastOptions);
             },
           },
           {
@@ -359,7 +356,10 @@ document.addEventListener('DOMContentLoaded', function() {
     return items;
   };
 
-  const handleContextMenu = (event: { node: TreeNode; originalEvent: React.MouseEvent }): void => {
+  const handleContextMenu = (event: {
+    node: TreeNode;
+    originalEvent: React.MouseEvent;
+  }): void => {
     if (event.node) {
       cm.current?.show(event.originalEvent);
       event.originalEvent.preventDefault();
@@ -424,10 +424,7 @@ Content-Length: 0
 
     const lastPart = editingText;
     if (lastPart in current) {
-      toast.error(
-        "A file with this name already exists",
-        Utils.toastOptions,
-      );
+      toast.error("A file with this name already exists", Utils.toastOptions);
       return;
     }
 
@@ -475,7 +472,7 @@ Content-Length: 0
           selectionMode="single"
           selectionKeys={selectedKeys}
           onSelectionChange={(e: TreeSelectionParams) => {
-            if (e.value && typeof e.value === 'object') {
+            if (e.value && typeof e.value === "object") {
               const key = Object.keys(e.value)[0];
               const node = getFileFromPath(key);
               if (node) handleNodeClick(node);

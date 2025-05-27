@@ -7,7 +7,6 @@ import { EditResponsePage } from "./components/edit-response-page";
 import { DnsSettingsPage } from "./components/dns-settings-page";
 import { Toolbar } from "primereact/toolbar";
 import { Button } from "primereact/button";
-import { InputText } from "primereact/inputtext";
 import { Utils } from "./utils";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -274,19 +273,19 @@ const App: React.FC = () => {
                         <Button
                           label="New URL"
                           icon="pi pi-plus"
-                          className="mr-2"
+                          className="mr-2 p-button-sm"
                           onClick={handleNewURL}
                         />
                         <Button
                           label="Copy URL"
                           icon="pi pi-copy"
-                          className="p-button-success mr-2"
+                          className="p-button-success p-button-sm mr-2"
                           onClick={copyUrl}
                         />
                         <Button
                           label="Copy Domain"
                           icon="pi pi-copy"
-                          className="p-button-help mr-2"
+                          className="p-button-help p-button-sm mr-2"
                           onClick={copyDomain}
                         />
                       </div>
@@ -295,14 +294,7 @@ const App: React.FC = () => {
                   right={
                     <React.Fragment>
                       <div className="my-2">
-                        <span className="p-input-icon-left">
-                          <i className="pi pi-search" />
-                          <InputText
-                            value={appState.searchValue}
-                            onChange={(e) => updateSearchValue(e.target.value)}
-                            placeholder="Search"
-                          />
-                        </span>
+                        {/* Search removed - using topbar search instead */}
                       </div>
                     </React.Fragment>
                   }

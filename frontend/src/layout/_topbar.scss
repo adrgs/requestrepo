@@ -26,8 +26,8 @@ body.dark {
 
 .layout-topbar {
   position: fixed;
-  height: 50px;
-  padding: 0 1rem;
+  height: 42px; /* Reduced height for more compact design */
+  padding: 0 0.75rem;
   color: var(--topbar-color);
   z-index: 999;
   right: 0;
@@ -37,6 +37,7 @@ body.dark {
   display: flex;
   align-items: center;
   width: 100%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* Subtle shadow for modern look */
 
   .logo-link {
     margin-right: 1rem;
@@ -85,17 +86,17 @@ body.dark {
 
   .session-tab {
     background-color: var(--tab-bg-color);
-    border-radius: 6px;
-    padding: 0.35rem 0.6rem;
+    border-radius: 4px; /* Smaller radius for modern look */
+    padding: 0.25rem 0.5rem; /* Reduced padding for more compact design */
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    min-width: 100px;
-    max-width: 200px;
-    font-size: 0.875rem;
+    gap: 0.25rem; /* Reduced gap */
+    min-width: 90px; /* Smaller min-width */
+    max-width: 180px; /* Smaller max-width */
+    font-size: 0.8125rem; /* Slightly smaller font */
     width: fit-content;
-    border-left: 3px solid transparent;
+    border-left: 2px solid transparent; /* Thinner border */
     transition: all 0.1s ease;
     position: relative;
 
@@ -178,15 +179,19 @@ body.dark {
     gap: 0.75rem;
 
     .new-session-button {
-      font-size: 0.875rem;
+      font-size: 0.8125rem; /* Smaller font */
       font-weight: 500;
+      padding: 0.25rem 0.5rem; /* More compact padding */
+      height: 28px; /* Fixed height for consistency */
+      border-radius: 4px; /* Smaller radius */
 
       &:hover {
         background-color: var(--primary-darker-color);
       }
 
       .pi {
-        font-size: 0.875rem;
+        font-size: 0.75rem; /* Smaller icon */
+        margin-right: 0.25rem; /* Reduced spacing */
       }
     }
 
@@ -202,19 +207,22 @@ body.dark {
 
     .layout-topbar-search {
       position: relative;
-      width: 200px;
+      width: 180px; /* Reduced width for more compact design */
 
       input {
         width: 100%;
-        padding: 0.35rem 1.75rem 0.35rem 0.6rem;
+        padding: 0.25rem 1.5rem 0.25rem 0.5rem; /* Reduced padding */
         border-radius: 4px;
         background-color: var(--tab-bg-color);
         border: 1px solid var(--topbar-border-color);
         color: var(--topbar-color);
+        font-size: 0.8125rem; /* Smaller font size */
+        height: 28px; /* Fixed height for consistency */
 
         &:focus {
           border-color: var(--primary-color);
-          box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+          box-shadow: 0 0 0 1px rgba(var(--primary-color-rgb), 0.1); /* Thinner shadow */
+          outline: none;
         }
       }
 

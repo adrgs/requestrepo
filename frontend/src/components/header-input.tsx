@@ -57,10 +57,10 @@ export class HeaderInput extends Component<HeaderInputProps, HeaderInputState> {
 
   changeEvent(
     event: { value: string } | React.MouseEvent<HTMLButtonElement>,
-    header: boolean | "delete"
+    header: boolean | "delete",
   ): void {
     if (header === true) {
-      if ('value' in event) {
+      if ("value" in event) {
         this.props.handleHeaderInputChange(
           this.props.index,
           event.value,
@@ -70,7 +70,7 @@ export class HeaderInput extends Component<HeaderInputProps, HeaderInputState> {
         this.setState({ header: event.value, filteredHeaders: null });
       }
     } else if (header === false) {
-      if ('value' in event) {
+      if ("value" in event) {
         this.props.handleHeaderInputChange(
           this.props.index,
           this.state.header,

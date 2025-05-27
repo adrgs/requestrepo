@@ -18,7 +18,7 @@ declare module "react-toastify" {
     pauseOnHover?: boolean;
     draggable?: boolean;
     dark?: boolean;
-    [key: string]: any;
+    theme?: "light" | "dark";
   }
 
   export interface ToastResponse {
@@ -33,19 +33,29 @@ declare module "react-toastify" {
     warning: (message: string, options?: ToastOptions) => void;
   };
 
-  export const ToastContainer: React.FC<any>;
+  export const ToastContainer: React.FC<ToastOptions>;
 }
 
 interface UserSession {
   subdomain: string;
   domain: string;
   url?: string;
-  httpRequests?: any[];
-  dnsRequests?: any[];
+  httpRequests?: Array<{
+    _id: string;
+    date: string;
+    method: string;
+    path: string;
+  }>;
+  dnsRequests?: Array<{
+    _id: string;
+    date: string;
+    query: string;
+    record_type: string;
+  }>;
   timestamp?: string | null;
-  requests?: Record<string, any>;
+  requests?: Record<string, HttpRequest | DnsRequest>;
   visited?: Record<string, boolean>;
   selectedRequest?: string | null;
   token: string;
-  dnsRecords?: any[];
+  dnsRecords?: Array<DnsRecord>;
 }

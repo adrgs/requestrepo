@@ -4,22 +4,12 @@ import { EditorComponent } from "./editor";
 import { Button } from "primereact/button";
 import { toast } from "react-toastify";
 import { Utils } from "../utils";
-
-interface UserSession {
-  subdomain: string;
-  domain: string;
-  url?: string;
-  requests?: Record<string, Record<string, unknown>>;
-  selectedRequest?: string;
-}
+import { AppSession, Request, ToastFunctions } from "../types/app-types";
 
 interface RequestsPageProps {
-  user: UserSession | null;
-  sharedRequest?: Record<string, unknown> | null;
-  toast?: {
-    info: (message: string, options?: Record<string, unknown>) => void;
-    error: (message: string, options?: Record<string, unknown>) => void;
-  };
+  user: AppSession | null;
+  sharedRequest?: Request | null;
+  toast?: ToastFunctions;
   activeSession?: string;
 }
 
@@ -28,10 +18,7 @@ export function RequestsPage({
   sharedRequest,
 }: RequestsPageProps): React.ReactElement {
   const [isEditorFocused, setIsEditorFocused] = useState<boolean>(false);
-  const [selectedRequest, setSelectedRequest] = useState<Record<
-    string,
-    unknown
-  > | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
 
   useEffect(() => {
     if (!user) {
