@@ -63,7 +63,7 @@ describe("Utils", () => {
   });
 
   describe("Session Management", () => {
-    test.skip("addSession should add a new session", () => {
+    test("addSession should add a new session", () => {
       const subdomain = "test123";
       const token = "test-token";
 
@@ -89,7 +89,7 @@ describe("Utils", () => {
       );
     });
 
-    test.skip("removeSession should remove a session", () => {
+    test("removeSession should remove a session", () => {
       Utils.sessions = [
         {
           subdomain: "test1",
@@ -114,13 +114,43 @@ describe("Utils", () => {
       expect(Utils.selectedSessionIndex).toBe(0);
     });
 
-    test.skip("getSessionToken should return token for active session", () => {});
+    test("getSessionToken should return token for active session", () => {
+      const subdomain = "test123";
+      const token = "test-token";
+      
+      Utils.sessions = [{
+        subdomain,
+        token,
+        createdAt: new Date().toISOString(),
+        unseenRequests: 0,
+      }];
+      
+      Utils.selectedSessionIndex = 0;
+      
+      const activeToken = Utils.getSessionToken();
+      expect(activeToken).toBe(token);
+      
+      const specificToken = Utils.getSessionToken(subdomain);
+      expect(specificToken).toBe(token);
+      
+      const nonExistentToken = Utils.getSessionToken("nonexistent");
+      expect(nonExistentToken).toBeNull();
+    });
   });
 
   describe("Encoding and Decoding", () => {
-    test.skip("base64Encode should encode strings correctly", () => {});
+    test("base64Encode should encode strings correctly", () => {
+      const testString = "Hello World";
+      const encodedString = Utils.base64Encode(testString);
+      expect(encodedString).toBe(btoa(testString));
+    });
 
-    test.skip("base64Decode should decode strings correctly", () => {});
+    test("base64Decode should decode strings correctly", () => {
+      const originalString = "Hello World";
+      const encodedString = btoa(originalString);
+      const decodedString = Utils.base64Decode(encodedString);
+      expect(decodedString).toBe(originalString);
+    });
 
     test("arrayBufferToString should convert ArrayBuffer to string", () => {
       const buffer = new ArrayBuffer(5);

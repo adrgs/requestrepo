@@ -1,3 +1,18 @@
+/**
+ * @typedef {Object} Session
+ * @property {string} subdomain
+ * @property {string} token
+ * @property {string} createdAt
+ * @property {number} unseenRequests
+ */
+
+/**
+ * @typedef {Object} DNSRecord
+ * @property {string} domain
+ * @property {number} type
+ * @property {string} value
+ */
+
 const getTestID = jest.fn((id) => `test-id-${id}`);
 
 const Utils = {
@@ -10,6 +25,11 @@ const Utils = {
   selectedSessionIndex: 0,
   getTestID,
 
+  /**
+   * @param {string} subdomain
+   * @param {string} token
+   * @returns {Session}
+   */
   addSession: jest.fn((subdomain, token) => {
     if (Utils.sessions.length >= Utils.MAX_SESSIONS) {
       throw new Error("Maximum number of sessions reached");
@@ -23,9 +43,14 @@ const Utils = {
     };
 
     Utils.sessions.push(session);
-    return true;
+    Utils.selectedSessionIndex = Utils.sessions.length - 1;
+    return session;
   }),
 
+  /**
+   * @param {number} index
+   * @returns {boolean}
+   */
   removeSession: jest.fn((index) => {
     if (index >= 0 && index < Utils.sessions.length) {
       Utils.sessions.splice(index, 1);
@@ -37,50 +62,95 @@ const Utils = {
     return false;
   }),
 
+  /**
+   * @returns {Session|null}
+   */
   getActiveSession: jest.fn(() => {
     return Utils.sessions[Utils.selectedSessionIndex] || null;
   }),
 
-  getSessionToken: jest.fn(() => {
-    return "test-token";
+  /**
+   * @param {string|null} [subdomain=null]
+   * @returns {string|null}
+   */
+  getSessionToken: jest.fn((subdomain = null) => {
+    if (!subdomain) {
+      const activeSession = Utils.getActiveSession();
+      return activeSession ? activeSession.token : null;
+    }
+    
+    const session = Utils.sessions.find(s => s.subdomain === subdomain);
+    return session ? session.token : null;
   }),
 
-  getDNSRecords: jest.fn(() => {
+  /**
+   * @param {string|null} [_subdomain=null]
+   * @returns {Promise<DNSRecord[]>}
+   */
+  getDNSRecords: jest.fn((_subdomain = null) => {
     return Promise.resolve([{ domain: "", type: 0, value: "1.2.3.4" }]);
   }),
 
-  updateDNSRecords: jest.fn((data, subdomain) => {
+  /**
+   * @param {Object} _data
+   * @param {string|null} [_subdomain=null]
+   * @returns {Promise<Object>}
+   */
+  updateDNSRecords: jest.fn((_data, _subdomain = null) => {
     return Promise.resolve({ msg: "Updated DNS records" });
   }),
 
+  /**
+   * @param {string} str
+   * @returns {string}
+   */
   base64Encode: jest.fn((str) => btoa(str)),
+
+  /**
+   * @param {string} str
+   * @returns {string}
+   */
   base64Decode: jest.fn((str) => atob(str)),
+
+  /**
+   * @param {ArrayBuffer} buffer
+   * @returns {string}
+   */
   arrayBufferToString: jest.fn((buffer) => {
     const bytes = new Uint8Array(buffer);
-    return String.fromCharCode.apply(null, bytes);
+    return String.fromCharCode.apply(null, Array.from(bytes));
   }),
 
+  /**
+   * @returns {boolean}
+   */
   isDarkTheme: jest.fn(() => {
     return false;
   }),
 
+  /**
+   * @returns {boolean}
+   */
   toggleTheme: jest.fn(() => {
     const isDark = !document.body.classList.contains("dark");
 
     if (isDark) {
       document.body.classList.add("dark");
-      localStorage.setItem("theme", "dark");
+      window.localStorage.setItem("theme", "dark");
     } else {
       document.body.classList.remove("dark");
-      localStorage.setItem("theme", "light");
+      window.localStorage.setItem("theme", "light");
     }
 
     window.dispatchEvent(new Event("themechange"));
     return isDark;
   }),
+
+  /**
+   * @param {string} _input
+   * @returns {boolean}
+   */
+  isValidUTF8: jest.fn((_input) => true),
 };
 
-module.exports = {
-  Utils,
-  getTestID,
-};
+module.exports = { Utils, getTestID };
