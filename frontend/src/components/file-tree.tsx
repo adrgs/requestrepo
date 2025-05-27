@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Tree } from "primereact/tree";
+import { Tree, TreeSelectionParams } from "primereact/tree";
 import { ContextMenu } from "primereact/contextmenu";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
@@ -7,11 +7,14 @@ import { Utils } from "../utils";
 import "./file-tree.scss";
 
 interface FileTreeProps {
-  files: Record<string, any>;
+  files: Record<string, unknown>;
   selectedFile: string | null;
   onSelect: (path: string) => void;
-  onUpdate: (files: Record<string, any>) => void;
-  toast: any;
+  onUpdate: (files: Record<string, unknown>) => void;
+  toast: {
+    success: (message: string, options?: Record<string, unknown>) => void;
+    error: (message: string, options?: Record<string, unknown>) => void;
+  };
 }
 
 interface TreeNode {
@@ -50,7 +53,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         setEditMode("");
         setEditingNode(null);
         setEditingText("");
-        cm.current?.hide(event as any);
+        cm.current?.hide(e as unknown as React.SyntheticEvent);
       }
     };
 
@@ -59,7 +62,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   }, [editMode]);
 
   const convertToTreeNodes = (
-    data: Record<string, any>,
+    data: Record<string, unknown>,
     parentPath = "",
   ): TreeNode[] => {
     return Object.entries(data).map(([key, value]) => {
@@ -73,7 +76,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
           label,
           data: currentPath,
           icon: "pi pi-fw pi-folder" + (isDark ? "-open" : ""),
-          children: convertToTreeNodes(value, currentPath),
+          children: convertToTreeNodes(value as Record<string, unknown>, currentPath),
         };
       } else {
         return {
@@ -101,7 +104,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
     for (let i = 0; i < parts.length - 1; i++) {
       if (parts[i] + "/" in current) {
-        current = current[parts[i] + "/"];
+        current = current[parts[i] + "/"] as Record<string, unknown>;
       }
     }
 
@@ -109,12 +112,12 @@ export const FileTree: React.FC<FileTreeProps> = ({
     delete current[lastPart];
 
     onUpdate(newFiles);
-    toast.success("File deleted successfully", Utils.toastOptions as any);
+    toast.success("File deleted successfully", Utils.toastOptions);
   };
 
   const handleRename = (node: TreeNode): void => {
     if (!editingText.trim()) {
-      toast.error("Filename cannot be empty", Utils.toastOptions as any);
+      toast.error("Filename cannot be empty", Utils.toastOptions);
       return;
     }
 
@@ -125,7 +128,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
     for (let i = 0; i < parts.length - 1; i++) {
       if (parts[i] + "/" in current) {
-        current = current[parts[i] + "/"];
+        current = current[parts[i] + "/"] as Record<string, unknown>;
       }
     }
 
@@ -136,7 +139,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     if (newName in current) {
       toast.error(
         "A file with this name already exists",
-        Utils.toastOptions as any,
+        Utils.toastOptions,
       );
       return;
     }
@@ -148,7 +151,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     setEditMode("");
     setEditingNode(null);
     setEditingText("");
-    toast.success("File renamed successfully", Utils.toastOptions as any);
+    toast.success("File renamed successfully", Utils.toastOptions);
   };
 
   const getContextMenuItems = (node: TreeNode) => {
@@ -181,7 +184,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
         },
       });
 
-      (items as any).push({
+      interface MenuItem {
+        label: string;
+        icon?: string;
+        command?: () => void;
+        items?: MenuItem[];
+      }
+      
+      (items as MenuItem[]).push({
         label: "New File with Template",
         icon: "pi pi-fw pi-file-o",
         items: [
@@ -194,7 +204,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
               for (let i = 0; i < parts.length; i++) {
                 if (parts[i] + "/" in current) {
-                  current = current[parts[i] + "/"];
+                  current = current[parts[i] + "/"] as Record<string, unknown>;
                 }
               }
 
@@ -218,7 +228,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 </html>`;
 
               onUpdate(newFiles);
-              toast.success("HTML file created", Utils.toastOptions as any);
+              toast.success("HTML file created", Utils.toastOptions);
             },
           },
           {
@@ -230,7 +240,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
               for (let i = 0; i < parts.length; i++) {
                 if (parts[i] + "/" in current) {
-                  current = current[parts[i] + "/"];
+                  current = current[parts[i] + "/"] as Record<string, unknown>;
                 }
               }
 
@@ -249,7 +259,7 @@ body {
 }`;
 
               onUpdate(newFiles);
-              toast.success("CSS file created", Utils.toastOptions as any);
+              toast.success("CSS file created", Utils.toastOptions);
             },
           },
           {
@@ -261,7 +271,7 @@ body {
 
               for (let i = 0; i < parts.length; i++) {
                 if (parts[i] + "/" in current) {
-                  current = current[parts[i] + "/"];
+                  current = current[parts[i] + "/"] as Record<string, unknown>;
                 }
               }
 
@@ -280,7 +290,7 @@ document.addEventListener('DOMContentLoaded', function() {
               onUpdate(newFiles);
               toast.success(
                 "JavaScript file created",
-                Utils.toastOptions as any,
+                Utils.toastOptions,
               );
             },
           },
@@ -293,7 +303,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
               for (let i = 0; i < parts.length; i++) {
                 if (parts[i] + "/" in current) {
-                  current = current[parts[i] + "/"];
+                  current = current[parts[i] + "/"] as Record<string, unknown>;
                 }
               }
 
@@ -311,7 +321,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }`;
 
               onUpdate(newFiles);
-              toast.success("JSON file created", Utils.toastOptions as any);
+              toast.success("JSON file created", Utils.toastOptions);
             },
           },
         ],
@@ -327,7 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
           for (let i = 0; i < parts.length; i++) {
             if (parts[i] + "/" in current) {
-              current = current[parts[i] + "/"];
+              current = current[parts[i] + "/"] as Record<string, unknown>;
             }
           }
 
@@ -341,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function() {
           current[filename] = getDefaultHeaders();
 
           onUpdate(newFiles);
-          toast.success("Headers file created", Utils.toastOptions as any);
+          toast.success("Headers file created", Utils.toastOptions);
         },
       });
     }
@@ -349,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function() {
     return items;
   };
 
-  const handleContextMenu = (event: any): void => {
+  const handleContextMenu = (event: { node: TreeNode; originalEvent: React.MouseEvent }): void => {
     if (event.node) {
       cm.current?.show(event.originalEvent);
       event.originalEvent.preventDefault();
@@ -397,7 +407,7 @@ Content-Length: 0
 
   const createNewItem = (): void => {
     if (!editingText.trim()) {
-      toast.error("Filename cannot be empty", Utils.toastOptions as any);
+      toast.error("Filename cannot be empty", Utils.toastOptions);
       return;
     }
 
@@ -408,7 +418,7 @@ Content-Length: 0
 
     for (let i = 0; i < parts.length; i++) {
       if (parts[i] + "/" in current) {
-        current = current[parts[i] + "/"];
+        current = current[parts[i] + "/"] as Record<string, unknown>;
       }
     }
 
@@ -416,7 +426,7 @@ Content-Length: 0
     if (lastPart in current) {
       toast.error(
         "A file with this name already exists",
-        Utils.toastOptions as any,
+        Utils.toastOptions,
       );
       return;
     }
@@ -427,7 +437,7 @@ Content-Length: 0
     setEditMode("");
     setEditingNode(null);
     setEditingText("");
-    toast.success("File created successfully", Utils.toastOptions as any);
+    toast.success("File created successfully", Utils.toastOptions);
   };
 
   const treeNodes = convertToTreeNodes(files);
@@ -464,9 +474,12 @@ Content-Length: 0
           value={treeNodes}
           selectionMode="single"
           selectionKeys={selectedKeys}
-          onSelectionChange={(e: any) => {
-            const node = getFileFromPath(Object.keys(e.value)[0]);
-            if (node) handleNodeClick(node);
+          onSelectionChange={(e: TreeSelectionParams) => {
+            if (e.value && typeof e.value === 'object') {
+              const key = Object.keys(e.value)[0];
+              const node = getFileFromPath(key);
+              if (node) handleNodeClick(node);
+            }
           }}
           onContextMenu={handleContextMenu}
           className={isDark ? "dark-tree" : ""}

@@ -55,23 +55,30 @@ export class HeaderInput extends Component<HeaderInputProps, HeaderInputState> {
     });
   }
 
-  changeEvent(event: any, header: boolean | "delete"): void {
+  changeEvent(
+    event: { value: string } | React.MouseEvent<HTMLButtonElement>,
+    header: boolean | "delete"
+  ): void {
     if (header === true) {
-      this.props.handleHeaderInputChange(
-        this.props.index,
-        event.value,
-        this.state.value,
-        false,
-      );
-      this.setState({ header: event.value, filteredHeaders: null });
+      if ('value' in event) {
+        this.props.handleHeaderInputChange(
+          this.props.index,
+          event.value,
+          this.state.value,
+          false,
+        );
+        this.setState({ header: event.value, filteredHeaders: null });
+      }
     } else if (header === false) {
-      this.props.handleHeaderInputChange(
-        this.props.index,
-        this.state.header,
-        event.value,
-        false,
-      );
-      this.setState({ value: event.value });
+      if ('value' in event) {
+        this.props.handleHeaderInputChange(
+          this.props.index,
+          this.state.header,
+          event.value,
+          false,
+        );
+        this.setState({ value: event.value });
+      }
     } else if (header === "delete") {
       this.props.handleHeaderInputChange(
         this.props.index,

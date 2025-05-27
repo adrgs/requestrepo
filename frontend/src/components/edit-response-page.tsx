@@ -12,7 +12,10 @@ interface EditResponsePageProps {
     domain: string;
     token?: string;
   } | null;
-  toast?: any;
+  toast?: {
+    success: (message: string, options?: Record<string, unknown>) => void;
+    error: (message: string, options?: Record<string, unknown>) => void;
+  };
   activeSession?: string;
 }
 

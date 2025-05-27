@@ -38,34 +38,45 @@ export class RecordInput extends Component<RecordInputProps, RecordInputState> {
     this.changeEvent = this.changeEvent.bind(this);
   }
 
-  changeEvent(event: any, action: string): void {
+  changeEvent(
+    event: React.ChangeEvent<HTMLInputElement> | { value: number } | React.MouseEvent<HTMLButtonElement>,
+    action: string
+  ): void {
     if (action === "domain") {
-      this.props.handleRecordInputChange(
-        this.props.index,
-        event.target.value || "",
-        this.state.type,
-        this.state.value,
-        false,
-      );
-      this.setState({ domain: event.target.value || "" });
+      if ('target' in event && 'value' in event.target) {
+        const value = event.target.value || "";
+        this.props.handleRecordInputChange(
+          this.props.index,
+          value,
+          this.state.type,
+          this.state.value,
+          false,
+        );
+        this.setState({ domain: value });
+      }
     } else if (action === "type") {
-      this.props.handleRecordInputChange(
-        this.props.index,
-        this.state.domain,
-        event.value,
-        this.state.value,
-        false,
-      );
-      this.setState({ type: event.value });
+      if ('value' in event) {
+        this.props.handleRecordInputChange(
+          this.props.index,
+          this.state.domain,
+          event.value,
+          this.state.value,
+          false,
+        );
+        this.setState({ type: event.value });
+      }
     } else if (action === "value") {
-      this.props.handleRecordInputChange(
-        this.props.index,
-        this.state.domain,
-        this.state.type,
-        event.target.value || "",
-        false,
-      );
-      this.setState({ value: event.target.value || "" });
+      if ('target' in event && 'value' in event.target) {
+        const value = event.target.value || "";
+        this.props.handleRecordInputChange(
+          this.props.index,
+          this.state.domain,
+          this.state.type,
+          value,
+          false,
+        );
+        this.setState({ value: value });
+      }
     } else if (action === "delete") {
       this.props.handleRecordInputChange(
         this.props.index,

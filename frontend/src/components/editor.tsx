@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import MonacoEditor from "@monaco-editor/react";
+import MonacoEditor, { Monaco, OnMount } from "@monaco-editor/react";
 import { Utils } from "../utils";
 
 interface EditorCommand {
@@ -23,8 +23,8 @@ export const EditorComponent: React.FC<EditorComponentProps> = ({
   onFocus,
   onBlur,
 }) => {
-  const editorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
   const [theme, setTheme] = useState<string>(
     Utils.getTheme() === "dark" ? "vs-dark" : "vs-light",
   );
@@ -53,7 +53,7 @@ export const EditorComponent: React.FC<EditorComponentProps> = ({
     });
   }, [commands]);
 
-  const handleEditorDidMount = (editor: any, monaco: any) => {
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
@@ -85,7 +85,7 @@ export const EditorComponent: React.FC<EditorComponentProps> = ({
         tabSize: 2,
         wordWrap: "on",
       }}
-      onChange={onChange}
+      onChange={(value) => onChange(value || "")}
       onMount={handleEditorDidMount}
     />
   );
