@@ -81,7 +81,7 @@ start-frontend:
 
 # Run tests
 .PHONY: test
-test: test-backend test-dns
+test: test-backend test-dns test-frontend
 
 .PHONY: test-backend
 test-backend:
@@ -90,6 +90,10 @@ test-backend:
 .PHONY: test-dns
 test-dns:
 	poetry run pytest dns/tests
+
+.PHONY: test-frontend
+test-frontend:
+	cd $(FRONTEND_DIR) && npm test
 
 # Lint the codebase
 .PHONY: lint
