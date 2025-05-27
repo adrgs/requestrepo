@@ -4,7 +4,7 @@ import { AppSession, SessionData } from "../types/app-types";
 import { WebSocketSession } from "../services/websocket-service";
 
 export function useSessionManager(
-  initialState: Pick<AppSession, "subdomain" | "token"> | null = null
+  initialState: Pick<AppSession, "subdomain" | "token"> | null = null,
 ): {
   sessions: Record<string, AppSession>;
   activeSession: string;

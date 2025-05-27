@@ -105,7 +105,7 @@ export function useWebSocketService({
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       try {
         sendMessage({ cmd: "ping" });
-        
+
         const timeSinceLastPong = Date.now() - stateRef.current.lastPongTime;
         if (timeSinceLastPong > PONG_TIMEOUT) {
           log("WebSocket connection stale, reconnecting...");
@@ -178,7 +178,10 @@ export function useWebSocketService({
           });
         }
 
-        heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+        heartbeatIntervalRef.current = setInterval(
+          sendHeartbeat,
+          HEARTBEAT_INTERVAL,
+        );
 
         if (onOpen) {
           onOpen();
@@ -188,12 +191,12 @@ export function useWebSocketService({
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data as string);
-          
+
           if (data.cmd === "pong") {
             stateRef.current.lastPongTime = Date.now();
             return;
           }
-          
+
           onMessage(event, data.subdomain || "");
         } catch (err) {
           console.error("Error handling WebSocket message:", err);
@@ -212,8 +215,10 @@ export function useWebSocketService({
         if (event.code !== 1000) {
           stateRef.current.reconnectAttempts++;
           const delay = getReconnectDelay();
-          
-          log(`Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts})`);
+
+          log(
+            `Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts})`,
+          );
           reconnectTimeoutRef.current = setTimeout(connect, delay);
         }
       };
@@ -225,10 +230,12 @@ export function useWebSocketService({
     } catch (error) {
       console.error("Error creating WebSocket:", error);
       stateRef.current.isConnecting = false;
-      
+
       stateRef.current.reconnectAttempts++;
       const delay = getReconnectDelay();
-      log(`Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts})`);
+      log(
+        `Reconnecting in ${delay}ms (attempt ${stateRef.current.reconnectAttempts})`,
+      );
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     }
   }, [url, onOpen, onMessage, sendMessage, resetState, getReconnectDelay, log]);
@@ -254,15 +261,15 @@ export function useWebSocketService({
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      
+
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
       }
-      
+
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      
+
       if (socketRef.current) {
         socketRef.current.close(1000); // Normal closure
       }

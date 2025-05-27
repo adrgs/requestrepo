@@ -1,10 +1,15 @@
 import { useState, useCallback } from "react";
-import { AppSession, Request, HttpRequest, DnsRequest } from "../types/app-types";
+import {
+  AppSession,
+  Request,
+  HttpRequest,
+  DnsRequest,
+} from "../types/app-types";
 import { Utils } from "../utils";
 
 export function useRequestHandler(
   initialSessions: Record<string, AppSession>,
-  initialActiveSession: string
+  initialActiveSession: string,
 ): {
   sessions: Record<string, AppSession>;
   activeSession: string;
@@ -14,8 +19,9 @@ export function useRequestHandler(
   deleteAllRequests: () => void;
   updateDocumentTitle: () => void;
 } {
-  const [sessions, setSessions] = useState<Record<string, AppSession>>(initialSessions);
-  const [activeSession, setActiveSession] = useState<string>(initialActiveSession);
+  const [sessions, setSessions] =
+    useState<Record<string, AppSession>>(initialSessions);
+  const [activeSession] = useState<string>(initialActiveSession);
 
   const updateDocumentTitle = useCallback(() => {
     let totalUnseen = 0;
@@ -40,7 +46,7 @@ export function useRequestHandler(
 
       if (!subdomain || subdomain === "") {
         console.warn(
-          "Received WebSocket message with empty subdomain, ignoring"
+          "Received WebSocket message with empty subdomain, ignoring",
         );
         return;
       }
@@ -125,7 +131,7 @@ export function useRequestHandler(
 
       setTimeout(updateDocumentTitle, 0);
     },
-    [updateDocumentTitle]
+    [updateDocumentTitle],
   );
 
   const markAllAsVisited = useCallback(() => {
@@ -188,7 +194,7 @@ export function useRequestHandler(
           const deleteIndex = combinedRequests.findIndex((r) => r._id === id);
           const nextSelectedIndex = Math.min(
             deleteIndex + 1,
-            combinedRequests.length - 1
+            combinedRequests.length - 1,
           );
           const nextSelectedIndex2 = Math.max(0, nextSelectedIndex);
           const nextSelectedId =
@@ -198,10 +204,10 @@ export function useRequestHandler(
               : null;
 
           const newHttpRequests = session.httpRequests.filter(
-            (r) => r._id !== id
+            (r) => r._id !== id,
           );
           const newDnsRequests = session.dnsRequests.filter(
-            (r) => r._id !== id
+            (r) => r._id !== id,
           );
 
           const newSessions = { ...prevSessions };
@@ -221,7 +227,7 @@ export function useRequestHandler(
         return prevSessions;
       });
     },
-    [activeSession, updateDocumentTitle]
+    [activeSession, updateDocumentTitle],
   );
 
   const deleteAllRequests = useCallback(() => {
