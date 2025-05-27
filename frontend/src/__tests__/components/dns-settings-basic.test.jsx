@@ -1,22 +1,25 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import { DnsSettingsPage } from "../../components/dns-settings-page";
 import "@testing-library/jest-dom";
+
+const mockGetSessionToken = jest.fn(() => "test-token");
+const mockUpdateDNSRecords = jest.fn(() => Promise.resolve({ msg: "Updated DNS records" }));
+const mockGetDNSRecords = jest.fn(() => Promise.resolve([{ domain: "", type: 0, value: "1.2.3.4" }]));
+const mockIsDarkTheme = jest.fn(() => false);
 
 jest.mock("../../utils", () => ({
   Utils: {
     toastOptions: {},
-    getSessionToken: jest.fn(() => "test-token"),
-    updateDNSRecords: jest.fn(() =>
-      Promise.resolve({ msg: "Updated DNS records" }),
-    ),
-    getDNSRecords: jest.fn(() =>
-      Promise.resolve([{ domain: "", type: 0, value: "1.2.3.4" }]),
-    ),
+    getSessionToken: mockGetSessionToken,
+    updateDNSRecords: mockUpdateDNSRecords,
+    getDNSRecords: mockGetDNSRecords,
     domain: "example.com",
-    isDarkTheme: jest.fn(() => false),
+    isDarkTheme: mockIsDarkTheme,
   },
 }));
+
+const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("DnsSettingsPage Basic Tests", () => {
   const mockProps = {
@@ -29,8 +32,15 @@ describe("DnsSettingsPage Basic Tests", () => {
     activeSession: { subdomain: "test123", token: "test-token" },
   };
 
-  test("renders DNS settings page with title", () => {
-    render(<DnsSettingsPage {...mockProps} />);
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("renders DNS settings page with title", async () => {
+    await act(async () => {
+      render(<DnsSettingsPage {...mockProps} />);
+      await flushPromises();
+    });
 
     expect(screen.getByText("DNS Records")).toBeInTheDocument();
     expect(
