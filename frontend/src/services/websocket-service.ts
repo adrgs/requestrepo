@@ -47,10 +47,10 @@ export interface WebSocketServiceProps {
 }
 
 const MAX_RECONNECT_DELAY = 120000; // 2 minutes
-const HEARTBEAT_INTERVAL = 300000; // 5 minutes
-const PONG_TIMEOUT = 30000; // 30 seconds
-const MAX_RECONNECT_ATTEMPTS = 2; // Further reduced reconnection attempts
-const DEBOUNCE_VISIBILITY_CHANGE = 10000; // 10 seconds debounce for visibility change
+const HEARTBEAT_INTERVAL = 600000; // 10 minutes (increased from 5 minutes)
+const PONG_TIMEOUT = 60000; // 60 seconds (increased from 30 seconds)
+const MAX_RECONNECT_ATTEMPTS = 1; // Only one reconnection attempt
+const DEBOUNCE_VISIBILITY_CHANGE = 30000; // 30 seconds debounce for visibility change (increased from 10 seconds)
 
 export function useWebSocketService({
   url,
@@ -323,6 +323,7 @@ export function useWebSocketService({
     connect();
 
     const handleVisibilityChange = () => {
+      // Prevent multiple visibility change handlers from firing
       if (visibilityTimeoutRef.current) {
         clearTimeout(visibilityTimeoutRef.current);
       }
@@ -333,9 +334,10 @@ export function useWebSocketService({
           stateRef.current.reconnectAttempts < MAX_RECONNECT_ATTEMPTS &&
           (!socketRef.current ||
             socketRef.current.readyState === WebSocket.CLOSED ||
-            socketRef.current.readyState === WebSocket.CLOSING)
+            socketRef.current.readyState === WebSocket.CLOSING) &&
+          Date.now() - stateRef.current.lastPongTime > PONG_TIMEOUT * 2
         ) {
-          log("Page became visible, reconnecting if needed");
+          log("Page became visible after long absence, reconnecting if needed");
           if (!stateRef.current.isConnected && !stateRef.current.isConnecting) {
             connect();
           }

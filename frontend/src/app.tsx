@@ -16,7 +16,7 @@ import "primeflex/primeflex.css";
 import "react-toastify/dist/ReactToastify.css";
 import "./app.scss";
 
-import { AppState, AppSession } from "./types/app-types";
+import { AppState, AppSession, ToastFunctions } from "./types/app-types";
 import { useWebSocketService } from "./services/websocket-service";
 import { useSessionManager } from "./hooks/useSessionManager";
 import { useRequestHandler } from "./hooks/useRequestHandler";
@@ -221,7 +221,7 @@ const App: React.FC = () => {
       console.error("Failed to create new URL:", error);
       toast.error("Failed to create new URL", Utils.toastOptions);
     }
-  }, [sessionHandleNewURL, sendMessage, registerSessions]);
+  }, [sessionHandleNewURL, registerSessions]);
 
   const onToggleMenu = useCallback(() => {
     setAppState((prevState) => ({
@@ -273,7 +273,7 @@ const App: React.FC = () => {
                 element={
                   <RequestsPage
                     user={currentSessionData}
-                    toast={toast}
+                    toast={toast as unknown as ToastFunctions}
                     activeSession={appState.activeSession}
                   />
                 }
@@ -293,7 +293,7 @@ const App: React.FC = () => {
                 element={
                   <DnsSettingsPage
                     user={currentSessionData}
-                    toast={toast}
+                    toast={toast as unknown as ToastFunctions}
                     activeSession={appState.activeSession}
                     dnsRecords={appState.dnsRecords}
                   />

@@ -92,11 +92,11 @@ export interface ToastOptions {
 }
 
 export interface ToastFunctions {
-  info: (message: string, options?: ToastOptions) => void;
-  success: (message: string, options?: ToastOptions) => void;
-  error: (message: string, options?: ToastOptions) => void;
-  warning: (message: string, options?: ToastOptions) => void;
-  [key: string]: (message: string, options?: ToastOptions) => void; // Type-safe index signature
+  info: (message: string, options?: ToastOptions) => number;
+  success: (message: string, options?: ToastOptions) => number;
+  error: (message: string, options?: ToastOptions) => number;
+  warning: (message: string, options?: ToastOptions) => number;
+  [key: string]: (message: string, options?: ToastOptions) => number; // Type-safe index signature
 }
 
 export interface SessionData {
