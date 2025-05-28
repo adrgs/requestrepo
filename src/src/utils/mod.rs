@@ -1,5 +1,6 @@
 
 pub mod config;
+pub mod certificate;
 
 use crate::models::Claims;
 use chrono::{DateTime, Utc};

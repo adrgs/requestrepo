@@ -1,9 +1,9 @@
 Running 30s test @ http://localhost:8000/api/token
   4 threads and 10 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     4.43ms  820.68us  13.79ms   81.76%
-    Req/Sec   451.88     47.79   626.00     74.42%
-  54029 requests in 30.04s, 8.66MB read
-  Non-2xx or 3xx responses: 54029
-Requests/sec:   1798.53
-Transfer/sec:    295.07KB
+    Latency     4.42ms  687.61us  15.01ms   80.69%
+    Req/Sec   453.50     59.34   730.00     81.58%
+  54228 requests in 30.03s, 8.69MB read
+  Non-2xx or 3xx responses: 54228
+Requests/sec:   1805.51
+Transfer/sec:    296.22KB

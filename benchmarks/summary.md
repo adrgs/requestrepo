@@ -4,8 +4,8 @@ Comparison between Python FastAPI and Rust implementations
 
 ## Performance Summary
 
-- **Average Throughput Improvement**: 5982.15%
-- **Average Latency Improvement**: 98.02%
+- **Average Throughput Improvement**: 6141.56%
+- **Average Latency Improvement**: 98.05%
 
 ## Performance Graphs
 
@@ -43,27 +43,27 @@ Comparison between Python FastAPI and Rust implementations
 
 | Connections | Implementation | Requests/sec | Latency (ms) | Transfer (MB/s) |
 |-------------|---------------|--------------|--------------|----------------|
-| 10 | Python FastAPI | 1802.66 | 4.43 | 0.29 |
-| 10 | Rust | 52947.10 | 0.15 | 10.10 |
-| 50 | Python FastAPI | 1919.00 | 25.64 | 0.31 |
-| 50 | Rust | 94876.99 | 0.54 | 18.10 |
-| 100 | Python FastAPI | 1895.26 | 61.49 | 0.30 |
-| 100 | Rust | 124075.97 | 0.86 | 23.67 |
-| 200 | Python FastAPI | 1858.96 | 100.93 | 0.30 |
-| 200 | Rust | 180106.47 | 1.12 | 34.35 |
+| 10 | Python FastAPI | 1797.62 | 4.44 | 0.29 |
+| 10 | Rust | 53682.14 | 0.15 | 10.24 |
+| 50 | Python FastAPI | 1912.33 | 25.64 | 0.31 |
+| 50 | Rust | 94062.52 | 0.55 | 17.94 |
+| 100 | Python FastAPI | 1898.32 | 62.30 | 0.30 |
+| 100 | Rust | 127685.31 | 0.85 | 24.35 |
+| 200 | Python FastAPI | 1868.24 | 100.33 | 0.30 |
+| 200 | Rust | 191211.34 | 1.07 | 36.47 |
 
 ### token Endpoint
 
 | Connections | Implementation | Requests/sec | Latency (ms) | Transfer (MB/s) |
 |-------------|---------------|--------------|--------------|----------------|
-| 10 | Python FastAPI | 1798.53 | 4.43 | 0.29 |
-| 10 | Rust | 53736.91 | 0.15 | 10.25 |
-| 50 | Python FastAPI | 1903.65 | 25.85 | 0.30 |
-| 50 | Rust | 94270.61 | 0.55 | 17.98 |
-| 100 | Python FastAPI | 1880.10 | 62.45 | 0.30 |
-| 100 | Rust | 131281.69 | 0.82 | 25.04 |
-| 200 | Python FastAPI | 1865.66 | 100.87 | 0.30 |
-| 200 | Rust | 179440.77 | 1.11 | 34.23 |
+| 10 | Python FastAPI | 1805.51 | 4.42 | 0.29 |
+| 10 | Rust | 55248.72 | 0.14 | 15.81 |
+| 50 | Python FastAPI | 1889.16 | 26.00 | 0.30 |
+| 50 | Rust | 95960.10 | 0.53 | 27.45 |
+| 100 | Python FastAPI | 1851.55 | 62.69 | 0.30 |
+| 100 | Rust | 126287.88 | 0.86 | 36.13 |
+| 200 | Python FastAPI | 1835.33 | 101.88 | 0.29 |
+| 200 | Rust | 185482.90 | 1.09 | 53.07 |
 
 ## Conclusion
 
