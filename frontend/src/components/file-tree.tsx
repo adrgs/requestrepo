@@ -113,10 +113,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     delete current[lastPart];
 
     onUpdate(newFiles);
-    toast.success(
-      "File deleted successfully",
-      Utils.toastOptions,
-    );
+    toast.success("File deleted successfully", Utils.toastOptions as ToastOptions);
   };
 
   const handleRename = (node: TreeNode): void => {
