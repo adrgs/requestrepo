@@ -5,10 +5,30 @@ export interface WebSocketSession {
   subdomain: string;
 }
 
-export interface WebSocketMessage {
-  cmd: string;
-  [key: string]: unknown;
+export interface PingMessage {
+  cmd: 'ping';
 }
+
+export interface PongMessage {
+  cmd: 'pong';
+}
+
+export interface RegisterSessionsMessage {
+  cmd: 'register_sessions';
+  sessions: WebSocketSession[];
+}
+
+export interface RequestMessage {
+  cmd: 'request';
+  subdomain: string;
+  request: Record<string, string | number | boolean | null>;
+}
+
+export type WebSocketMessage = 
+  | PingMessage 
+  | PongMessage 
+  | RegisterSessionsMessage 
+  | RequestMessage;
 
 export interface WebSocketState {
   isConnected: boolean;
@@ -26,10 +46,11 @@ export interface WebSocketServiceProps {
   debug?: boolean;
 }
 
-const MAX_RECONNECT_DELAY = 60000; // 60 seconds (increased from 30 seconds)
-const HEARTBEAT_INTERVAL = 60000; // 60 seconds (increased from 30 seconds)
-const PONG_TIMEOUT = 15000; // 15 seconds (increased from 10 seconds)
-const MAX_RECONNECT_ATTEMPTS = 5; // Limit reconnection attempts
+const MAX_RECONNECT_DELAY = 120000; // 2 minutes
+const HEARTBEAT_INTERVAL = 300000; // 5 minutes
+const PONG_TIMEOUT = 30000; // 30 seconds
+const MAX_RECONNECT_ATTEMPTS = 2; // Further reduced reconnection attempts
+const DEBOUNCE_VISIBILITY_CHANGE = 10000; // 10 seconds debounce for visibility change
 
 export function useWebSocketService({
   url,
@@ -42,9 +63,11 @@ export function useWebSocketService({
   sendMessage: (message: WebSocketMessage) => void;
   registerSessions: (sessions: WebSocketSession[]) => void;
 } {
+  const hasRegisteredRef = useRef<boolean>(false);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const visibilityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sessionsRef = useRef<WebSocketSession[]>(sessions);
   const stateRef = useRef<WebSocketState>({
     isConnected: false,
@@ -89,16 +112,33 @@ export function useWebSocketService({
 
   const registerSessions = useCallback(
     (sessions: WebSocketSession[]) => {
-      sessionsRef.current = sessions;
-      if (
-        sessions.length > 0 &&
-        socketRef.current?.readyState === WebSocket.OPEN
-      ) {
-        sendMessage({
-          cmd: "register_sessions",
-          sessions,
-        });
-        log("Registered sessions", sessions);
+      if (sessions.length === 0) {
+        return;
+      }
+
+      const currentSessions = sessionsRef.current;
+      
+      const sessionsChanged = 
+        sessions.length !== currentSessions.length || 
+        sessions.some((s, i) => 
+          s.token !== currentSessions[i]?.token || 
+          s.subdomain !== currentSessions[i]?.subdomain
+        );
+      
+      if (sessionsChanged) {
+        sessionsRef.current = sessions;
+        
+        if (
+          socketRef.current?.readyState === WebSocket.OPEN &&
+          !hasRegisteredRef.current
+        ) {
+          sendMessage({
+            cmd: "register_sessions",
+            sessions,
+          });
+          hasRegisteredRef.current = true;
+          log("Registered sessions", sessions);
+        }
       }
     },
     [sendMessage, log],
@@ -125,7 +165,7 @@ export function useWebSocketService({
 
   const getReconnectDelay = useCallback(() => {
     const baseDelay = Math.min(
-      2000 * Math.pow(2, stateRef.current.reconnectAttempts),
+      5000 * Math.pow(2, stateRef.current.reconnectAttempts),
       MAX_RECONNECT_DELAY,
     );
     return baseDelay * (0.8 + Math.random() * 0.4);
@@ -140,6 +180,7 @@ export function useWebSocketService({
       return;
     }
 
+    // Prevent multiple simultaneous connection attempts
     if (stateRef.current.isConnecting) {
       log("Already connecting, skipping connect call");
       return;
@@ -182,12 +223,15 @@ export function useWebSocketService({
         stateRef.current.lastPongTime = Date.now();
         stateRef.current.reconnectAttempts = 0;
         stateRef.current.connectionError = false;
+        hasRegisteredRef.current = false; // Reset registration flag on new connection
 
         if (sessionsRef.current.length > 0) {
           sendMessage({
             cmd: "register_sessions",
             sessions: sessionsRef.current,
           });
+          hasRegisteredRef.current = true;
+          log("Registered sessions on connect", sessionsRef.current);
         }
 
         heartbeatIntervalRef.current = setInterval(
@@ -218,6 +262,7 @@ export function useWebSocketService({
       socket.onclose = (event) => {
         log("WebSocket closed", event.code, event.reason);
         resetState();
+        hasRegisteredRef.current = false; // Reset registration flag on close
 
         if (heartbeatIntervalRef.current) {
           clearInterval(heartbeatIntervalRef.current);
@@ -277,18 +322,24 @@ export function useWebSocketService({
     connect();
 
     const handleVisibilityChange = () => {
-      if (
-        document.visibilityState === "visible" &&
-        stateRef.current.reconnectAttempts < MAX_RECONNECT_ATTEMPTS &&
-        (!socketRef.current ||
-          socketRef.current.readyState === WebSocket.CLOSED ||
-          socketRef.current.readyState === WebSocket.CLOSING)
-      ) {
-        log("Page became visible, reconnecting if needed");
-        if (!stateRef.current.isConnected && !stateRef.current.isConnecting) {
-          connect();
-        }
+      if (visibilityTimeoutRef.current) {
+        clearTimeout(visibilityTimeoutRef.current);
       }
+
+      visibilityTimeoutRef.current = setTimeout(() => {
+        if (
+          document.visibilityState === "visible" &&
+          stateRef.current.reconnectAttempts < MAX_RECONNECT_ATTEMPTS &&
+          (!socketRef.current ||
+            socketRef.current.readyState === WebSocket.CLOSED ||
+            socketRef.current.readyState === WebSocket.CLOSING)
+        ) {
+          log("Page became visible, reconnecting if needed");
+          if (!stateRef.current.isConnected && !stateRef.current.isConnecting) {
+            connect();
+          }
+        }
+      }, DEBOUNCE_VISIBILITY_CHANGE);
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -304,14 +355,28 @@ export function useWebSocketService({
         clearTimeout(reconnectTimeoutRef.current);
       }
 
+      if (visibilityTimeoutRef.current) {
+        clearTimeout(visibilityTimeoutRef.current);
+      }
+
       if (socketRef.current) {
         socketRef.current.close(1000); // Normal closure
       }
     };
-  }, [url, connect, log]);
+  }, [connect, log]);
 
   useEffect(() => {
-    sessionsRef.current = sessions;
+    const currentSessions = sessionsRef.current;
+    const sessionsChanged = 
+      sessions.length !== currentSessions.length || 
+      sessions.some((s, i) => 
+        s.token !== currentSessions[i]?.token || 
+        s.subdomain !== currentSessions[i]?.subdomain
+      );
+    
+    if (sessionsChanged) {
+      sessionsRef.current = sessions;
+    }
   }, [sessions]);
 
   return {

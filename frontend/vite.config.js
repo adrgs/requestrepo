@@ -15,10 +15,16 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api\/ws2/, "/api/ws2"),
-        onError: () => {
-          console.error("WebSocket proxy error (limited logging)");
+        rewrite: (path) => path.replace(/^\/api\/ws2/, "/ws2"),
+        onError: (err) => {
+          console.error("WebSocket proxy error:", err?.message || "Unknown error");
         },
+        headers: {
+          "Origin": "http://localhost:21337"
+        },
+        onProxyReqWs: (proxyReq) => {
+          console.log("WebSocket proxy request:", proxyReq.path);
+        }
       },
     },
     open: true,

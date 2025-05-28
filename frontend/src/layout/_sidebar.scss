@@ -23,19 +23,21 @@ body.dark {
   @include transition(left $transitionDuration);
   border-right: 1px solid var(--sidebar-border-color);
   border-bottom: 1px solid var(--sidebar-border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  top: 42px; /* Match the reduced topbar height */
 
   .layout-logo {
     text-align: center;
-    margin-top: 24px;
+    margin-top: 20px; /* Reduced margin */
   }
 
   .menuitem-badge {
     display: inline-block;
     margin-left: 4px;
-    font-size: 10px;
-    width: 16px;
-    height: 16px;
-    line-height: 16px;
+    font-size: 9px; /* Smaller font */
+    width: 14px; /* Smaller badge */
+    height: 14px; /* Smaller badge */
+    line-height: 14px;
     text-align: center;
     color: $menuitemBadgeColor;
     background-color: $menuitemBadgeBgColor;

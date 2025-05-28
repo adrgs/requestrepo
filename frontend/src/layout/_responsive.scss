@@ -27,7 +27,7 @@
 
     &.layout-static {
       .layout-sidebar {
-        top: 50px;
+        top: 42px; /* Match the reduced topbar height */
       }
 
       .layout-topbar {

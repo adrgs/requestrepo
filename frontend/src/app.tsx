@@ -5,8 +5,6 @@ import { AppSidebar } from "./components/sidebar";
 import { RequestsPage } from "./components/requests-page";
 import { EditResponsePage } from "./components/edit-response-page";
 import { DnsSettingsPage } from "./components/dns-settings-page";
-import { Toolbar } from "primereact/toolbar";
-import { Button } from "primereact/button";
 import { Utils } from "./utils";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -44,8 +42,7 @@ const App: React.FC = () => {
     dnsFetched: false,
   });
 
-  const protocol = document.location.protocol === "https:" ? "wss" : "ws";
-  const ws_url = `${protocol}://${document.location.host}/api/ws2`;
+  const ws_url = `/api/ws2`;
 
   const {
     initializeSessions,
@@ -238,7 +235,7 @@ const App: React.FC = () => {
     : null;
 
   return (
-    <div className={`layout-wrapper ${themeState}`}>
+    <div className={`layout-wrapper layout-static ${appState.staticMenuInactive ? 'layout-static-sidebar-inactive' : ''} ${themeState}`}>
       <AppTopbar
         onToggleMenu={onToggleMenu}
         staticMenuInactive={appState.staticMenuInactive}
@@ -265,40 +262,7 @@ const App: React.FC = () => {
           <div className="layout-main-content">
             <div className="grid">
               <div className="col-12">
-                <Toolbar
-                  className="mb-4"
-                  left={
-                    <React.Fragment>
-                      <div className="my-2">
-                        <Button
-                          label="New URL"
-                          icon="pi pi-plus"
-                          className="mr-2 p-button-sm"
-                          onClick={handleNewURL}
-                        />
-                        <Button
-                          label="Copy URL"
-                          icon="pi pi-copy"
-                          className="p-button-success p-button-sm mr-2"
-                          onClick={copyUrl}
-                        />
-                        <Button
-                          label="Copy Domain"
-                          icon="pi pi-copy"
-                          className="p-button-help p-button-sm mr-2"
-                          onClick={copyDomain}
-                        />
-                      </div>
-                    </React.Fragment>
-                  }
-                  right={
-                    <React.Fragment>
-                      <div className="my-2">
-                        {/* Search removed - using topbar search instead */}
-                      </div>
-                    </React.Fragment>
-                  }
-                />
+                {/* Removed toolbar completely for more compact design */}
               </div>
             </div>
             <Routes>
@@ -307,7 +271,7 @@ const App: React.FC = () => {
                 element={
                   <RequestsPage
                     user={currentSessionData}
-                    toast={toast}
+                    toast={toast as any}
                     activeSession={appState.activeSession}
                   />
                 }
@@ -317,7 +281,7 @@ const App: React.FC = () => {
                 element={
                   <EditResponsePage
                     user={currentSessionData}
-                    toast={toast}
+                    toast={toast as any}
                     activeSession={appState.activeSession}
                   />
                 }
@@ -327,7 +291,7 @@ const App: React.FC = () => {
                 element={
                   <DnsSettingsPage
                     user={currentSessionData}
-                    toast={toast}
+                    toast={toast as any}
                     activeSession={appState.activeSession}
                     dnsRecords={appState.dnsRecords}
                   />

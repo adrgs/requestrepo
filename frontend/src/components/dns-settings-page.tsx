@@ -7,7 +7,7 @@ import { DnsRecord, AppSession, ToastFunctions } from "../types/app-types";
 interface DnsSettingsPageProps {
   dnsRecords?: DnsRecord[];
   user: AppSession | null;
-  toast: ToastFunctions;
+  toast: ToastFunctions | any; // Allow additional properties from react-toastify
   activeSession: string | null;
 }
 

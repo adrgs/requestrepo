@@ -5,10 +5,13 @@ export interface HttpRequest {
   method: string;
   path: string;
   query_string: string;
+  query?: string;
+  fragment?: string;
   headers: Record<string, string>;
   body: string;
   ip: string;
   timestamp: string;
+  date: number;
   country?: string;
 }
 
@@ -19,6 +22,10 @@ export interface DnsRequest {
   query: string;
   record_type: string;
   timestamp: string;
+  date: number;
+  name?: string;
+  ip?: string;
+  country?: string;
 }
 
 export type Request = HttpRequest | DnsRequest;
@@ -64,11 +71,25 @@ export interface AppState {
   dnsFetched: boolean;
 }
 
+export interface ToastOptions {
+  position?: 'top-right' | 'top-center' | 'top-left' | 'bottom-right' | 'bottom-center' | 'bottom-left';
+  autoClose?: number | false;
+  hideProgressBar?: boolean;
+  closeOnClick?: boolean;
+  pauseOnHover?: boolean;
+  draggable?: boolean;
+  progress?: number;
+  theme?: 'light' | 'dark' | 'colored';
+  className?: string;
+  style?: React.CSSProperties;
+}
+
 export interface ToastFunctions {
-  info: (message: string, options?: Record<string, unknown>) => void;
-  success: (message: string, options?: Record<string, unknown>) => void;
-  error: (message: string, options?: Record<string, unknown>) => void;
-  warning: (message: string, options?: Record<string, unknown>) => void;
+  info: (message: string, options?: ToastOptions) => void;
+  success: (message: string, options?: ToastOptions) => void;
+  error: (message: string, options?: ToastOptions) => void;
+  warning: (message: string, options?: ToastOptions) => void;
+  [key: string]: any; // Allow additional properties from react-toastify
 }
 
 export interface SessionData {
