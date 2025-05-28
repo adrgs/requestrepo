@@ -1,8 +1,4 @@
 .layout-main {
   @include transition(margin-left $transitionDuration);
   padding: 42px 16px 16px 16px; /* Reduced top padding to match topbar height */
-
-  &-content {
-    margin-left: 300px; /* Add margin to account for sidebar */
-  }
 }

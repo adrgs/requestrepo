@@ -46,13 +46,13 @@ export interface WebSocketServiceProps {
   debug?: boolean;
 }
 
-const MAX_RECONNECT_DELAY = 600000; // 10 minutes
+const MAX_RECONNECT_DELAY = 7200000; // 2 hours
 const HEARTBEAT_INTERVAL = 7200000; // 2 hours (significantly increased to reduce connection frequency)
-const PONG_TIMEOUT = 600000; // 10 minutes (increased to reduce false reconnections)
-const MAX_RECONNECT_ATTEMPTS = 2; // Limited to prevent excessive reconnection attempts
-const DEBOUNCE_VISIBILITY_CHANGE = 1800000; // 30 minutes (increased to reduce visibility change reconnections)
-const CONNECTION_COOLDOWN = 1800000; // 30 minutes (increased to prevent rapid reconnection attempts)
-const RECONNECT_AFTER_VISIBILITY_TIMEOUT = 3600000; // 1 hour (only reconnect if page was hidden for a long time)
+const PONG_TIMEOUT = 3600000; // 1 hour (increased to reduce false reconnections)
+const MAX_RECONNECT_ATTEMPTS = 1; // Limited to prevent excessive reconnection attempts
+const DEBOUNCE_VISIBILITY_CHANGE = 7200000; // 2 hours (increased to reduce visibility change reconnections)
+const CONNECTION_COOLDOWN = 7200000; // 2 hours (increased to prevent rapid reconnection attempts)
+const RECONNECT_AFTER_VISIBILITY_TIMEOUT = 14400000; // 4 hours (only reconnect if page was hidden for a long time)
 
 export const useWebSocketService = ({
   url,

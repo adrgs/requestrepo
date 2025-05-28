@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Dropdown } from "primereact/dropdown";
 import { Button } from "primereact/button";
 import { EditorComponent } from "./editor";
-import { toast } from "react-toastify";
 import { Utils } from "../utils";
 import { HeaderService } from "../header-service";
 
@@ -73,11 +72,33 @@ export function EditResponsePage({
     },
   ];
 
-  useEffect(() => {
-    if (user) {
-      fetchResponse();
+  const fetchResponse = useCallback(async (): Promise<void> => {
+    if (!user) return;
+
+    try {
+      setIsLoading(true);
+      const resp = await Utils.fetchResponse(user.subdomain);
+      setResponse({
+        raw: resp.raw || "",
+        headers: resp.headers || [],
+        status_code: resp.status_code || 200,
+        fetched: true,
+      });
+    } catch (error) {
+      console.error("Error fetching response:", error);
+      import("../utils/toast-throttle").then(({ throttledToastError }) => {
+        throttledToastError("Failed to fetch response data", Utils.toastOptions);
+      });
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user?.subdomain && !response.fetched) {
+      fetchResponse();
+    }
+  }, [user?.subdomain]);
 
   useEffect(() => {
     if (response.headers) {
@@ -94,26 +115,6 @@ export function EditResponsePage({
       setStatusCode(response.status_code);
     }
   }, [response.status_code]);
-
-  const fetchResponse = useCallback(async (): Promise<void> => {
-    if (!user) return;
-
-    try {
-      setIsLoading(true);
-      const resp = await Utils.fetchResponse(user.subdomain);
-      setResponse({
-        raw: resp.raw || "",
-        headers: resp.headers || [],
-        status_code: resp.status_code || 200,
-        fetched: true,
-      });
-    } catch (error) {
-      console.error("Error fetching response:", error);
-      toast.error("Failed to fetch response data", Utils.toastOptions);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user, toast]);
 
   const updateResponse = async (): Promise<void> => {
     if (!user) return;
@@ -141,10 +142,14 @@ export function EditResponsePage({
         status_code: statusCode,
       });
 
-      toast.success("Response updated successfully", Utils.toastOptions);
+      import("../utils/toast-throttle").then(({ throttledToastSuccess }) => {
+        throttledToastSuccess("Response updated successfully", Utils.toastOptions);
+      });
     } catch (error) {
       console.error("Error updating response:", error);
-      toast.error("Failed to update response", Utils.toastOptions);
+      import("../utils/toast-throttle").then(({ throttledToastError }) => {
+        throttledToastError("Failed to update response", Utils.toastOptions);
+      });
     } finally {
       setIsLoading(false);
     }
