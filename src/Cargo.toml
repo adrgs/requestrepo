@@ -17,7 +17,7 @@ hyper = { version = "1.1.0", features = ["full"] }
 http = "1.0.0"
 
 # DNS server
-trust-dns-server = "0.23.2"
+trust-dns-server = { version = "0.23.2", features = ["dns-over-rustls"] }
 trust-dns-proto = "0.23.2"
 
 # SMTP server
@@ -48,6 +48,9 @@ lazy_static = "1.4.0"
 thiserror = "1.0.57"
 anyhow = "1.0.79"
 async-trait = "0.1.77"
+futures = "0.3.31"
+hyper-util = { version = "0.1.13", features = ["server"] }
+futures-util = "0.3.31"
 
 [dev-dependencies]
 mockall = "0.12.1"
