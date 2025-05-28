@@ -264,11 +264,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="layout-main-content">
-            <div className="grid">
-              <div className="col-12">
-                {/* Removed toolbar completely for more compact design */}
-              </div>
-            </div>
+            {/* Removed grid and toolbar for more compact design */}
             <Routes>
               <Route
                 path="/"

@@ -77,10 +77,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
           label,
           data: currentPath,
           icon: "pi pi-fw pi-folder" + (isDark ? "-open" : ""),
-          children: convertToTreeNodes(
-            value as FileTreeData,
-            currentPath,
-          ),
+          children: convertToTreeNodes(value as FileTreeData, currentPath),
         };
       } else {
         return {
@@ -116,12 +113,18 @@ export const FileTree: React.FC<FileTreeProps> = ({
     delete current[lastPart];
 
     onUpdate(newFiles);
-    toast.success("File deleted successfully", Utils.toastOptions as ToastOptions);
+    toast.success(
+      "File deleted successfully",
+      Utils.toastOptions,
+    );
   };
 
   const handleRename = (node: TreeNode): void => {
     if (!editingText.trim()) {
-      toast.error("Filename cannot be empty", Utils.toastOptions as ToastOptions);
+      toast.error(
+        "Filename cannot be empty",
+        Utils.toastOptions as ToastOptions,
+      );
       return;
     }
 
@@ -141,7 +144,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
     const newName = isDirectory ? editingText + "/" : editingText;
 
     if (newName in current) {
-      toast.error("A file with this name already exists", Utils.toastOptions as ToastOptions);
+      toast.error(
+        "A file with this name already exists",
+        Utils.toastOptions as ToastOptions,
+      );
       return;
     }
 
@@ -152,7 +158,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
     setEditMode("");
     setEditingNode(null);
     setEditingText("");
-    toast.success("File renamed successfully", Utils.toastOptions as ToastOptions);
+    toast.success(
+      "File renamed successfully",
+      Utils.toastOptions as ToastOptions,
+    );
   };
 
   const getContextMenuItems = (node: TreeNode) => {
@@ -229,7 +238,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
 </html>`;
 
               onUpdate(newFiles);
-              toast.success("HTML file created", Utils.toastOptions as ToastOptions);
+              toast.success(
+                "HTML file created",
+                Utils.toastOptions as ToastOptions,
+              );
             },
           },
           {
@@ -260,7 +272,10 @@ body {
 }`;
 
               onUpdate(newFiles);
-              toast.success("CSS file created", Utils.toastOptions as ToastOptions);
+              toast.success(
+                "CSS file created",
+                Utils.toastOptions as ToastOptions,
+              );
             },
           },
           {
@@ -289,7 +304,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });`;
 
               onUpdate(newFiles);
-              toast.success("JavaScript file created", Utils.toastOptions as ToastOptions);
+              toast.success(
+                "JavaScript file created",
+                Utils.toastOptions as ToastOptions,
+              );
             },
           },
           {
@@ -319,7 +337,10 @@ document.addEventListener('DOMContentLoaded', function() {
 }`;
 
               onUpdate(newFiles);
-              toast.success("JSON file created", Utils.toastOptions as ToastOptions);
+              toast.success(
+                "JSON file created",
+                Utils.toastOptions as ToastOptions,
+              );
             },
           },
         ],
@@ -349,7 +370,10 @@ document.addEventListener('DOMContentLoaded', function() {
           current[filename] = getDefaultHeaders();
 
           onUpdate(newFiles);
-          toast.success("Headers file created", Utils.toastOptions as ToastOptions);
+          toast.success(
+            "Headers file created",
+            Utils.toastOptions as ToastOptions,
+          );
         },
       });
     }
@@ -408,7 +432,10 @@ Content-Length: 0
 
   const createNewItem = (): void => {
     if (!editingText.trim()) {
-      toast.error("Filename cannot be empty", Utils.toastOptions as ToastOptions);
+      toast.error(
+        "Filename cannot be empty",
+        Utils.toastOptions as ToastOptions,
+      );
       return;
     }
 
@@ -425,7 +452,10 @@ Content-Length: 0
 
     const lastPart = editingText;
     if (lastPart in current) {
-      toast.error("A file with this name already exists", Utils.toastOptions as ToastOptions);
+      toast.error(
+        "A file with this name already exists",
+        Utils.toastOptions as ToastOptions,
+      );
       return;
     }
 
@@ -435,7 +465,10 @@ Content-Length: 0
     setEditMode("");
     setEditingNode(null);
     setEditingText("");
-    toast.success("File created successfully", Utils.toastOptions as ToastOptions);
+    toast.success(
+      "File created successfully",
+      Utils.toastOptions as ToastOptions,
+    );
   };
 
   const treeNodes = convertToTreeNodes(files);

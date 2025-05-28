@@ -47,11 +47,11 @@ export interface WebSocketServiceProps {
 }
 
 const MAX_RECONNECT_DELAY = 300000; // 5 minutes
-const HEARTBEAT_INTERVAL = 3600000; // 60 minutes
-const PONG_TIMEOUT = 180000; // 3 minutes
-const MAX_RECONNECT_ATTEMPTS = 1; // Limit to a single reconnect attempt to prevent connection spam
-const DEBOUNCE_VISIBILITY_CHANGE = 120000; // 2 minutes
-const CONNECTION_COOLDOWN = 300000; // 5 minutes cooldown between connection attempts
+const HEARTBEAT_INTERVAL = 3600000; // 60 minutes (increased to reduce connection frequency)
+const PONG_TIMEOUT = 300000; // 5 minutes (increased to reduce false reconnections)
+const MAX_RECONNECT_ATTEMPTS = 3; // Limited to prevent excessive reconnection attempts
+const DEBOUNCE_VISIBILITY_CHANGE = 600000; // 10 minutes (increased to reduce visibility change reconnections)
+const CONNECTION_COOLDOWN = 900000; // 15 minutes (increased to prevent rapid reconnection attempts)
 
 export const useWebSocketService = ({
   url,
@@ -80,7 +80,7 @@ export const useWebSocketService = ({
   });
 
   const log = useCallback(
-    (message: string, ...args: unknown[]) => {
+    (message: string, ...args: (string | number | object)[]) => {
       if (debug) {
         console.log(`[WebSocketService] ${message}`, ...args);
       }
@@ -373,7 +373,7 @@ export const useWebSocketService = ({
           (!socketRef.current ||
             socketRef.current.readyState === WebSocket.CLOSED ||
             socketRef.current.readyState === WebSocket.CLOSING) &&
-          Date.now() - stateRef.current.lastPongTime > PONG_TIMEOUT * 2 &&
+          Date.now() - stateRef.current.lastPongTime > PONG_TIMEOUT * 3 && // Increased threshold
           sessions.length > 0 // Only reconnect if we have sessions
         ) {
           log("Page became visible after long absence, reconnecting if needed");

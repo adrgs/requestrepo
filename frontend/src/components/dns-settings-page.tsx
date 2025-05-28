@@ -3,6 +3,7 @@ import { Button } from "primereact/button";
 import { RecordInput } from "./record-input";
 import { Utils } from "../utils";
 import { DnsRecord, AppSession } from "../types/app-types";
+import { DNSRecord, DNSRecordRequest } from "../types/api-types";
 import { toast } from "react-toastify";
 
 interface DnsSettingsPageProps {
@@ -51,7 +52,7 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
         }
 
         const res = await Utils.getDNSRecords(activeSession);
-        const convertedRecords = res.map((record: any) => ({
+        const convertedRecords = res.map((record) => ({
           name: record.domain || "",
           type:
             typeof record.type === "string"
@@ -135,7 +136,7 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
 
       setDnsRecords((prevRecords) => [...prevRecords, newRecord]);
     },
-    [activeSession, toast, getActiveSessionData],
+    [toast, getActiveSessionData],
   );
 
   const handleRecordInputChange = useCallback(
@@ -171,7 +172,7 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
         return updatedRecords;
       });
     },
-    [activeSession, toast, getActiveSessionData],
+    [toast, getActiveSessionData],
   );
 
   const saveChanges = useCallback(() => {
@@ -196,9 +197,9 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
       ttl: record.ttl,
       id: record.id,
       subdomain: activeSession || "",
-    })) as any[];
+    })) as DNSRecord[];
 
-    const obj = {
+    const obj: DNSRecordRequest = {
       records: apiRecords,
     };
 

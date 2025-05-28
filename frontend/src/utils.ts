@@ -7,6 +7,7 @@ import {
   FileResponse,
   Request,
 } from "./types/app-types";
+import { DNSRecord as ApiDNSRecord } from "./types/api-types";
 
 export interface Session {
   subdomain: string;
@@ -305,7 +306,7 @@ export class Utils {
   }
 
   static async updateDNSRecords(
-    data: { records: DNSRecord[] },
+    data: { records: ApiDNSRecord[] },
     subdomain: string | null = null,
   ): Promise<DNSUpdateResponse> {
     const reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
