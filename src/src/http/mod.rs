@@ -73,8 +73,8 @@ impl Server {
 
         let addr = SocketAddr::from(([0, 0, 0, 0], CONFIG.http_port));
 
-        axum::Server::bind(&addr)
-            .serve(app.into_make_service())
+        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        axum::serve(listener, app)
             .await
             .map_err(|e| anyhow!("HTTP server error: {}", e))?;
 

@@ -3,7 +3,7 @@ use axum::{
     extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
     response::IntoResponse,
 };
-use futures::{sink::SinkExt, stream::StreamExt};
+use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -29,14 +29,16 @@ pub async fn websocket_handler_v2(
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
-    let (mut sender, mut receiver) = socket.split();
-
+    let (sender, mut receiver) = socket.split();
+    let sender = Arc::new(tokio::sync::Mutex::new(sender));
+    
     let sessions = Arc::new(Mutex::new(HashSet::new()));
     let sessions_clone = sessions.clone();
 
     let mut rx = state.tx.subscribe();
+    let sender_clone = sender.clone();
 
-    let mut send_task = tokio::spawn(async move {
+    let send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             let subdomain = msg.subdomain.clone();
             let is_subscribed = {
@@ -51,6 +53,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     "subdomain": subdomain
                 });
 
+                let mut sender = sender_clone.lock().await;
                 if let Err(e) = sender.send(Message::Text(ws_msg.to_string())).await {
                     error!("Error sending WebSocket message: {}", e);
                     break;
@@ -73,9 +76,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         "subdomain": subdomain
                     });
 
-                    if let Err(e) = sender.send(Message::Text(response.to_string())).await {
-                        error!("Error sending WebSocket message: {}", e);
-                        break;
+                    {
+                        let mut sender_lock = sender.lock().await;
+                        if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                            error!("Error sending WebSocket message: {}", e);
+                            break;
+                        }
                     }
 
                     if let Ok(requests) = state.cache.lrange(&format!("requests:{}", subdomain), 0, -1).await {
@@ -88,9 +94,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                 "subdomain": subdomain
                             });
 
-                            if let Err(e) = sender.send(Message::Text(response.to_string())).await {
-                                error!("Error sending WebSocket message: {}", e);
-                                break;
+                            {
+                                let mut sender_lock = sender.lock().await;
+                                if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                    error!("Error sending WebSocket message: {}", e);
+                                    break;
+                                }
                             }
                         }
                     }
@@ -100,9 +109,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         "token": text
                     });
 
-                    if let Err(e) = sender.send(Message::Text(response.to_string())).await {
-                        error!("Error sending WebSocket message: {}", e);
-                        break;
+                    {
+                        let mut sender_lock = sender.lock().await;
+                        if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                            error!("Error sending WebSocket message: {}", e);
+                            break;
+                        }
                     }
                 }
             }
@@ -117,14 +129,16 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 }
 
 async fn handle_socket_v2(socket: WebSocket, state: AppState) {
-    let (mut sender, mut receiver) = socket.split();
+    let (sender, mut receiver) = socket.split();
+    let sender = Arc::new(tokio::sync::Mutex::new(sender));
 
     let sessions = Arc::new(Mutex::new(HashSet::new()));
     let sessions_clone = sessions.clone();
 
     let mut rx = state.tx.subscribe();
+    let sender_clone = sender.clone();
 
-    let mut send_task = tokio::spawn(async move {
+    let send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             let subdomain = msg.subdomain.clone();
             let is_subscribed = {
@@ -139,7 +153,8 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                     "subdomain": subdomain
                 });
 
-                if let Err(e) = sender.send(Message::Text(ws_msg.to_string())).await {
+                let mut sender_lock = sender_clone.lock().await;
+                if let Err(e) = sender_lock.send(Message::Text(ws_msg.to_string())).await {
                     error!("Error sending WebSocket message: {}", e);
                     break;
                 }
@@ -166,9 +181,12 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                             "subdomain": subdomain
                                         });
 
-                                        if let Err(e) = sender.send(Message::Text(response.to_string())).await {
-                                            error!("Error sending WebSocket message: {}", e);
-                                            break;
+                                        {
+                                            let mut sender_lock = sender.lock().await;
+                                            if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                                error!("Error sending WebSocket message: {}", e);
+                                                break;
+                                            }
                                         }
 
                                         if let Ok(requests) = state.cache.lrange(&format!("requests:{}", subdomain), 0, -1).await {
@@ -185,9 +203,12 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                                     "subdomain": subdomain
                                                 });
 
-                                                if let Err(e) = sender.send(Message::Text(response.to_string())).await {
-                                                    error!("Error sending WebSocket message: {}", e);
-                                                    break;
+                                                {
+                                                    let mut sender_lock = sender.lock().await;
+                                                    if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                                        error!("Error sending WebSocket message: {}", e);
+                                                        break;
+                                                    }
                                                 }
                                             }
                                         }
@@ -197,9 +218,12 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                             "token": token
                                         });
 
-                                        if let Err(e) = sender.send(Message::Text(response.to_string())).await {
-                                            error!("Error sending WebSocket message: {}", e);
-                                            break;
+                                        {
+                                            let mut sender_lock = sender.lock().await;
+                                            if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                                error!("Error sending WebSocket message: {}", e);
+                                                break;
+                                            }
                                         }
                                     }
                                 }

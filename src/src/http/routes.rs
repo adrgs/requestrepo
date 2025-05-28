@@ -377,7 +377,7 @@ pub async fn catch_all(
         .or_else(|| get_subdomain_from_path(path));
     
     if let Some(subdomain) = subdomain.clone() {
-        let body_bytes = match hyper::body::to_bytes(body).await {
+        let body_bytes = match axum::body::to_bytes(body, 1024 * 1024 * 10).await {
             Ok(bytes) => bytes.to_vec(),
             Err(_) => Vec::new(),
         };

@@ -1,5 +1,6 @@
 
 use anyhow::{anyhow, Result};
+use base64::Engine;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -160,7 +161,7 @@ async fn log_smtp_request(
     let request_log = SmtpRequestLog {
         _id: request_id.clone(),
         r#type: "smtp".to_string(),
-        raw: base64::encode(format!("Command: {}\nData: {:?}", command, data)),
+        raw: base64::engine::general_purpose::STANDARD.encode(format!("Command: {}\nData: {:?}", command, data)),
         uid: subdomain.to_string(),
         command: command.to_string(),
         data: data.map(|s| s.to_string()),

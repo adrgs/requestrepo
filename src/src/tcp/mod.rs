@@ -1,5 +1,6 @@
 
 use anyhow::{anyhow, Result};
+use base64::Engine;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
@@ -179,7 +180,7 @@ async fn handle_tcp_connection(
         let request_log = TcpRequestLog {
             _id: request_id.clone(),
             r#type: "tcp".to_string(),
-            raw: base64::encode(&buffer[..n]),
+            raw: base64::engine::general_purpose::STANDARD.encode(&buffer[..n]),
             uid: subdomain.to_string(),
             port,
             date: get_current_timestamp(),
