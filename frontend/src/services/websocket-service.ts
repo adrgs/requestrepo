@@ -178,19 +178,21 @@ export const useWebSocketService = ({
     // Enforce connection cooldown to prevent rapid reconnection attempts
     const now = Date.now();
     const timeSinceLastAttempt = now - lastConnectionAttemptRef.current;
-    
+
     if (timeSinceLastAttempt < CONNECTION_COOLDOWN) {
-      log(`Connection attempt too soon (${timeSinceLastAttempt}ms), enforcing cooldown`);
+      log(
+        `Connection attempt too soon (${timeSinceLastAttempt}ms), enforcing cooldown`,
+      );
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       reconnectTimeoutRef.current = setTimeout(
-        connect, 
-        CONNECTION_COOLDOWN - timeSinceLastAttempt
+        connect,
+        CONNECTION_COOLDOWN - timeSinceLastAttempt,
       );
       return;
     }
-    
+
     lastConnectionAttemptRef.current = now;
 
     if (stateRef.current.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -235,19 +237,19 @@ export const useWebSocketService = ({
 
     try {
       let wsUrl = url;
-      if (url.startsWith('/')) {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      if (url.startsWith("/")) {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const host = window.location.host;
         wsUrl = `${protocol}//${host}${url}`;
       }
-      
+
       if (sessionsRef.current.length > 0) {
         const session = sessionsRef.current[0]; // Use only the first session token
-        const separator = wsUrl.includes('?') ? '&' : '?';
+        const separator = wsUrl.includes("?") ? "&" : "?";
         wsUrl = `${wsUrl}${separator}token=${encodeURIComponent(session.token)}`;
         log("Connecting with token in query parameter", wsUrl);
       }
-      
+
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 

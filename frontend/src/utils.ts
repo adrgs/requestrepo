@@ -1,7 +1,12 @@
 import axios from "axios";
 import { Base64 } from "js-base64";
 import { toast } from "react-toastify";
-import { ApiResponse, DNSUpdateResponse, FileResponse, Request } from "./types/app-types";
+import {
+  ApiResponse,
+  DNSUpdateResponse,
+  FileResponse,
+  Request,
+} from "./types/app-types";
 
 export interface Session {
   subdomain: string;
@@ -367,11 +372,13 @@ export class Utils {
       headers?: Array<{ key: string; value: string }>;
       status_code?: number;
     },
-  ): Promise<ApiResponse<{
-    raw?: string;
-    headers?: Array<{ key: string; value: string }>;
-    status_code?: number;
-  }>> {
+  ): Promise<
+    ApiResponse<{
+      raw?: string;
+      headers?: Array<{ key: string; value: string }>;
+      status_code?: number;
+    }>
+  > {
     try {
       const token = this.getSessionToken(subdomain);
       const response = await fetch(`/api/response?token=${token}`, {
