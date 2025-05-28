@@ -273,7 +273,7 @@ const App: React.FC = () => {
                 element={
                   <RequestsPage
                     user={currentSessionData}
-                    toast={toast as any}
+                    toast={toast}
                     activeSession={appState.activeSession}
                   />
                 }
@@ -283,7 +283,7 @@ const App: React.FC = () => {
                 element={
                   <EditResponsePage
                     user={currentSessionData}
-                    toast={toast as any}
+                    toast={toast}
                     activeSession={appState.activeSession}
                   />
                 }
@@ -293,7 +293,7 @@ const App: React.FC = () => {
                 element={
                   <DnsSettingsPage
                     user={currentSessionData}
-                    toast={toast as any}
+                    toast={toast}
                     activeSession={appState.activeSession}
                     dnsRecords={appState.dnsRecords}
                   />

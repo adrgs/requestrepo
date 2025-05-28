@@ -88,6 +88,7 @@ export interface ToastOptions {
   theme?: "light" | "dark" | "colored";
   className?: string;
   style?: React.CSSProperties;
+  dark?: boolean; // Support for dark mode toggle
 }
 
 export interface ToastFunctions {
@@ -95,7 +96,7 @@ export interface ToastFunctions {
   success: (message: string, options?: ToastOptions) => void;
   error: (message: string, options?: ToastOptions) => void;
   warning: (message: string, options?: ToastOptions) => void;
-  [key: string]: any; // Allow additional properties from react-toastify
+  [key: string]: (message: string, options?: ToastOptions) => void; // Type-safe index signature
 }
 
 export interface SessionData {
