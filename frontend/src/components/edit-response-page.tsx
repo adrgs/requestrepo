@@ -87,7 +87,10 @@ export function EditResponsePage({
     } catch (error) {
       console.error("Error fetching response:", error);
       import("../utils/toast-throttle").then(({ throttledToastError }) => {
-        throttledToastError("Failed to fetch response data", Utils.toastOptions);
+        throttledToastError(
+          "Failed to fetch response data",
+          Utils.toastOptions,
+        );
       });
     } finally {
       setIsLoading(false);
@@ -143,7 +146,10 @@ export function EditResponsePage({
       });
 
       import("../utils/toast-throttle").then(({ throttledToastSuccess }) => {
-        throttledToastSuccess("Response updated successfully", Utils.toastOptions);
+        throttledToastSuccess(
+          "Response updated successfully",
+          Utils.toastOptions,
+        );
       });
     } catch (error) {
       console.error("Error updating response:", error);

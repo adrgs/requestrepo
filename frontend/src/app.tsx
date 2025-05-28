@@ -96,7 +96,7 @@ const App: React.FC = () => {
         console.log("Initializing sessions...");
         await initializeSessions();
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const sessions = getWebSocketSessions();
         console.log("WebSocket sessions:", sessions);
@@ -132,13 +132,15 @@ const App: React.FC = () => {
         }
       } catch (error) {
         console.error("Failed to initialize sessions:", error);
-        
+
         try {
-          console.log("Creating fallback session after initialization error...");
+          console.log(
+            "Creating fallback session after initialization error...",
+          );
           const { subdomain, token } = await Utils.getRandomSubdomain();
-          
+
           registerSessions([{ token, subdomain }]);
-          
+
           setAppState((prevState) => ({
             ...prevState,
             activeSession: subdomain,
@@ -159,7 +161,7 @@ const App: React.FC = () => {
               },
             },
           }));
-          
+
           console.log("Created fallback session:", subdomain);
         } catch (fallbackError) {
           console.error("Failed to create fallback session:", fallbackError);

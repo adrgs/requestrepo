@@ -24,6 +24,7 @@ interface AppSidebarProps {
 export function AppSidebar({
   user,
   activeSession,
+  sessions,
   searchValue,
   deleteAllRequests,
   markAllAsVisited,
