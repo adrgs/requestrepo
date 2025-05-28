@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate, Link } from "react-router-dom";
 import { AppTopbar } from "./components/topbar";
 import { AppSidebar } from "./components/sidebar";
 import { RequestsPage } from "./components/requests-page";
 import { EditResponsePage } from "./components/edit-response-page";
 import { DnsSettingsPage } from "./components/dns-settings-page";
+import { Button } from "primereact/button";
 import { Utils } from "./utils";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -57,32 +58,77 @@ const App: React.FC = () => {
     deleteAllRequests,
   } = useRequestHandler(appState.sessions, appState.activeSession);
 
-  const { sendMessage, registerSessions } = useWebSocketService({
+  const { registerSessions } = useWebSocketService({
     url: ws_url,
     onMessage: handleMessage,
     onOpen: () => {
+      console.log("WebSocket connection opened");
       setAppState((prevState) => {
         const newSessions: Record<string, AppSession> = {};
         Object.keys(prevState.sessions).forEach((subdomain) => {
           const existingSession = prevState.sessions[subdomain];
-          newSessions[subdomain] = {
-            ...existingSession,
-            httpRequests: existingSession.httpRequests || [],
-            dnsRequests: existingSession.dnsRequests || [],
-            requests: existingSession.requests || {},
-            visited: existingSession.visited || {},
-          };
+          if (existingSession) {
+            newSessions[subdomain] = {
+              ...existingSession,
+              httpRequests: existingSession.httpRequests || [],
+              dnsRequests: existingSession.dnsRequests || [],
+              requests: existingSession.requests || {},
+              visited: existingSession.visited || {},
+            };
+          }
         });
         return { ...prevState, sessions: newSessions };
       });
     },
     sessions: getWebSocketSessions(),
-    debug: false,
+    debug: true, // Enable debug logging to help diagnose connection issues
   });
 
   useEffect(() => {
-    initializeSessions();
-  }, [initializeSessions]);
+    const initSessions = async () => {
+      try {
+        console.log("Initializing sessions...");
+        await initializeSessions();
+        
+        const sessions = getWebSocketSessions();
+        console.log("WebSocket sessions:", sessions);
+        
+        if (sessions.length > 0) {
+          registerSessions(sessions);
+          
+          const activeSession = sessions[0]?.subdomain || "";
+          if (activeSession) {
+            setAppState(prevState => ({
+              ...prevState,
+              activeSession,
+              sessions: Object.fromEntries(
+                sessions.map(session => [
+                  session.subdomain,
+                  {
+                    url: `${session.subdomain}.${Utils.siteUrl}`,
+                    domain: Utils.siteUrl,
+                    subdomain: session.subdomain,
+                    httpRequests: [],
+                    dnsRequests: [],
+                    timestamp: null,
+                    requests: {},
+                    visited: {},
+                    selectedRequest: null,
+                    token: session.token,
+                    dnsRecords: [],
+                  }
+                ])
+              )
+            }));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to initialize sessions:", error);
+      }
+    };
+    
+    initSessions();
+  }, [initializeSessions, getWebSocketSessions, registerSessions]);
 
   useEffect(() => {
     const checkSharedRequest = async () => {
@@ -165,7 +211,7 @@ const App: React.FC = () => {
     };
 
     checkSharedRequest();
-  }, [location, navigate, sendMessage, registerSessions]);
+  }, [location, navigate, registerSessions]);
 
   useEffect(() => {
     const handleThemeChange = () => {
@@ -264,7 +310,21 @@ const App: React.FC = () => {
           </div>
 
           <div className="layout-main-content">
-            {/* Removed grid and toolbar for more compact design */}
+            <div className="layout-toolbar">
+              <div className="toolbar-content">
+                <div className="toolbar-nav">
+                  <Link to="/" className={location.pathname === "/" ? "active" : ""}>
+                    <Button label="Requests" icon="pi pi-list" className="p-button-text" />
+                  </Link>
+                  <Link to="/edit-response" className={location.pathname === "/edit-response" ? "active" : ""}>
+                    <Button label="Response" icon="pi pi-pencil" className="p-button-text" />
+                  </Link>
+                  <Link to="/dns-settings" className={location.pathname === "/dns-settings" ? "active" : ""}>
+                    <Button label="DNS" icon="pi pi-cog" className="p-button-text" />
+                  </Link>
+                </div>
+              </div>
+            </div>
             <Routes>
               <Route
                 path="/"

@@ -52,6 +52,7 @@ const PONG_TIMEOUT = 300000; // 5 minutes (increased to reduce false reconnectio
 const MAX_RECONNECT_ATTEMPTS = 3; // Limited to prevent excessive reconnection attempts
 const DEBOUNCE_VISIBILITY_CHANGE = 600000; // 10 minutes (increased to reduce visibility change reconnections)
 const CONNECTION_COOLDOWN = 900000; // 15 minutes (increased to prevent rapid reconnection attempts)
+const RECONNECT_AFTER_VISIBILITY_TIMEOUT = 1800000; // 30 minutes (only reconnect if page was hidden for a long time)
 
 export const useWebSocketService = ({
   url,
@@ -364,6 +365,15 @@ export const useWebSocketService = ({
       // Prevent multiple visibility change handlers from firing
       if (visibilityTimeoutRef.current) {
         clearTimeout(visibilityTimeoutRef.current);
+      }
+
+      const visibilityChangeTime = Date.now();
+      const lastVisibleTime = stateRef.current.lastPongTime || 0;
+      const timeHidden = visibilityChangeTime - lastVisibleTime;
+
+      if (timeHidden < RECONNECT_AFTER_VISIBILITY_TIMEOUT) {
+        log(`Page was hidden for only ${timeHidden}ms, skipping reconnection`);
+        return;
       }
 
       visibilityTimeoutRef.current = setTimeout(() => {

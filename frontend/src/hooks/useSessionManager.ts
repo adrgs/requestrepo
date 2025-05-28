@@ -19,21 +19,88 @@ export function useSessionManager(
   const activeSessionData = activeSession ? sessions[activeSession] : null;
 
   const initializeSessions = useCallback(async () => {
-    const allSessions = Utils.getAllSessions();
-    if (allSessions.length === 0) {
+    try {
+      const allSessions = Utils.getAllSessions();
+      if (allSessions.length === 0) {
+        try {
+          const { subdomain, token } = await Utils.getRandomSubdomain();
+
+          const newSession: SessionData = {
+            subdomain,
+            token,
+            createdAt: new Date().toISOString(),
+            unseenRequests: 0,
+          };
+
+          Utils.sessions = [newSession];
+          Utils.selectedSessionIndex = 0;
+          Utils.saveSessionsToStorage();
+          Utils.subdomain = subdomain;
+
+          setSessions({
+            [subdomain]: {
+              url: `${subdomain}.${Utils.siteUrl}`,
+              domain: Utils.siteUrl,
+              subdomain: subdomain,
+              httpRequests: [],
+              dnsRequests: [],
+              timestamp: null,
+              requests: {},
+              visited: {},
+              selectedRequest: null,
+              token: token,
+            },
+          });
+          setActiveSession(subdomain);
+          
+          sessionStorage.setItem("activeSessionSubdomain", subdomain);
+          
+          console.log("Created initial session:", subdomain);
+        } catch (error) {
+          console.error("Failed to create initial session:", error);
+        }
+      } else {
+        const sessionsMap: Record<string, AppSession> = {};
+        allSessions.forEach((session) => {
+          sessionsMap[session.subdomain] = {
+            url: `${session.subdomain}.${Utils.siteUrl}`,
+            domain: Utils.siteUrl,
+            subdomain: session.subdomain,
+            httpRequests: [],
+            dnsRequests: [],
+            timestamp: null,
+            requests: {},
+            visited: {},
+            selectedRequest: null,
+            token: session.token,
+          };
+        });
+
+        const activeSessionSubdomain =
+          sessionStorage.getItem("activeSessionSubdomain") ||
+          Utils.getActiveSession()?.subdomain ||
+          allSessions[0].subdomain;
+
+        const finalActiveSession = sessionsMap[activeSessionSubdomain]
+          ? activeSessionSubdomain
+          : allSessions[0].subdomain;
+
+        Utils.subdomain = finalActiveSession;
+        
+        setSessions(sessionsMap);
+        setActiveSession(finalActiveSession);
+        
+        sessionStorage.setItem("activeSessionSubdomain", finalActiveSession);
+        
+        console.log("Loaded existing sessions, active:", finalActiveSession);
+      }
+    } catch (error) {
+      console.error("Error in initializeSessions:", error);
+      
       try {
         const { subdomain, token } = await Utils.getRandomSubdomain();
-
-        const newSession: SessionData = {
-          subdomain,
-          token,
-          createdAt: new Date().toISOString(),
-          unseenRequests: 0,
-        };
-
-        localStorage.setItem("sessions", JSON.stringify([newSession]));
-        localStorage.setItem("selectedSessionIndex", "0");
-
+        Utils.addSession(subdomain, token);
+        
         setSessions({
           [subdomain]: {
             url: `${subdomain}.${Utils.siteUrl}`,
@@ -49,37 +116,12 @@ export function useSessionManager(
           },
         });
         setActiveSession(subdomain);
-      } catch (error) {
-        console.error("Failed to create initial session:", error);
+        sessionStorage.setItem("activeSessionSubdomain", subdomain);
+        
+        console.log("Created fallback session:", subdomain);
+      } catch (fallbackError) {
+        console.error("Failed to create fallback session:", fallbackError);
       }
-    } else {
-      const sessionsMap: Record<string, AppSession> = {};
-      allSessions.forEach((session) => {
-        sessionsMap[session.subdomain] = {
-          url: `${session.subdomain}.${Utils.siteUrl}`,
-          domain: Utils.siteUrl,
-          subdomain: session.subdomain,
-          httpRequests: [],
-          dnsRequests: [],
-          timestamp: null,
-          requests: {},
-          visited: {},
-          selectedRequest: null,
-          token: session.token,
-        };
-      });
-
-      const activeSessionSubdomain =
-        sessionStorage.getItem("activeSessionSubdomain") ||
-        Utils.getActiveSession()?.subdomain ||
-        allSessions[0].subdomain;
-
-      const finalActiveSession = sessionsMap[activeSessionSubdomain]
-        ? activeSessionSubdomain
-        : allSessions[0].subdomain;
-
-      setSessions(sessionsMap);
-      setActiveSession(finalActiveSession);
     }
   }, []);
 
@@ -87,17 +129,9 @@ export function useSessionManager(
     try {
       const { subdomain, token } = await Utils.getRandomSubdomain();
 
-      const allSessions = Utils.getAllSessions();
-      const sessionIndex = allSessions.length;
-      allSessions.push({
-        subdomain,
-        token,
-        createdAt: new Date().toISOString(),
-        unseenRequests: 0,
-      });
-
-      localStorage.setItem("sessions", JSON.stringify(allSessions));
-      localStorage.setItem("selectedSessionIndex", sessionIndex.toString());
+      Utils.addSession(subdomain, token);
+      Utils.subdomain = subdomain;
+      
       sessionStorage.setItem("activeSessionSubdomain", subdomain);
 
       setSessions((prevSessions) => {
@@ -121,6 +155,7 @@ export function useSessionManager(
       });
 
       setActiveSession(subdomain);
+      console.log("Created new URL:", subdomain);
       return { token, subdomain };
     } catch (error) {
       console.error("Failed to create new URL:", error);
