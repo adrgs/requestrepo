@@ -17,10 +17,12 @@ pub struct Config {
     pub txt_record: String,
     pub cache_ttl_days: u64,
     pub http_port: u16,
+    pub https_port: u16,
     pub dns_port: u16,
     pub smtp_port: u16,
     pub tcp_port_range_start: u16,
     pub tcp_port_range_end: u16,
+    pub cert_path: String,
 }
 
 impl Config {
@@ -53,9 +55,13 @@ impl Config {
             .parse()
             .unwrap_or(7);
         let http_port = env::var("HTTP_PORT")
-            .unwrap_or_else(|_| "21337".to_string())
+            .unwrap_or_else(|_| "80".to_string())
             .parse()
-            .unwrap_or(21337);
+            .unwrap_or(80);
+        let https_port = env::var("HTTPS_PORT")
+            .unwrap_or_else(|_| "443".to_string())
+            .parse()
+            .unwrap_or(443);
         let dns_port = env::var("DNS_PORT")
             .unwrap_or_else(|_| "53".to_string())
             .parse()
@@ -69,9 +75,10 @@ impl Config {
             .parse()
             .unwrap_or(10000);
         let tcp_port_range_end = env::var("TCP_PORT_RANGE_END")
-            .unwrap_or_else(|_| "11000".to_string())
+            .unwrap_or_else(|_| "50000".to_string())
             .parse()
-            .unwrap_or(11000);
+            .unwrap_or(50000);
+        let cert_path = env::var("CERT_PATH").unwrap_or_else(|_| "./certs/".to_string());
 
         Self {
             redis_host,
@@ -87,10 +94,12 @@ impl Config {
             txt_record,
             cache_ttl_days,
             http_port,
+            https_port,
             dns_port,
             smtp_port,
             tcp_port_range_start,
             tcp_port_range_end,
+            cert_path,
         }
     }
 }

@@ -50,13 +50,56 @@ impl Server {
     }
 }
 
+fn extract_subdomain_from_email(email: &str, server_domain: &str) -> Option<String> {
+    let email = email.trim_start_matches('<').trim_end_matches('>');
+    
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    
+    let local_part = parts[0];
+    let domain = parts[1];
+    
+    if !domain.eq_ignore_ascii_case(server_domain) {
+        return None;
+    }
+    
+    if local_part.len() != CONFIG.subdomain_length || 
+       !local_part.chars().all(|c| CONFIG.subdomain_alphabet_set.contains(&c)) {
+        return None;
+    }
+    
+    Some(local_part.to_string())
+}
+
+fn extract_email_from_rcpt(rcpt_command: &str) -> Option<String> {
+    let parts: Vec<&str> = rcpt_command.splitn(3, ' ').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    
+    if !parts[0].eq_ignore_ascii_case("RCPT") || !parts[1].eq_ignore_ascii_case("TO:") {
+        return None;
+    }
+    
+    let email = if parts.len() > 2 {
+        parts[2].trim()
+    } else {
+        return None;
+    };
+    
+    Some(email.to_string())
+}
+
 async fn handle_smtp_connection(
     mut socket: TcpStream,
     addr: SocketAddr,
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
 ) -> Result<()> {
-    let subdomain = crate::utils::get_random_subdomain();
+    let mut subdomain = crate::utils::get_random_subdomain();
+    let mut extracted_subdomains: Vec<String> = Vec::new();
     
     socket.write_all(format!("220 {} ESMTP RequestRepo\r\n", CONFIG.server_domain).as_bytes()).await?;
     
@@ -78,14 +121,27 @@ async fn handle_smtp_connection(
             if line_trimmed == "." {
                 data_mode = false;
                 
-                log_smtp_request(
-                    &subdomain,
-                    "DATA",
-                    Some(&email_data),
-                    &client_ip,
-                    &cache,
-                    &tx,
-                ).await?;
+                if !extracted_subdomains.is_empty() {
+                    for sub in &extracted_subdomains {
+                        log_smtp_request(
+                            sub,
+                            "DATA",
+                            Some(&email_data),
+                            &client_ip,
+                            &cache,
+                            &tx,
+                        ).await?;
+                    }
+                } else {
+                    log_smtp_request(
+                        &subdomain,
+                        "DATA",
+                        Some(&email_data),
+                        &client_ip,
+                        &cache,
+                        &tx,
+                    ).await?;
+                }
                 
                 email_data.clear();
                 
@@ -103,6 +159,16 @@ async fn handle_smtp_connection(
             let parts: Vec<&str> = line_trimmed.splitn(2, ' ').collect();
             let command = parts[0].to_uppercase();
             
+            if command == "RCPT" {
+                if let Some(email) = extract_email_from_rcpt(line_trimmed) {
+                    if let Some(extracted_subdomain) = extract_subdomain_from_email(&email, &CONFIG.server_domain) {
+                        info!("Extracted subdomain from email: {}", extracted_subdomain);
+                        extracted_subdomains.push(extracted_subdomain.clone());
+                        subdomain = extracted_subdomain; // Use the last valid subdomain as default
+                    }
+                }
+            }
+            
             log_smtp_request(
                 &subdomain,
                 &command,
@@ -119,6 +185,7 @@ async fn handle_smtp_connection(
                     writer.write_all(b"250 HELP\r\n").await?;
                 }
                 "MAIL" => {
+                    extracted_subdomains.clear();
                     writer.write_all(b"250 OK\r\n").await?;
                 }
                 "RCPT" => {
