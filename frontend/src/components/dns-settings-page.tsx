@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "primereact/button";
 import { RecordInput } from "./record-input";
 import { Utils, DNSRecord } from "../utils";
-import { DnsRecord, AppSession, ToastFunctions } from "../types/app-types";
+import { DnsRecord, AppSession } from "../types/app-types";
+import { toast } from "react-toastify";
 
 interface DnsSettingsPageProps {
   dnsRecords?: DnsRecord[];
   user: AppSession | null;
-  toast: ToastFunctions; // Properly typed toast functions
+  toast: typeof toast;
   activeSession: string | null;
 }
 

@@ -1,0 +1,34 @@
+.layout-sidebar-container {
+  position: fixed;
+  left: 0;
+  top: 42px;
+  width: 300px;
+  height: calc(100% - 42px);
+  z-index: 999;
+}
+
+.layout-static-sidebar-inactive .layout-sidebar-container {
+  left: -300px;
+}
+
+.layout-main-content {
+  margin-left: 300px;
+  padding: 1rem;
+  transition: margin-left 0.2s;
+}
+
+.layout-static-sidebar-inactive .layout-main-content {
+  margin-left: 0;
+}
+
+@media (max-width: 768px) {
+  .layout-sidebar-container {
+    position: static;
+    width: 100%;
+    height: auto;
+  }
+  
+  .layout-main-content {
+    margin-left: 0;
+  }
+}

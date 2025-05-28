@@ -4,12 +4,12 @@ import { EditorComponent } from "./editor";
 import { Button } from "primereact/button";
 import { toast } from "react-toastify";
 import { Utils } from "../utils";
-import { AppSession, Request, ToastFunctions } from "../types/app-types";
+import { AppSession, Request } from "../types/app-types";
 
 interface RequestsPageProps {
   user: AppSession | null;
   sharedRequest?: Request | null;
-  toast?: ToastFunctions;
+  toast?: typeof toast;
   activeSession?: string;
 }
 

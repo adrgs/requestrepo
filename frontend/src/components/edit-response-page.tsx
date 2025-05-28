@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Dropdown } from "primereact/dropdown";
 import { Button } from "primereact/button";
 import { EditorComponent } from "./editor";
@@ -95,7 +95,7 @@ export function EditResponsePage({
     }
   }, [response.status_code]);
 
-  const fetchResponse = async (): Promise<void> => {
+  const fetchResponse = useCallback(async (): Promise<void> => {
     if (!user) return;
 
     try {
@@ -113,7 +113,7 @@ export function EditResponsePage({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user, toast]);
 
   const updateResponse = async (): Promise<void> => {
     if (!user) return;

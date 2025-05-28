@@ -1,6 +1,7 @@
 import axios from "axios";
 import { Base64 } from "js-base64";
 import { toast } from "react-toastify";
+import { ApiResponse, DNSUpdateResponse, FileResponse, Request } from "./types/app-types";
 
 export interface Session {
   subdomain: string;
@@ -301,7 +302,7 @@ export class Utils {
   static async updateDNSRecords(
     data: { records: DNSRecord[] },
     subdomain: string | null = null,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<DNSUpdateResponse> {
     const reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
     const res = await axios.post(reqUrl, data, {
       params: { token: this.getSessionToken(subdomain) },
@@ -309,7 +310,7 @@ export class Utils {
     return res.data;
   }
 
-  static async getFile(): Promise<Record<string, unknown>> {
+  static async getFile(): Promise<FileResponse> {
     const reqUrl = this.apiUrl + this.fileEndpoint;
     const res = await axios.get(reqUrl, {
       params: { token: this.getSessionToken(this.subdomain) },
@@ -320,7 +321,7 @@ export class Utils {
   static async getRequest(
     id: string,
     subdomain: string,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ApiResponse<Request>> {
     const reqUrl = this.apiUrl + this.getRequestEndpoint;
     const res = await axios.get(reqUrl, {
       params: { id, subdomain },
@@ -329,8 +330,8 @@ export class Utils {
   }
 
   static async updateFile(
-    data: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    data: FileResponse,
+  ): Promise<ApiResponse<FileResponse>> {
     const reqUrl = this.apiUrl + this.updateFileEndpoint;
     const res = await axios.post(reqUrl, data, {
       params: { token: this.getSessionToken(this.subdomain) },
@@ -361,8 +362,16 @@ export class Utils {
 
   static async updateResponse(
     subdomain: string,
-    data: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    data: {
+      raw?: string;
+      headers?: Array<{ key: string; value: string }>;
+      status_code?: number;
+    },
+  ): Promise<ApiResponse<{
+    raw?: string;
+    headers?: Array<{ key: string; value: string }>;
+    status_code?: number;
+  }>> {
     try {
       const token = this.getSessionToken(subdomain);
       const response = await fetch(`/api/response?token=${token}`, {
@@ -446,7 +455,7 @@ export class Utils {
   static deleteRequest(
     id: string,
     subdomain: string | null = null,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ApiResponse<{ success: boolean }>> {
     const reqUrl = this.apiUrl + this.deleteRequestEndpoint;
     return axios.post(
       reqUrl,
@@ -457,7 +466,7 @@ export class Utils {
 
   static deleteAll(
     subdomain: string | null = null,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ApiResponse<{ success: boolean }>> {
     const reqUrl = this.apiUrl + this.deleteAllEndpoint;
     return axios.post(reqUrl, null, {
       params: { token: this.getSessionToken(subdomain) },
@@ -562,7 +571,7 @@ export class Utils {
 
   static async getFiles(
     subdomain: string | null = null,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ApiResponse<FileResponse>> {
     const token = this.getSessionToken(subdomain);
     const response = await fetch(`/api/files?token=${token}`);
     if (!response.ok) throw new Error("Failed to fetch files");
@@ -570,9 +579,9 @@ export class Utils {
   }
 
   static async updateFiles(
-    files: Record<string, unknown>,
+    files: FileResponse,
     subdomain: string | null = null,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ApiResponse<FileResponse>> {
     const token = this.getSessionToken(subdomain);
     const response = await fetch(`/api/files?token=${token}`, {
       method: "POST",

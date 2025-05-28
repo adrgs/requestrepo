@@ -46,13 +46,14 @@ export interface WebSocketServiceProps {
   debug?: boolean;
 }
 
-const MAX_RECONNECT_DELAY = 120000; // 2 minutes
-const HEARTBEAT_INTERVAL = 600000; // 10 minutes (increased from 5 minutes)
-const PONG_TIMEOUT = 60000; // 60 seconds (increased from 30 seconds)
-const MAX_RECONNECT_ATTEMPTS = 1; // Only one reconnection attempt
-const DEBOUNCE_VISIBILITY_CHANGE = 30000; // 30 seconds debounce for visibility change (increased from 10 seconds)
+const MAX_RECONNECT_DELAY = 300000; // 5 minutes
+const HEARTBEAT_INTERVAL = 3600000; // 60 minutes (increased from 30 minutes)
+const PONG_TIMEOUT = 120000; // 2 minutes
+const MAX_RECONNECT_ATTEMPTS = 2; // Reduced from 3 to further limit connection attempts
+const DEBOUNCE_VISIBILITY_CHANGE = 30000; // 30 seconds (increased from 10 seconds)
+const CONNECTION_COOLDOWN = 60000; // 60 seconds cooldown between connection attempts (increased from 30 seconds)
 
-export function useWebSocketService({
+export const useWebSocketService = ({
   url,
   onMessage,
   onOpen,
@@ -62,12 +63,13 @@ export function useWebSocketService({
   state: WebSocketState;
   sendMessage: (message: WebSocketMessage) => void;
   registerSessions: (sessions: WebSocketSession[]) => void;
-} {
+} => {
   const hasRegisteredRef = useRef<boolean>(false);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const visibilityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastConnectionAttemptRef = useRef<number>(0);
   const sessionsRef = useRef<WebSocketSession[]>(sessions);
   const stateRef = useRef<WebSocketState>({
     isConnected: false,
@@ -166,13 +168,31 @@ export function useWebSocketService({
 
   const getReconnectDelay = useCallback(() => {
     const baseDelay = Math.min(
-      5000 * Math.pow(2, stateRef.current.reconnectAttempts),
+      10000 * Math.pow(2, stateRef.current.reconnectAttempts),
       MAX_RECONNECT_DELAY,
     );
     return baseDelay * (0.8 + Math.random() * 0.4);
   }, []);
 
   const connect = useCallback(() => {
+    // Enforce connection cooldown to prevent rapid reconnection attempts
+    const now = Date.now();
+    const timeSinceLastAttempt = now - lastConnectionAttemptRef.current;
+    
+    if (timeSinceLastAttempt < CONNECTION_COOLDOWN) {
+      log(`Connection attempt too soon (${timeSinceLastAttempt}ms), enforcing cooldown`);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(
+        connect, 
+        CONNECTION_COOLDOWN - timeSinceLastAttempt
+      );
+      return;
+    }
+    
+    lastConnectionAttemptRef.current = now;
+
     if (stateRef.current.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       log(
         `Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached, giving up`,
@@ -214,7 +234,21 @@ export function useWebSocketService({
     }
 
     try {
-      const socket = new WebSocket(url);
+      let wsUrl = url;
+      if (url.startsWith('/')) {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsUrl = `${protocol}//${host}${url}`;
+      }
+      
+      if (sessionsRef.current.length > 0) {
+        const session = sessionsRef.current[0]; // Use only the first session token
+        const separator = wsUrl.includes('?') ? '&' : '?';
+        wsUrl = `${wsUrl}${separator}token=${encodeURIComponent(session.token)}`;
+        log("Connecting with token in query parameter", wsUrl);
+      }
+      
+      const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -320,7 +354,9 @@ export function useWebSocketService({
   ]);
 
   useEffect(() => {
-    connect();
+    if (sessions.length > 0) {
+      connect();
+    }
 
     const handleVisibilityChange = () => {
       // Prevent multiple visibility change handlers from firing
@@ -335,7 +371,8 @@ export function useWebSocketService({
           (!socketRef.current ||
             socketRef.current.readyState === WebSocket.CLOSED ||
             socketRef.current.readyState === WebSocket.CLOSING) &&
-          Date.now() - stateRef.current.lastPongTime > PONG_TIMEOUT * 2
+          Date.now() - stateRef.current.lastPongTime > PONG_TIMEOUT * 2 &&
+          sessions.length > 0 // Only reconnect if we have sessions
         ) {
           log("Page became visible after long absence, reconnecting if needed");
           if (!stateRef.current.isConnected && !stateRef.current.isConnecting) {
@@ -366,7 +403,7 @@ export function useWebSocketService({
         socketRef.current.close(1000); // Normal closure
       }
     };
-  }, [connect, log]);
+  }, [connect, log, sessions]);
 
   useEffect(() => {
     const currentSessions = sessionsRef.current;
@@ -388,4 +425,4 @@ export function useWebSocketService({
     sendMessage,
     registerSessions,
   };
-}
+};

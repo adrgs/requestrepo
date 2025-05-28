@@ -16,7 +16,7 @@ import "primeflex/primeflex.css";
 import "react-toastify/dist/ReactToastify.css";
 import "./app.scss";
 
-import { AppState, AppSession, ToastFunctions } from "./types/app-types";
+import { AppState, AppSession } from "./types/app-types";
 import { useWebSocketService } from "./services/websocket-service";
 import { useSessionManager } from "./hooks/useSessionManager";
 import { useRequestHandler } from "./hooks/useRequestHandler";
@@ -250,16 +250,18 @@ const App: React.FC = () => {
 
       <div className="layout-main">
         <div className="layout-content">
-          <AppSidebar
-            user={currentSessionData as AppSession | null}
-            activeSession={appState.activeSession}
-            sessions={appState.sessions as Record<string, AppSession>}
-            searchValue={appState.searchValue}
-            deleteAllRequests={deleteAllRequests}
-            markAllAsVisited={markAllAsVisited}
-            clickRequestAction={clickRequestAction}
-            updateSearchValue={updateSearchValue}
-          />
+          <div className="layout-sidebar-container">
+            <AppSidebar
+              user={currentSessionData}
+              activeSession={appState.activeSession}
+              sessions={appState.sessions}
+              searchValue={appState.searchValue}
+              deleteAllRequests={deleteAllRequests}
+              markAllAsVisited={markAllAsVisited}
+              clickRequestAction={clickRequestAction}
+              updateSearchValue={updateSearchValue}
+            />
+          </div>
 
           <div className="layout-main-content">
             <div className="grid">
@@ -273,7 +275,7 @@ const App: React.FC = () => {
                 element={
                   <RequestsPage
                     user={currentSessionData}
-                    toast={toast as unknown as ToastFunctions}
+                    toast={toast}
                     activeSession={appState.activeSession}
                   />
                 }
@@ -293,7 +295,7 @@ const App: React.FC = () => {
                 element={
                   <DnsSettingsPage
                     user={currentSessionData}
-                    toast={toast as unknown as ToastFunctions}
+                    toast={toast}
                     activeSession={appState.activeSession}
                     dnsRecords={appState.dnsRecords}
                   />

@@ -11,11 +11,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/api/ws2": {
-        target: "ws://localhost:21337", // Replace with your WebSocket server URL
+        target: "ws://localhost:21337",
         ws: true,
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api\/ws2/, "/ws2"),
         onError: (err) => {
           console.error(
             "WebSocket proxy error:",
@@ -24,9 +23,8 @@ export default defineConfig({
         },
         headers: {
           Origin: "http://localhost:21337",
-        },
-        onProxyReqWs: (proxyReq) => {
-          console.log("WebSocket proxy request:", proxyReq.path);
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
         },
       },
     },

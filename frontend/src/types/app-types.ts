@@ -92,11 +92,13 @@ export interface ToastOptions {
 }
 
 export interface ToastFunctions {
-  info: (message: string, options?: ToastOptions) => number;
-  success: (message: string, options?: ToastOptions) => number;
-  error: (message: string, options?: ToastOptions) => number;
-  warning: (message: string, options?: ToastOptions) => number;
-  [key: string]: (message: string, options?: ToastOptions) => number; // Type-safe index signature
+  info: (message: string, options?: ToastOptions) => void | number;
+  success: (message: string, options?: ToastOptions) => void | number;
+  error: (message: string, options?: ToastOptions) => void | number;
+  warning: (message: string, options?: ToastOptions) => void | number;
+  warn: (message: string, options?: ToastOptions) => void | number;
+  dark: (message: string, options?: ToastOptions) => void | number;
+  [key: string]: (message: string, options?: ToastOptions) => void | number;
 }
 
 export interface SessionData {
@@ -104,4 +106,19 @@ export interface SessionData {
   token: string;
   createdAt: string;
   unseenRequests: number;
+}
+
+export interface ApiResponse<T = Record<string, unknown>> {
+  success?: boolean;
+  message?: string;
+  data?: T;
+}
+
+export interface FileResponse {
+  [filename: string]: string | { [key: string]: FileResponse };
+}
+
+export interface DNSUpdateResponse {
+  success: boolean;
+  message?: string;
 }
