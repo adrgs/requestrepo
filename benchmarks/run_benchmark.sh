@@ -32,20 +32,27 @@ mkdir -p results
 start_python_server() {
     echo -e "${YELLOW}Starting Python FastAPI server...${NC}"
     cd ..
-    python -m backend.app > benchmarks/results/python_server.log 2>&1 &
+    echo "Using existing Redis container: redis-requestrepo-dev"
+    
+    if [ ! -f .env ]; then
+        cp .env.example .env
+    fi
+    
+    cd backend
+    poetry run uvicorn app:app --host 0.0.0.0 --port 8000 --no-server-header > ../benchmarks/results/python_server.log 2>&1 &
     PYTHON_PID=$!
     echo "Python server started with PID: $PYTHON_PID"
-    sleep 3
-    cd benchmarks
+    sleep 10  # Give more time for server to start
+    cd ../benchmarks
 }
 
 start_rust_server() {
     echo -e "${YELLOW}Starting Rust server...${NC}"
     cd ../src
-    cargo run --release > ../benchmarks/results/rust_server.log 2>&1 &
+    RUST_HTTP_PORT=8001 RUST_DNS_PORT=5353 RUST_SMTP_PORT=2525 cargo run --release > ../benchmarks/results/rust_server.log 2>&1 &
     RUST_PID=$!
     echo "Rust server started with PID: $RUST_PID"
-    sleep 3
+    sleep 10  # Give more time for server to start
     cd ../benchmarks
 }
 
@@ -57,8 +64,10 @@ stop_servers() {
     if [ ! -z "$RUST_PID" ]; then
         kill $RUST_PID 2>/dev/null || true
     fi
-    pkill -f "python -m backend.app" 2>/dev/null || true
+    pkill -f "uvicorn app:app" 2>/dev/null || true
     pkill -f "target/release/requestrepo" 2>/dev/null || true
+    
+    
     sleep 2
 }
 
@@ -67,15 +76,20 @@ trap stop_servers EXIT
 DURATION=30s
 CONNECTIONS=(10 50 100 200)
 THREADS=4
-ENDPOINTS=(
+PYTHON_ENDPOINTS=(
     "http://localhost:8000/api/token"
     "http://localhost:8000/api/dns"
+)
+
+RUST_ENDPOINTS=(
+    "http://localhost:8001/api/token"
+    "http://localhost:8001/api/dns"
 )
 
 echo -e "${GREEN}Running Python FastAPI benchmarks...${NC}"
 start_python_server
 
-for endpoint in "${ENDPOINTS[@]}"; do
+for endpoint in "${PYTHON_ENDPOINTS[@]}"; do
     endpoint_name=$(echo $endpoint | awk -F/ '{print $NF}')
     echo -e "${YELLOW}Testing endpoint: $endpoint_name${NC}"
     
@@ -99,7 +113,7 @@ sleep 5
 echo -e "${GREEN}Running Rust implementation benchmarks...${NC}"
 start_rust_server
 
-for endpoint in "${ENDPOINTS[@]}"; do
+for endpoint in "${RUST_ENDPOINTS[@]}"; do
     endpoint_name=$(echo $endpoint | awk -F/ '{print $NF}')
     echo -e "${YELLOW}Testing endpoint: $endpoint_name${NC}"
     

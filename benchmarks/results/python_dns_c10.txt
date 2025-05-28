@@ -1,0 +1,9 @@
+Running 30s test @ http://localhost:8000/api/dns
+  4 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     4.43ms    0.98ms  14.07ms   61.19%
+    Req/Sec   452.80     80.81   727.00     76.08%
+  54139 requests in 30.03s, 8.67MB read
+  Non-2xx or 3xx responses: 54139
+Requests/sec:   1802.66
+Transfer/sec:    295.75KB
