@@ -6,28 +6,28 @@ export interface WebSocketSession {
 }
 
 export interface PingMessage {
-  cmd: 'ping';
+  cmd: "ping";
 }
 
 export interface PongMessage {
-  cmd: 'pong';
+  cmd: "pong";
 }
 
 export interface RegisterSessionsMessage {
-  cmd: 'register_sessions';
+  cmd: "register_sessions";
   sessions: WebSocketSession[];
 }
 
 export interface RequestMessage {
-  cmd: 'request';
+  cmd: "request";
   subdomain: string;
   request: Record<string, string | number | boolean | null>;
 }
 
-export type WebSocketMessage = 
-  | PingMessage 
-  | PongMessage 
-  | RegisterSessionsMessage 
+export type WebSocketMessage =
+  | PingMessage
+  | PongMessage
+  | RegisterSessionsMessage
   | RequestMessage;
 
 export interface WebSocketState {
@@ -117,17 +117,18 @@ export function useWebSocketService({
       }
 
       const currentSessions = sessionsRef.current;
-      
-      const sessionsChanged = 
-        sessions.length !== currentSessions.length || 
-        sessions.some((s, i) => 
-          s.token !== currentSessions[i]?.token || 
-          s.subdomain !== currentSessions[i]?.subdomain
+
+      const sessionsChanged =
+        sessions.length !== currentSessions.length ||
+        sessions.some(
+          (s, i) =>
+            s.token !== currentSessions[i]?.token ||
+            s.subdomain !== currentSessions[i]?.subdomain,
         );
-      
+
       if (sessionsChanged) {
         sessionsRef.current = sessions;
-        
+
         if (
           socketRef.current?.readyState === WebSocket.OPEN &&
           !hasRegisteredRef.current
@@ -367,13 +368,14 @@ export function useWebSocketService({
 
   useEffect(() => {
     const currentSessions = sessionsRef.current;
-    const sessionsChanged = 
-      sessions.length !== currentSessions.length || 
-      sessions.some((s, i) => 
-        s.token !== currentSessions[i]?.token || 
-        s.subdomain !== currentSessions[i]?.subdomain
+    const sessionsChanged =
+      sessions.length !== currentSessions.length ||
+      sessions.some(
+        (s, i) =>
+          s.token !== currentSessions[i]?.token ||
+          s.subdomain !== currentSessions[i]?.subdomain,
       );
-    
+
     if (sessionsChanged) {
       sessionsRef.current = sessions;
     }

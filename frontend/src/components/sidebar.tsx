@@ -3,7 +3,12 @@ import { RequestCard } from "./request-card";
 import { Checkbox } from "primereact/checkbox";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
-import { AppSession } from "../types/app-types";
+import {
+  AppSession,
+  HttpRequest,
+  DnsRequest,
+  Request,
+} from "../types/app-types";
 
 interface AppSidebarProps {
   user: AppSession | null;
@@ -166,20 +171,20 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
         ) {
           const req = ((session.requests &&
             session.requests[session.httpRequests[i]["_id"]]) ||
-            {}) as Record<string, string | boolean>;
+            {}) as HttpRequest;
 
           obj["title"] =
-            ((req["path"] as string) || "") +
-            (req["query"] ? (req["query"] as string) : "") +
-            (req["fragment"] ? (req["fragment"] as string) : "");
-          obj["method"] = req["method"] as string;
+            (req.path || "") +
+            (req.query ? req.query : "") +
+            (req.fragment ? req.fragment : "");
+          obj["method"] = req.method;
           obj["time"] = this.convertUTCDateToLocalDate(dateA).toLocaleString();
-          obj["detail"] = req["ip"] as string;
-          obj["country"] = req["country"] as string;
-          obj["id"] = req["_id"] as string;
+          obj["detail"] = req.ip;
+          obj["country"] = req.country || "";
+          obj["id"] = req._id;
           obj["key"] = obj["id"] as string;
           obj["type"] = "HTTP";
-          obj["new"] = req["new"] as boolean;
+          obj["new"] = req.new || false;
 
           requests.push(
             obj as {
@@ -198,17 +203,17 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
         } else {
           const req = ((session.requests &&
             session.requests[session.dnsRequests[j]["_id"]]) ||
-            {}) as Record<string, string | boolean>;
+            {}) as DnsRequest;
 
-          obj["title"] = req["name"] as string;
+          obj["title"] = req.query || "";
           obj["method"] = "DNS";
           obj["time"] = this.convertUTCDateToLocalDate(dateB).toLocaleString();
-          obj["detail"] = req["ip"] as string;
-          obj["country"] = req["country"] as string;
-          obj["id"] = req["_id"] as string;
+          obj["detail"] = req.ip || "";
+          obj["country"] = req.country || "";
+          obj["id"] = req._id;
           obj["key"] = obj["id"] as string;
           obj["type"] = "DNS";
-          obj["new"] = req["new"] as boolean;
+          obj["new"] = req.new || false;
 
           requests.push(
             obj as {
@@ -241,16 +246,19 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
     this.props.deleteAllRequests();
   }
 
-  hasValue(item: Record<string, unknown>, needle: string): boolean {
+  hasValue(
+    item: Request | Record<string, string | number | boolean | null | object>,
+    needle: string,
+  ): boolean {
     if (!needle) return true;
-    if (item["name"] !== undefined) {
+    if ("name" in item && item.name !== undefined) {
       if ("dns".indexOf(needle) >= 0) return true;
     } else {
       if ("http".indexOf(needle) >= 0) return true;
     }
     needle = needle.toLowerCase();
     for (const property in item) {
-      const val = item[property];
+      const val = item[property as keyof typeof item];
       if (property === "raw" && typeof val === "string") {
         const decodedVal = Utils.base64Decode(val).toString().toLowerCase();
         if (decodedVal.indexOf(needle) >= 0) return true;
@@ -301,8 +309,9 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
       function (this: AppSidebar, item: { id: string; type: string }) {
         return (
           hasValue(
-            (this.props.user?.requests && this.props.user.requests[item.id]) ||
-              {},
+            this.props.user?.requests && this.props.user.requests[item.id]
+              ? this.props.user.requests[item.id]
+              : {},
             searchValue,
           ) &&
           ((item.type === "DNS" && dns_filter) ||

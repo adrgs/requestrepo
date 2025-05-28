@@ -72,14 +72,20 @@ export interface AppState {
 }
 
 export interface ToastOptions {
-  position?: 'top-right' | 'top-center' | 'top-left' | 'bottom-right' | 'bottom-center' | 'bottom-left';
+  position?:
+    | "top-right"
+    | "top-center"
+    | "top-left"
+    | "bottom-right"
+    | "bottom-center"
+    | "bottom-left";
   autoClose?: number | false;
   hideProgressBar?: boolean;
   closeOnClick?: boolean;
   pauseOnHover?: boolean;
   draggable?: boolean;
   progress?: number;
-  theme?: 'light' | 'dark' | 'colored';
+  theme?: "light" | "dark" | "colored";
   className?: string;
   style?: React.CSSProperties;
 }

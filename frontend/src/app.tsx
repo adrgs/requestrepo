@@ -235,7 +235,9 @@ const App: React.FC = () => {
     : null;
 
   return (
-    <div className={`layout-wrapper layout-static ${appState.staticMenuInactive ? 'layout-static-sidebar-inactive' : ''} ${themeState}`}>
+    <div
+      className={`layout-wrapper layout-static ${appState.staticMenuInactive ? "layout-static-sidebar-inactive" : ""} ${themeState}`}
+    >
       <AppTopbar
         onToggleMenu={onToggleMenu}
         staticMenuInactive={appState.staticMenuInactive}

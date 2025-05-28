@@ -17,14 +17,17 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/ws2/, "/ws2"),
         onError: (err) => {
-          console.error("WebSocket proxy error:", err?.message || "Unknown error");
+          console.error(
+            "WebSocket proxy error:",
+            err?.message || "Unknown error",
+          );
         },
         headers: {
-          "Origin": "http://localhost:21337"
+          Origin: "http://localhost:21337",
         },
         onProxyReqWs: (proxyReq) => {
           console.log("WebSocket proxy request:", proxyReq.path);
-        }
+        },
       },
     },
     open: true,
