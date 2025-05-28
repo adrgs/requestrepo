@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "primereact/button";
 import { RecordInput } from "./record-input";
-import { Utils, DNSRecord } from "../utils";
+import { Utils } from "../utils";
 import { DnsRecord, AppSession } from "../types/app-types";
 import { toast } from "react-toastify";
 
@@ -51,7 +51,7 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
         }
 
         const res = await Utils.getDNSRecords(activeSession);
-        const convertedRecords = res.map((record: DNSRecord) => ({
+        const convertedRecords = res.map((record: any) => ({
           name: record.domain || "",
           type:
             typeof record.type === "string"
@@ -196,7 +196,7 @@ export const DnsSettingsPage: React.FC<DnsSettingsPageProps> = ({
       ttl: record.ttl,
       id: record.id,
       subdomain: activeSession || "",
-    })) as DNSRecord[];
+    })) as any[];
 
     const obj = {
       records: apiRecords,

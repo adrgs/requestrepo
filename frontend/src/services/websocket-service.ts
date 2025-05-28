@@ -47,11 +47,11 @@ export interface WebSocketServiceProps {
 }
 
 const MAX_RECONNECT_DELAY = 300000; // 5 minutes
-const HEARTBEAT_INTERVAL = 3600000; // 60 minutes (increased from 30 minutes)
-const PONG_TIMEOUT = 120000; // 2 minutes
-const MAX_RECONNECT_ATTEMPTS = 2; // Reduced from 3 to further limit connection attempts
-const DEBOUNCE_VISIBILITY_CHANGE = 30000; // 30 seconds (increased from 10 seconds)
-const CONNECTION_COOLDOWN = 60000; // 60 seconds cooldown between connection attempts (increased from 30 seconds)
+const HEARTBEAT_INTERVAL = 3600000; // 60 minutes
+const PONG_TIMEOUT = 180000; // 3 minutes
+const MAX_RECONNECT_ATTEMPTS = 1; // Limit to a single reconnect attempt to prevent connection spam
+const DEBOUNCE_VISIBILITY_CHANGE = 120000; // 2 minutes
+const CONNECTION_COOLDOWN = 300000; // 5 minutes cooldown between connection attempts
 
 export const useWebSocketService = ({
   url,

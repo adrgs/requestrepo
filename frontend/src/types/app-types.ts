@@ -108,14 +108,27 @@ export interface SessionData {
   unseenRequests: number;
 }
 
-export interface ApiResponse<T = Record<string, unknown>> {
+export interface ApiResponse<T = object> {
   success?: boolean;
   message?: string;
   data?: T;
 }
 
+export interface FileTreeData {
+  [filename: string]: string | FileTreeData;
+}
+
+export interface FileTreeNode {
+  key: string;
+  label: string;
+  data: string;
+  icon?: string;
+  children?: FileTreeNode[];
+  leaf?: boolean;
+}
+
 export interface FileResponse {
-  [filename: string]: string | { [key: string]: FileResponse };
+  [filename: string]: string | FileTreeData;
 }
 
 export interface DNSUpdateResponse {
