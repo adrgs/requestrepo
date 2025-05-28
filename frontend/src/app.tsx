@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Route, Routes, useLocation, useNavigate, Link } from "react-router-dom";
+import {
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  Link,
+} from "react-router-dom";
 import { AppTopbar } from "./components/topbar";
 import { AppSidebar } from "./components/sidebar";
 import { RequestsPage } from "./components/requests-page";
@@ -89,20 +95,20 @@ const App: React.FC = () => {
       try {
         console.log("Initializing sessions...");
         await initializeSessions();
-        
+
         const sessions = getWebSocketSessions();
         console.log("WebSocket sessions:", sessions);
-        
+
         if (sessions.length > 0) {
           registerSessions(sessions);
-          
+
           const activeSession = sessions[0]?.subdomain || "";
           if (activeSession) {
-            setAppState(prevState => ({
+            setAppState((prevState) => ({
               ...prevState,
               activeSession,
               sessions: Object.fromEntries(
-                sessions.map(session => [
+                sessions.map((session) => [
                   session.subdomain,
                   {
                     url: `${session.subdomain}.${Utils.siteUrl}`,
@@ -116,9 +122,9 @@ const App: React.FC = () => {
                     selectedRequest: null,
                     token: session.token,
                     dnsRecords: [],
-                  }
-                ])
-              )
+                  },
+                ]),
+              ),
             }));
           }
         }
@@ -126,7 +132,7 @@ const App: React.FC = () => {
         console.error("Failed to initialize sessions:", error);
       }
     };
-    
+
     initSessions();
   }, [initializeSessions, getWebSocketSessions, registerSessions]);
 
@@ -313,14 +319,39 @@ const App: React.FC = () => {
             <div className="layout-toolbar">
               <div className="toolbar-content">
                 <div className="toolbar-nav">
-                  <Link to="/" className={location.pathname === "/" ? "active" : ""}>
-                    <Button label="Requests" icon="pi pi-list" className="p-button-text" />
+                  <Link
+                    to="/"
+                    className={location.pathname === "/" ? "active" : ""}
+                  >
+                    <Button
+                      label="Requests"
+                      icon="pi pi-list"
+                      className="p-button-text"
+                    />
                   </Link>
-                  <Link to="/edit-response" className={location.pathname === "/edit-response" ? "active" : ""}>
-                    <Button label="Response" icon="pi pi-pencil" className="p-button-text" />
+                  <Link
+                    to="/edit-response"
+                    className={
+                      location.pathname === "/edit-response" ? "active" : ""
+                    }
+                  >
+                    <Button
+                      label="Response"
+                      icon="pi pi-pencil"
+                      className="p-button-text"
+                    />
                   </Link>
-                  <Link to="/dns-settings" className={location.pathname === "/dns-settings" ? "active" : ""}>
-                    <Button label="DNS" icon="pi pi-cog" className="p-button-text" />
+                  <Link
+                    to="/dns-settings"
+                    className={
+                      location.pathname === "/dns-settings" ? "active" : ""
+                    }
+                  >
+                    <Button
+                      label="DNS"
+                      icon="pi pi-cog"
+                      className="p-button-text"
+                    />
                   </Link>
                 </div>
               </div>

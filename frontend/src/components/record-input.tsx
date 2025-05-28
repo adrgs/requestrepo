@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+import React, { useState, useEffect } from "react";
 import { Dropdown } from "primereact/dropdown";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
@@ -19,149 +19,123 @@ interface RecordInputProps {
   ) => void;
 }
 
-interface RecordInputState {
-  type: number;
-  domain: string;
-  value: string;
-  index: number;
-}
+export const RecordInput: React.FC<RecordInputProps> = ({
+  type = 0,
+  domain = "",
+  value = "",
+  index = 0,
+  subdomain,
+  handleRecordInputChange,
+}) => {
+  const [recordType, setRecordType] = useState<number>(type);
+  const [recordDomain, setRecordDomain] = useState<string>(domain);
+  const [recordValue, setRecordValue] = useState<string>(value);
 
-export class RecordInput extends Component<RecordInputProps, RecordInputState> {
-  constructor(props: RecordInputProps) {
-    super(props);
-    this.state = {
-      type: this.props.type ?? 0,
-      domain: this.props.domain ?? "",
-      value: this.props.value ?? "",
-      index: this.props.index ?? 0,
-    };
-    this.changeEvent = this.changeEvent.bind(this);
-  }
+  useEffect(() => {
+    setRecordType(type);
+    setRecordDomain(domain);
+    setRecordValue(value);
+  }, [type, domain, value]);
 
-  changeEvent(
+  const changeEvent = (
     event:
       | React.ChangeEvent<HTMLInputElement>
       | { value: number }
       | React.MouseEvent<HTMLButtonElement>,
     action: string,
-  ): void {
+  ): void => {
     if (action === "domain") {
       if ("target" in event && "value" in event.target) {
-        const value = event.target.value || "";
-        this.props.handleRecordInputChange(
-          this.props.index,
-          value,
-          this.state.type,
-          this.state.value,
+        const newValue = event.target.value || "";
+        handleRecordInputChange(
+          index,
+          newValue,
+          recordType,
+          recordValue,
           false,
         );
-        this.setState({ domain: value });
+        setRecordDomain(newValue);
       }
     } else if (action === "type") {
       if ("value" in event) {
-        this.props.handleRecordInputChange(
-          this.props.index,
-          this.state.domain,
+        handleRecordInputChange(
+          index,
+          recordDomain,
           event.value,
-          this.state.value,
+          recordValue,
           false,
         );
-        this.setState({ type: event.value });
+        setRecordType(event.value);
       }
     } else if (action === "value") {
       if ("target" in event && "value" in event.target) {
-        const value = event.target.value || "";
-        this.props.handleRecordInputChange(
-          this.props.index,
-          this.state.domain,
-          this.state.type,
-          value,
+        const newValue = event.target.value || "";
+        handleRecordInputChange(
+          index,
+          recordDomain,
+          recordType,
+          newValue,
           false,
         );
-        this.setState({ value: value });
+        setRecordValue(newValue);
       }
     } else if (action === "delete") {
-      this.props.handleRecordInputChange(
-        this.props.index,
-        this.state.domain,
-        this.state.type,
-        this.state.value,
+      handleRecordInputChange(
+        index,
+        recordDomain,
+        recordType,
+        recordValue,
         true,
       );
     }
-  }
+  };
 
-  UNSAFE_componentWillReceiveProps(newProps: RecordInputProps): void {
-    this.setState({
-      domain: newProps.domain,
-      type: newProps.type,
-      value: newProps.value,
-      index: newProps.index,
-    });
-  }
+  const DNSRecordTypes = [
+    { label: "A", value: 0 },
+    { label: "AAAA", value: 1 },
+    { label: "CNAME", value: 2 },
+    { label: "TXT", value: 3 },
+  ];
 
-  shouldComponentUpdate(nextProps: RecordInputProps): boolean {
-    return (
-      this.state.domain !== nextProps.domain ||
-      this.state.type !== nextProps.type ||
-      this.state.value !== nextProps.value ||
-      this.state.index !== nextProps.index
-    );
-  }
-
-  render(): React.ReactNode {
-    const DNSRecordTypes = [
-      { label: "A", value: 0 },
-      { label: "AAAA", value: 1 },
-      { label: "CNAME", value: 2 },
-      { label: "TXT", value: 3 },
-    ];
-
-    return (
-      <div className="grid">
-        <div className="col-3">
-          <label>Record type: </label>
-          <Dropdown
-            value={this.state.type}
-            options={DNSRecordTypes}
-            onChange={(e) => {
-              this.changeEvent(e, "type");
-            }}
-            placeholder="Select a record type"
-          />
-        </div>
-        <div className="col">
-          <label>URL: </label>
-          <InputText
-            value={this.state.domain || ""}
-            onChange={(e) => {
-              if (e.target.value.length < 64) this.changeEvent(e, "domain");
-            }}
-          />
-          .
-          {typeof this.props.subdomain === "string" ? this.props.subdomain : ""}
-          .{Utils.domain}
-        </div>
-        <div className="col">
-          <label>Value: </label>
-          <InputText
-            style={{ maxWidth: "50%" }}
-            value={this.state.value || ""}
-            onChange={(e) => {
-              if (
-                e.target.value.length < 256 &&
-                /^[ -~]+$/.test(e.target.value)
-              )
-                this.changeEvent(e, "value");
-            }}
-          />
-          <Button
-            icon="pi pi-times"
-            className="p-button-danger p-button-rounded p-button-text p-button-icon"
-            onClick={(event) => this.changeEvent(event, "delete")}
-          />
-        </div>
+  return (
+    <div className="grid">
+      <div className="col-3">
+        <label>Record type: </label>
+        <Dropdown
+          value={recordType}
+          options={DNSRecordTypes}
+          onChange={(e) => {
+            changeEvent(e, "type");
+          }}
+          placeholder="Select a record type"
+        />
       </div>
-    );
-  }
-}
+      <div className="col">
+        <label>URL: </label>
+        <InputText
+          value={recordDomain || ""}
+          onChange={(e) => {
+            if (e.target.value.length < 64) changeEvent(e, "domain");
+          }}
+        />
+        .{typeof subdomain === "string" ? subdomain : ""}.{Utils.domain}
+      </div>
+      <div className="col">
+        <label>Value: </label>
+        <InputText
+          style={{ maxWidth: "50%" }}
+          value={recordValue || ""}
+          onChange={(e) => {
+            if (e.target.value.length < 256 && /^[ -~]+$/.test(e.target.value))
+              changeEvent(e, "value");
+          }}
+        />
+        <Button
+          icon="pi pi-times"
+          className="p-button-danger p-button-rounded p-button-text p-button-icon"
+          onClick={(event) => changeEvent(event, "delete")}
+        />
+      </div>
+    </div>
+  );
+};

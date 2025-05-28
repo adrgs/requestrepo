@@ -20,9 +20,72 @@ export function useSessionManager(
 
   const initializeSessions = useCallback(async () => {
     try {
+      console.log("Initializing sessions...");
       const allSessions = Utils.getAllSessions();
+      console.log("Found existing sessions:", allSessions);
+
       if (allSessions.length === 0) {
+        console.log("No sessions found, creating new session...");
         try {
+          const response = await fetch("/api/get_token");
+          const data = await response.json();
+
+          if (!data.token) {
+            throw new Error("Failed to get token from server");
+          }
+
+          let subdomain = data.subdomain;
+          let token = data.token;
+
+          if (!subdomain) {
+            const result = await Utils.getRandomSubdomain();
+            subdomain = result.subdomain;
+            token = result.token;
+          }
+
+          console.log("Created new session with token:", { subdomain, token });
+
+          const newSession: SessionData = {
+            subdomain,
+            token,
+            createdAt: new Date().toISOString(),
+            unseenRequests: 0,
+          };
+
+          Utils.sessions = [newSession];
+          Utils.selectedSessionIndex = 0;
+          Utils.saveSessionsToStorage();
+          Utils.subdomain = subdomain;
+
+          const newSessionData: AppSession = {
+            url: `${subdomain}.${Utils.siteUrl}`,
+            domain: Utils.siteUrl,
+            subdomain: subdomain,
+            httpRequests: [],
+            dnsRequests: [],
+            timestamp: null,
+            requests: {},
+            visited: {},
+            selectedRequest: null,
+            token: token,
+            dnsRecords: [],
+          };
+
+          setSessions({
+            [subdomain]: newSessionData,
+          });
+          setActiveSession(subdomain);
+
+          sessionStorage.setItem("activeSessionSubdomain", subdomain);
+
+          console.log("Created initial session:", subdomain);
+          return;
+        } catch (error) {
+          console.error("Failed to create initial session:", error);
+        }
+
+        try {
+          console.log("Using backup method to create session...");
           const { subdomain, token } = await Utils.getRandomSubdomain();
 
           const newSession: SessionData = {
@@ -37,29 +100,37 @@ export function useSessionManager(
           Utils.saveSessionsToStorage();
           Utils.subdomain = subdomain;
 
+          const newSessionData: AppSession = {
+            url: `${subdomain}.${Utils.siteUrl}`,
+            domain: Utils.siteUrl,
+            subdomain: subdomain,
+            httpRequests: [],
+            dnsRequests: [],
+            timestamp: null,
+            requests: {},
+            visited: {},
+            selectedRequest: null,
+            token: token,
+            dnsRecords: [],
+          };
+
           setSessions({
-            [subdomain]: {
-              url: `${subdomain}.${Utils.siteUrl}`,
-              domain: Utils.siteUrl,
-              subdomain: subdomain,
-              httpRequests: [],
-              dnsRequests: [],
-              timestamp: null,
-              requests: {},
-              visited: {},
-              selectedRequest: null,
-              token: token,
-            },
+            [subdomain]: newSessionData,
           });
           setActiveSession(subdomain);
-          
+
           sessionStorage.setItem("activeSessionSubdomain", subdomain);
-          
-          console.log("Created initial session:", subdomain);
-        } catch (error) {
-          console.error("Failed to create initial session:", error);
+
+          console.log("Created initial session (backup method):", subdomain);
+        } catch (backupError) {
+          console.error(
+            "Failed to create initial session with backup method:",
+            backupError,
+          );
+          throw backupError; // Re-throw to be caught by outer catch
         }
       } else {
+        console.log("Using existing sessions:", allSessions);
         const sessionsMap: Record<string, AppSession> = {};
         allSessions.forEach((session) => {
           sessionsMap[session.subdomain] = {
@@ -73,6 +144,7 @@ export function useSessionManager(
             visited: {},
             selectedRequest: null,
             token: session.token,
+            dnsRecords: [],
           };
         });
 
@@ -86,38 +158,42 @@ export function useSessionManager(
           : allSessions[0].subdomain;
 
         Utils.subdomain = finalActiveSession;
-        
+
         setSessions(sessionsMap);
         setActiveSession(finalActiveSession);
-        
+
         sessionStorage.setItem("activeSessionSubdomain", finalActiveSession);
-        
+
         console.log("Loaded existing sessions, active:", finalActiveSession);
       }
     } catch (error) {
       console.error("Error in initializeSessions:", error);
-      
+
       try {
+        console.log("Creating fallback session after error...");
         const { subdomain, token } = await Utils.getRandomSubdomain();
         Utils.addSession(subdomain, token);
-        
+
+        const fallbackSession: AppSession = {
+          url: `${subdomain}.${Utils.siteUrl}`,
+          domain: Utils.siteUrl,
+          subdomain: subdomain,
+          httpRequests: [],
+          dnsRequests: [],
+          timestamp: null,
+          requests: {},
+          visited: {},
+          selectedRequest: null,
+          token: token,
+          dnsRecords: [],
+        };
+
         setSessions({
-          [subdomain]: {
-            url: `${subdomain}.${Utils.siteUrl}`,
-            domain: Utils.siteUrl,
-            subdomain: subdomain,
-            httpRequests: [],
-            dnsRequests: [],
-            timestamp: null,
-            requests: {},
-            visited: {},
-            selectedRequest: null,
-            token: token,
-          },
+          [subdomain]: fallbackSession,
         });
         setActiveSession(subdomain);
         sessionStorage.setItem("activeSessionSubdomain", subdomain);
-        
+
         console.log("Created fallback session:", subdomain);
       } catch (fallbackError) {
         console.error("Failed to create fallback session:", fallbackError);
@@ -131,7 +207,7 @@ export function useSessionManager(
 
       Utils.addSession(subdomain, token);
       Utils.subdomain = subdomain;
-      
+
       sessionStorage.setItem("activeSessionSubdomain", subdomain);
 
       setSessions((prevSessions) => {

@@ -76,15 +76,17 @@
 
 @media (max-width: 768px) {
   .layout-main {
-    padding: 16px 16px 16px 16px;
+    padding: 8px;
+    margin-left: 0 !important;
+  }
+
+  .layout-main-content {
+    margin-left: 0 !important;
+    padding: 8px;
   }
 
   .requests-box {
     max-height: 350px !important;
-  }
-
-  .requests-box {
-    max-height: 200px;
   }
 
   .layout-wrapper {
@@ -99,9 +101,10 @@
 
     .layout-sidebar {
       position: static;
-      padding-top: 50px;
+      padding-top: 42px;
       width: 100%;
       min-height: 400px;
+      margin-left: 0 !important;
     }
 
     .layout-mask {

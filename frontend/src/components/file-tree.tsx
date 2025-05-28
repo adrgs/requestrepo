@@ -54,7 +54,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         setEditMode("");
         setEditingNode(null);
         setEditingText("");
-        cm.current?.hide(e as unknown as React.SyntheticEvent);
+        cm.current?.hide(e as React.SyntheticEvent);
       }
     };
 
@@ -113,7 +113,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
     delete current[lastPart];
 
     onUpdate(newFiles);
-    toast.success("File deleted successfully", Utils.toastOptions as ToastOptions);
+    toast.success(
+      "File deleted successfully",
+      Utils.toastOptions as ToastOptions,
+    );
   };
 
   const handleRename = (node: TreeNode): void => {

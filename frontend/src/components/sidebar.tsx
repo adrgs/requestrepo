@@ -276,7 +276,10 @@ export class AppSidebar extends Component<AppSidebarProps, AppSidebarState> {
       }
 
       if (typeof val === "object" && val !== null) {
-        const objVal = val as Record<string, string | number | boolean>;
+        const objVal = val as Record<
+          string,
+          string | number | boolean | null | object
+        >;
         for (const prop in objVal) {
           if (Object.prototype.hasOwnProperty.call(objVal, prop)) {
             const propValue = objVal[prop];

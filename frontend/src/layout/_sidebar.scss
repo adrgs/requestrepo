@@ -21,9 +21,8 @@ body.dark {
   -moz-user-select: none;
   -webkit-user-select: none;
   @include transition(left $transitionDuration);
-  border-right: 1px solid var(--sidebar-border-color);
-  border-bottom: 1px solid var(--sidebar-border-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: none; /* Remove borders for modern Linear.app style */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); /* Subtle shadow instead of border */
   top: 42px; /* Match the reduced topbar height */
 
   .layout-logo {
