@@ -195,7 +195,7 @@ impl Cache {
         self.tx.subscribe()
     }
 
-    fn cleanup_expired(&self) {
+    pub fn cleanup_expired(&self) {
         if let Ok(mut store) = self.kv_store.write() {
             let now = Instant::now();
             store.retain(|_, entry| entry.expires_at > now);

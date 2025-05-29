@@ -98,7 +98,10 @@ mod tests {
         let port = 5354;
         
         // Set up a test record in the cache
-        let _ = cache.set("dns:A:test.abcdefgh.example.com.", "5.6.7.8").await;
+        let domain = "test.abcdefgh.example.com.";
+        let _ = cache.set(&format!("dns:A:{}", domain), "5.6.7.8").await;
+        
+        std::env::set_var("DOMAIN", "example.com");
         
         // Create a custom server that binds to the test port directly
         let server_cache = cache.clone();

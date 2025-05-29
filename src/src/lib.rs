@@ -8,6 +8,9 @@ mod smtp;
 mod tcp;
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::broadcast;

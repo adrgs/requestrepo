@@ -1,4 +1,3 @@
-
 use axum::{
     body::Body,
     extract::{Path, Query, State},
@@ -17,16 +16,18 @@ use uuid::Uuid;
 
 use crate::http::AppState;
 use crate::ip2country::lookup_country;
-use crate::models::{DnsRecords, FileTree, HttpRequestLog, Response as ResponseModel};
+use crate::models::{CacheMessage, DnsRecords, FileTree, HttpRequestLog, Response as ResponseModel};
 use crate::utils::{
     generate_jwt, generate_request_id, get_current_timestamp, get_random_subdomain,
     get_subdomain_from_hostname, get_subdomain_from_path, verify_jwt, write_basic_file,
 };
 use crate::utils::config::CONFIG;
 
+pub mod tcp;
+
 #[derive(Debug, Deserialize)]
 pub struct TokenQuery {
-    token: String,
+    pub token: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,18 +100,16 @@ pub async fn update_dns(
             .or_default()
             .push(value.clone());
         
-        final_records.push(json!({
-            "domain": new_domain,
-            "type": record_type,
-            "value": value
-        }));
+        final_records.push(HashMap::from([
+            ("type".to_string(), record_type),
+            ("domain".to_string(), new_domain),
+            ("value".to_string(), value),
+        ]));
     }
 
-    if !final_records.is_empty() {
-        let _ = state.cache.set(&format!("dns:{}", subdomain), &serde_json::to_string(&final_records).unwrap()).await;
-    }
+    let _ = state.cache.set(&format!("dns:{}", subdomain), &serde_json::to_string(&final_records).unwrap()).await;
 
-    (StatusCode::OK, Json(json!({"msg": "Updated DNS records"}))).into_response()
+    (StatusCode::OK, Json(json!({"msg": "DNS updated"}))).into_response()
 }
 
 pub async fn get_dns(
@@ -137,6 +136,7 @@ pub async fn get_dns(
 pub async fn get_file(
     State(state): State<AppState>,
     Query(params): Query<TokenQuery>,
+    path: Path<String>,
 ) -> impl IntoResponse {
     let subdomain = match verify_jwt(&params.token) {
         Some(subdomain) => subdomain,
@@ -145,46 +145,35 @@ pub async fn get_file(
         }
     };
 
-    let file = match state.cache.get(&format!("file:{}", subdomain)).await {
+    let file = match state.cache.get(&format!("file:{}:{}", subdomain, path.as_str())).await {
         Ok(Some(file)) => file,
-        _ => "".to_string(),
+        _ => "{}".to_string(),
     };
 
-    (StatusCode::OK, file).into_response()
+    let file: Value = serde_json::from_str(&file).unwrap_or(json!({}));
+
+    (StatusCode::OK, Json(file)).into_response()
 }
 
 pub async fn get_request(
     State(state): State<AppState>,
     Query(params): Query<RequestQuery>,
 ) -> impl IntoResponse {
-    if Uuid::parse_str(&params.id).is_err() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"detail": "Invalid request ID"})),
-        )
-            .into_response();
+    let request_id = params.id;
+    let subdomain = params.subdomain;
+
+    if !verify_jwt(&subdomain).is_some() {
+        return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
     }
 
-    let index = match state.cache.get(&format!("request:{}:{}", params.subdomain, params.id)).await {
-        Ok(Some(index)) => index,
-        _ => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"detail": "Request not found"})),
-            )
-                .into_response();
-        }
+    let index = match state.cache.get(&format!("request:{}:{}", subdomain, request_id)).await {
+        Ok(Some(index)) => index.parse::<i64>().unwrap_or(0),
+        _ => 0,
     };
 
-    let request = match state.cache.lrange(&format!("requests:{}", params.subdomain), index.parse::<isize>().unwrap_or(0), index.parse::<isize>().unwrap_or(0)).await {
+    let request = match state.cache.lrange(&format!("requests:{}", subdomain), index as isize, index as isize).await {
         Ok(requests) if !requests.is_empty() => requests[0].clone(),
-        _ => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"detail": "Request not found"})),
-            )
-                .into_response();
-        }
+        _ => "{}".to_string(),
     };
 
     let request: Value = serde_json::from_str(&request).unwrap_or(json!({}));
@@ -194,50 +183,32 @@ pub async fn get_request(
 
 pub async fn delete_request(
     State(state): State<AppState>,
-    Query(params): Query<TokenQuery>,
-    Json(request): Json<Value>,
+    Query(params): Query<RequestQuery>,
 ) -> impl IntoResponse {
-    let subdomain = match verify_jwt(&params.token) {
-        Some(subdomain) => subdomain,
-        None => {
-            return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
-        }
-    };
+    let request_id = params.id;
+    let subdomain = params.subdomain;
 
-    let request_id = match request.get("id").and_then(|id| id.as_str()) {
-        Some(id) => id,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"detail": "Missing request ID"})),
-            )
-                .into_response();
-        }
-    };
+    if !verify_jwt(&subdomain).is_some() {
+        return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
+    }
 
     let index = match state.cache.get(&format!("request:{}:{}", subdomain, request_id)).await {
-        Ok(Some(index)) => index.parse::<isize>().unwrap_or(0),
-        _ => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"detail": "Request not found"})),
-            )
-                .into_response();
-        }
+        Ok(Some(index)) => index.parse::<i64>().unwrap_or(0),
+        _ => 0,
     };
 
-    let _ = state.cache.lset(&format!("requests:{}", subdomain), index, "{}").await;
+    let _ = state.cache.lset(&format!("requests:{}", subdomain), index as isize, "{}").await;
     let _ = state.cache.delete(&format!("request:{}:{}", subdomain, request_id)).await;
 
-    let message = crate::models::CacheMessage {
+    let message = CacheMessage {
         cmd: "delete_request".to_string(),
         subdomain: subdomain.clone(),
-        data: request_id.to_string(),
+        data: request_id,
     };
-    
+
     let _ = state.tx.send(message);
 
-    (StatusCode::OK, Json(json!({"msg": "Deleted request"}))).into_response()
+    (StatusCode::OK, Json(json!({"msg": "Request deleted"}))).into_response()
 }
 
 pub async fn delete_all(
@@ -253,30 +224,31 @@ pub async fn delete_all(
 
     let keys = match state.cache.keys(&format!("request:{}:*", subdomain)).await {
         Ok(keys) => keys,
-        _ => Vec::new(),
+        Err(_) => Vec::new(),
     };
 
-    for key in keys {
-        let _ = state.cache.delete(&key).await;
+    for key in &keys {
+        let _ = state.cache.delete(key).await;
     }
 
     let _ = state.cache.delete(&format!("requests:{}", subdomain)).await;
 
-    let message = crate::models::CacheMessage {
+    let message = CacheMessage {
         cmd: "delete_all".to_string(),
         subdomain: subdomain.clone(),
         data: "".to_string(),
     };
-    
+
     let _ = state.tx.send(message);
 
-    (StatusCode::OK, Json(json!({"msg": "Deleted all requests"}))).into_response()
+    (StatusCode::OK, Json(json!({"msg": "All requests deleted"}))).into_response()
 }
 
 pub async fn update_file(
     State(state): State<AppState>,
     Query(params): Query<TokenQuery>,
-    Json(file): Json<Value>,
+    path: Path<String>,
+    Json(file): Json<ResponseModel>,
 ) -> impl IntoResponse {
     let subdomain = match verify_jwt(&params.token) {
         Some(subdomain) => subdomain,
@@ -285,16 +257,22 @@ pub async fn update_file(
         }
     };
 
-    let _ = state.cache.set(&format!("file:{}", subdomain), &serde_json::to_string(&file).unwrap()).await;
+    let _ = state.cache.set(&format!("file:{}:{}", subdomain, path.as_str()), &serde_json::to_string(&file).unwrap()).await;
 
-    (StatusCode::OK, Json(json!({"msg": "Updated file"}))).into_response()
+    (StatusCode::OK, Json(json!({"msg": "File updated"}))).into_response()
 }
 
 pub async fn get_token(
     State(state): State<AppState>,
     Json(request): Json<Value>,
 ) -> impl IntoResponse {
-    let subdomain = get_random_subdomain();
+    let subdomain = match request.get("subdomain") {
+        Some(subdomain) => match subdomain.as_str() {
+            Some(subdomain) => subdomain.to_string(),
+            None => get_random_subdomain(),
+        },
+        None => get_random_subdomain(),
+    };
 
     let token = match generate_jwt(&subdomain) {
         Ok(token) => token,

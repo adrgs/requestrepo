@@ -78,6 +78,15 @@ pub fn get_subdomain_from_hostname(host: &str) -> Option<String> {
     let host = host.to_lowercase();
     let domain = &CONFIG.server_domain;
     
+    let parts: Vec<&str> = host.split('.').collect();
+    if parts.len() >= 3 {
+        let potential_subdomain = parts[parts.len() - 3];
+        if potential_subdomain.len() == CONFIG.subdomain_length && 
+           potential_subdomain.chars().all(|c| CONFIG.subdomain_alphabet_set.contains(&c)) {
+            return Some(potential_subdomain.to_string());
+        }
+    }
+    
     let r_index = host.rfind(domain)?;
     if r_index < CONFIG.subdomain_length + 1 {
         return None;
