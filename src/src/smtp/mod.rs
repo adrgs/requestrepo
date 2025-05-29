@@ -204,8 +204,6 @@ async fn handle_smtp_connection(
             }
         }
         
-        current_command = line_trimmed.to_string();
-        
         line.clear();
     }
     
