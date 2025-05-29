@@ -93,12 +93,17 @@ impl Server {
         let addr = SocketAddr::from(([0, 0, 0, 0], CONFIG.http_port));
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         
-        axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<SocketAddr>()
-        )
-        .await
-        .map_err(|e| anyhow!("HTTP server error: {}", e))?;
+        let service = app.into_make_service_with_connect_info::<SocketAddr>();
+        
+        hyper_util::server::Builder::new(hyper_util::rt::TokioExecutor::new())
+            .http1()
+            .preserve_header_case(true)
+            .serve_with_incoming(
+                hyper_util::rt::TokioIo::new(listener.into_std().unwrap()),
+                service,
+            )
+            .await
+            .map_err(|e| anyhow!("HTTP server error: {}", e))?;
 
         Ok(())
     }

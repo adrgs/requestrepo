@@ -34,7 +34,7 @@ pub struct TokenQuery {
 #[derive(Debug, Deserialize)]
 pub struct RequestQuery {
     id: String,
-    subdomain: String,
+    token: String,
 }
 
 pub async fn update_dns(
@@ -162,11 +162,13 @@ pub async fn get_request(
     Query(params): Query<RequestQuery>,
 ) -> impl IntoResponse {
     let request_id = params.id;
-    let subdomain = params.subdomain;
-
-    if !verify_jwt(&subdomain).is_some() {
-        return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
-    }
+    
+    let subdomain = match verify_jwt(&params.token) {
+        Some(subdomain) => subdomain,
+        None => {
+            return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
+        }
+    };
 
     let index = match state.cache.get(&format!("request:{}:{}", subdomain, request_id)).await {
         Ok(Some(index)) => index.parse::<i64>().unwrap_or(0),
@@ -188,11 +190,13 @@ pub async fn delete_request(
     Query(params): Query<RequestQuery>,
 ) -> impl IntoResponse {
     let request_id = params.id;
-    let subdomain = params.subdomain;
-
-    if !verify_jwt(&subdomain).is_some() {
-        return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
-    }
+    
+    let subdomain = match verify_jwt(&params.token) {
+        Some(subdomain) => subdomain,
+        None => {
+            return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
+        }
+    };
 
     let index = match state.cache.get(&format!("request:{}:{}", subdomain, request_id)).await {
         Ok(Some(index)) => index.parse::<i64>().unwrap_or(0),
@@ -430,13 +434,12 @@ pub async fn catch_all(
             uid: subdomain.clone(),
             method: method.to_string(),
             path: path.to_string(),
-            headers: headers
+            headers: CasePreservingHeaders(headers
                 .iter()
                 .map(|(k, v)| {
-                    let header_name = k.as_str().to_lowercase();
-                    (header_name, v.to_str().unwrap_or("").to_string())
+                    (k.as_str().to_string(), v.to_str().unwrap_or("").to_string())
                 })
-                .collect(),
+                .collect()),
             date: get_current_timestamp(),
             ip: Some(client_ip),
             country,
