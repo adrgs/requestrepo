@@ -25,6 +25,7 @@ pub async fn websocket_handler_v2(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
+    info!("WebSocket v2 connection request received");
     ws.on_upgrade(|socket| handle_socket_v2(socket, state))
 }
 
@@ -138,6 +139,8 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
     let mut rx = state.tx.subscribe();
     let sender_clone = sender.clone();
 
+    info!("WebSocket v2 connection established");
+
     let send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             let subdomain = msg.subdomain.clone();
@@ -147,9 +150,17 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
             };
 
             if is_subscribed {
+                let data_value = match serde_json::from_str::<Value>(&msg.data) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        error!("Error parsing message data: {}", e);
+                        Value::String(msg.data.clone())
+                    }
+                };
+
                 let ws_msg = json!({
                     "cmd": msg.cmd,
-                    "data": serde_json::from_str::<Value>(&msg.data).unwrap_or(Value::Null),
+                    "data": data_value,
                     "subdomain": subdomain
                 });
 
@@ -165,12 +176,16 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             Message::Text(text) => {
+                info!("WebSocket v2 received message: {}", text);
                 if let Ok(json) = serde_json::from_str::<Value>(&text) {
                     if let Some(cmd) = json.get("cmd").and_then(|c| c.as_str()) {
+                        info!("WebSocket v2 command: {}", cmd);
                         match cmd {
                             "connect" => {
                                 if let Some(token) = json.get("token").and_then(|t| t.as_str()) {
+                                    info!("WebSocket v2 connect with token: {}", token);
                                     if let Some(subdomain) = verify_jwt(token) {
+                                        info!("WebSocket v2 verified subdomain: {}", subdomain);
                                         {
                                             let mut sessions = sessions_clone.lock().unwrap();
                                             sessions.insert(subdomain.clone());
@@ -213,6 +228,7 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                             }
                                         }
                                     } else {
+                                        error!("WebSocket v2 invalid token: {}", token);
                                         let response = json!({
                                             "cmd": "invalid_token",
                                             "token": token
@@ -226,6 +242,59 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                             }
                                         }
                                     }
+                                }
+                            }
+                            "register_sessions" => {
+                                if let Some(sessions_array) = json.get("sessions").and_then(|s| s.as_array()) {
+                                    for session in sessions_array {
+                                        if let (Some(token), Some(subdomain)) = (
+                                            session.get("token").and_then(|t| t.as_str()),
+                                            session.get("subdomain").and_then(|s| s.as_str())
+                                        ) {
+                                            if let Some(verified_subdomain) = verify_jwt(token) {
+                                                if verified_subdomain == subdomain {
+                                                    {
+                                                        let mut sessions = sessions_clone.lock().unwrap();
+                                                        sessions.insert(subdomain.to_string());
+                                                    }
+                                                    
+                                                    // Send historical requests for this subdomain
+                                                    if let Ok(requests) = state.cache.lrange(&format!("requests:{}", subdomain), 0, -1).await {
+                                                        let requests: Vec<Value> = requests
+                                                            .into_iter()
+                                                            .filter(|r| r != "{}")
+                                                            .filter_map(|r| serde_json::from_str::<Value>(&r).ok())
+                                                            .collect();
+                                                        
+                                                        if !requests.is_empty() {
+                                                            let response = json!({
+                                                                "cmd": "requests",
+                                                                "data": requests,
+                                                                "subdomain": subdomain
+                                                            });
+                                                            
+                                                            let mut sender_lock = sender.lock().await;
+                                                            if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                                                error!("Error sending WebSocket message: {}", e);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            "ping" => {
+                                let response = json!({
+                                    "cmd": "pong"
+                                });
+                                
+                                let mut sender_lock = sender.lock().await;
+                                if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                    error!("Error sending pong message: {}", e);
+                                    break;
                                 }
                             }
                             "disconnect" => {

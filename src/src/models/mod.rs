@@ -59,8 +59,57 @@ pub struct TcpRequestLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnsRecord {
     pub domain: String,
+    #[serde(rename = "type")]
+    #[serde(deserialize_with = "deserialize_dns_record_type")]
     pub r#type: String,
     pub value: String,
+}
+
+fn deserialize_dns_record_type<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{Error, Visitor};
+    use std::fmt;
+    
+    struct DnsRecordTypeVisitor;
+    
+    impl<'de> Visitor<'de> for DnsRecordTypeVisitor {
+        type Value = String;
+        
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or an integer representing DNS record type")
+        }
+        
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(value.to_string())
+        }
+        
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(value)
+        }
+        
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            let dns_record_types = ["A", "AAAA", "CNAME", "TXT"];
+            
+            if value as usize >= dns_record_types.len() {
+                return Err(Error::custom(format!("Invalid DNS record type index: {}", value)));
+            }
+            
+            Ok(dns_record_types[value as usize].to_string())
+        }
+    }
+    
+    deserializer.deserialize_any(DnsRecordTypeVisitor)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

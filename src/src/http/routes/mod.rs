@@ -51,10 +51,11 @@ pub async fn update_dns(
     let dns_record_types = ["A", "AAAA", "CNAME", "TXT"];
     
     for record in &records.records {
-        if !dns_record_types.contains(&record.r#type.as_str()) {
+        let record_type = &record.r#type;
+        if !dns_record_types.contains(&record_type.as_str()) {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"detail": format!("Invalid record type '{}'", record.r#type)})),
+                Json(json!({"detail": format!("Invalid record type '{}'", record_type)})),
             )
                 .into_response();
         }
@@ -90,18 +91,18 @@ pub async fn update_dns(
             CONFIG.server_domain
         );
         
-        let record_type = record.r#type.clone();
+        let record_type_str = &record.r#type;
         let value = record.value.clone();
         
-        let _ = state.cache.set(&format!("dns:{}:{}", record_type, new_domain), &value).await;
+        let _ = state.cache.set(&format!("dns:{}:{}", record_type_str, new_domain), &value).await;
         
         values
-            .entry(format!("{}:{}", record_type, new_domain))
+            .entry(format!("{}:{}", record_type_str, new_domain))
             .or_default()
             .push(value.clone());
         
         final_records.push(HashMap::from([
-            ("type".to_string(), record_type),
+            ("type".to_string(), record_type_str.to_string()),
             ("domain".to_string(), new_domain),
             ("value".to_string(), value),
         ]));
