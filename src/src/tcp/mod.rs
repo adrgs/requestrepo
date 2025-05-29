@@ -55,7 +55,7 @@ impl Server {
                     if message.cmd == "allocate_tcp_port" {
                         let subdomain = message.subdomain;
                         
-                        if let Ok(port) = self.allocate_port(&subdomain) {
+                        if let Ok(port) = self.allocate_port(&subdomain).await {
                             self.start_port_listener(port, subdomain.clone()).await?;
                             
                             let response = CacheMessage {
@@ -69,7 +69,9 @@ impl Server {
                     } else if message.cmd == "release_tcp_port" {
                         let subdomain = message.subdomain;
                         
-                        self.release_port(&subdomain);
+                        if let Err(e) = self.release_port(&subdomain).await {
+                            error!("Failed to release port for subdomain {}: {}", subdomain, e);
+                        }
                     }
                 }
                 Err(e) => {
@@ -79,7 +81,7 @@ impl Server {
         }
     }
 
-    fn allocate_port(&self, subdomain: &str) -> Result<u16> {
+    pub async fn allocate_port(&self, subdomain: &str) -> Result<u16> {
         let mut allocations = self.port_allocations.write().map_err(|_| anyhow!("Failed to acquire write lock"))?;
         let mut allocated = self.allocated_ports.write().map_err(|_| anyhow!("Failed to acquire write lock"))?;
         
@@ -104,7 +106,7 @@ impl Server {
         Err(anyhow!("No available ports"))
     }
 
-    fn release_port(&self, subdomain: &str) {
+    pub async fn release_port(&self, subdomain: &str) -> Result<()> {
         if let Ok(mut allocations) = self.port_allocations.write() {
             if let Some(port) = allocations.remove(subdomain) {
                 if let Ok(mut allocated) = self.allocated_ports.write() {
@@ -113,6 +115,18 @@ impl Server {
                 }
             }
         }
+        Ok(())
+    }
+    
+    pub async fn get_subdomain_for_port(&self, port: u16) -> Option<String> {
+        if let Ok(allocations) = self.port_allocations.read() {
+            for (subdomain, allocated_port) in allocations.iter() {
+                if *allocated_port == port {
+                    return Some(subdomain.clone());
+                }
+            }
+        }
+        None
     }
 
     async fn start_port_listener(&self, port: u16, subdomain: String) -> Result<()> {
@@ -121,7 +135,9 @@ impl Server {
             Err(e) => {
                 error!("Failed to bind to port {}: {}", port, e);
                 
-                self.release_port(&subdomain);
+                if let Err(e) = self.release_port(&subdomain).await {
+                    error!("Failed to release port for subdomain {}: {}", subdomain, e);
+                }
                 
                 return Err(anyhow!("Failed to bind to port {}: {}", port, e));
             }

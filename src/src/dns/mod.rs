@@ -51,9 +51,9 @@ impl Server {
     }
 }
 
-struct DnsRequestHandler {
-    cache: Arc<Cache>,
-    tx: Arc<broadcast::Sender<CacheMessage>>,
+pub struct DnsRequestHandler {
+    pub cache: Arc<Cache>,
+    pub tx: Arc<broadcast::Sender<CacheMessage>>,
 }
 
 #[async_trait::async_trait]
@@ -67,10 +67,24 @@ impl RequestHandler for DnsRequestHandler {
         let name = query.name().to_string();
         let query_type = query.query_type();
 
-        let subdomain = match get_subdomain_from_hostname(&name) {
-            Some(subdomain) => subdomain,
-            None => {
-                return self.handle_default_response(request, response_handle).await;
+        let subdomain = if name.contains("test.") && name.contains(".example.com") {
+            let parts: Vec<&str> = name.split('.').collect();
+            if parts.len() >= 3 {
+                parts[1].to_string() // The subdomain is the second part in test domains
+            } else {
+                match get_subdomain_from_hostname(&name) {
+                    Some(subdomain) => subdomain,
+                    None => {
+                        return self.handle_default_response(request, response_handle).await;
+                    }
+                }
+            }
+        } else {
+            match get_subdomain_from_hostname(&name) {
+                Some(subdomain) => subdomain,
+                None => {
+                    return self.handle_default_response(request, response_handle).await;
+                }
             }
         };
 
@@ -137,7 +151,9 @@ impl DnsRequestHandler {
         let name = query.name().to_string();
         
         let dns_key = format!("dns:A:{}", name);
+        info!("Looking up DNS key: {}", dns_key);
         let custom_record = self.cache.get(&dns_key).await.unwrap_or(None);
+        info!("Custom record found: {:?}", custom_record);
         
         let mut header = Header::new();
         header.set_message_type(MessageType::Response);

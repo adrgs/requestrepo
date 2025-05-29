@@ -108,7 +108,6 @@ async fn handle_smtp_connection(
     
     let mut line = String::new();
     
-    let mut current_command = String::new();
     let mut data_mode = false;
     let mut email_data = String::new();
     
