@@ -11,6 +11,8 @@ use axum::{
     routing::{get, post, delete},
     Router,
 };
+use hyper::server::conn::http1;
+use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -55,8 +57,9 @@ impl Server {
                 Method::OPTIONS,
             ])
             .allow_headers(Any);
-
+            
         let app = Router::new()
+            .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 10))
             .route("/api/get_token", post(routes::get_token))
             .route("/api/update_dns", post(routes::update_dns))
             .route("/api/get_dns", get(routes::get_dns))
@@ -67,7 +70,7 @@ impl Server {
             .route("/api/request", get(routes::get_request))
             .route("/api/request", delete(routes::delete_request))
             .route("/api/delete_request", post(routes::delete_request))
-            .route("/api/requests", delete(routes::delete_all))
+            .route("/api/requests", get(routes::get_requests).delete(routes::delete_all))
             .route("/api/delete_all", post(routes::delete_all))
             .route("/api/tcp/port", post(routes::tcp::request_tcp_port))
             .route("/api/tcp/response", post(routes::tcp::set_tcp_response))
@@ -89,9 +92,13 @@ impl Server {
 
         let addr = SocketAddr::from(([0, 0, 0, 0], CONFIG.http_port));
         let listener = tokio::net::TcpListener::bind(&addr).await?;
-        axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-            .await
-            .map_err(|e| anyhow!("HTTP server error: {}", e))?;
+        
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>()
+        )
+        .await
+        .map_err(|e| anyhow!("HTTP server error: {}", e))?;
 
         Ok(())
     }

@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::http::AppState;
 use crate::ip2country::lookup_country;
-use crate::models::{CacheMessage, DnsRecords, FileTree, HttpRequestLog, Response as ResponseModel};
+use crate::models::{CacheMessage, CasePreservingHeaders, DnsRecords, FileTree, HttpRequestLog, Response as ResponseModel};
 use crate::utils::{
     generate_jwt, generate_request_id, get_current_timestamp, get_random_subdomain,
     get_subdomain_from_hostname, get_subdomain_from_path, verify_jwt, write_basic_file,
@@ -301,6 +301,32 @@ pub async fn get_token(
         .into_response()
 }
 
+pub async fn get_requests(
+    State(state): State<AppState>,
+    Query(params): Query<TokenQuery>,
+) -> impl IntoResponse {
+    let subdomain = match verify_jwt(&params.token) {
+        Some(subdomain) => subdomain,
+        None => {
+            return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
+        }
+    };
+
+    let requests = match state.cache.lrange(&format!("requests:{}", subdomain), 0, -1).await {
+        Ok(requests) => {
+            let requests: Vec<Value> = requests
+                .into_iter()
+                .filter(|r| r != "{}")
+                .filter_map(|r| serde_json::from_str::<Value>(&r).ok())
+                .collect();
+            requests
+        },
+        _ => Vec::new(),
+    };
+
+    (StatusCode::OK, Json(requests)).into_response()
+}
+
 pub async fn get_files(
     State(state): State<AppState>,
     Query(params): Query<TokenQuery>,
@@ -373,20 +399,25 @@ pub async fn catch_all(
             (addr.ip().to_string(), addr.port() as i32)
         };
         
-        let scheme = uri.scheme_str().unwrap_or("http").to_uppercase();
-        let version = headers.get("version")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("1.1");
-        let protocol = format!("{}/{}", scheme, version);
+        let http_version = "1.1"; // Default since Axum doesn't expose this easily
+        let scheme = if uri.scheme_str() == Some("https") || headers.get("x-forwarded-proto").map(|h| h.to_str().unwrap_or("")) == Some("https") {
+            "HTTPS"
+        } else {
+            "HTTP"
+        };
+        let protocol = format!("{}/{}", scheme, http_version);
         
         let fragment = String::new(); // No direct way to get fragment in Axum
-        let query_str = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
-        let query = uri.query().unwrap_or_default().to_string();
+        let query = if let Some(q) = uri.query() {
+            format!("?{}", q)
+        } else {
+            String::new()
+        };
         let url = format!("{}://{}{}{}{}", 
             scheme.to_lowercase(), 
             host, 
             path,
-            query_str,
+            query,
             fragment
         );
         
@@ -402,7 +433,7 @@ pub async fn catch_all(
             headers: headers
                 .iter()
                 .map(|(k, v)| {
-                    let header_name = k.as_str().to_string();
+                    let header_name = k.as_str().to_lowercase();
                     (header_name, v.to_str().unwrap_or("").to_string())
                 })
                 .collect(),
