@@ -1,10 +1,11 @@
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
-    http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri},
+    extract::{ConnectInfo, Path, Query, State},
+    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
     Json,
 };
+use std::net::SocketAddr;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -339,10 +340,11 @@ pub async fn update_files(
 }
 
 pub async fn catch_all(
-    State(state): State<AppState>,
     uri: Uri,
-    method: axum::http::Method,
+    method: Method,
     headers: HeaderMap,
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: Body,
 ) -> impl IntoResponse {
     let host = headers
@@ -363,11 +365,30 @@ pub async fn catch_all(
         
         let request_id = generate_request_id();
         
-        let client_ip = headers
-            .get("x-forwarded-for")
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("unknown")
-            .to_string();
+        let (client_ip, client_port) = if let Some(forwarded) = headers.get("x-forwarded-for") {
+            let forwarded_str = forwarded.to_str().unwrap_or("127.0.0.1");
+            let ip = forwarded_str.split(',').next().unwrap_or("127.0.0.1").trim();
+            (ip.to_string(), addr.port() as i32)
+        } else {
+            (addr.ip().to_string(), addr.port() as i32)
+        };
+        
+        let scheme = uri.scheme_str().unwrap_or("http").to_uppercase();
+        let version = headers.get("version")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("1.1");
+        let protocol = format!("{}/{}", scheme, version);
+        
+        let fragment = String::new(); // No direct way to get fragment in Axum
+        let query_str = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+        let query = uri.query().unwrap_or_default().to_string();
+        let url = format!("{}://{}{}{}{}", 
+            scheme.to_lowercase(), 
+            host, 
+            path,
+            query_str,
+            fragment
+        );
         
         let country = lookup_country(&client_ip);
         
@@ -380,11 +401,19 @@ pub async fn catch_all(
             path: path.to_string(),
             headers: headers
                 .iter()
-                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+                .map(|(k, v)| {
+                    let header_name = k.as_str().to_string();
+                    (header_name, v.to_str().unwrap_or("").to_string())
+                })
                 .collect(),
             date: get_current_timestamp(),
             ip: Some(client_ip),
             country,
+            port: client_port,
+            protocol,
+            fragment,
+            query,
+            url,
         };
         
         let request_json = serde_json::to_string(&request_log).unwrap_or_default();

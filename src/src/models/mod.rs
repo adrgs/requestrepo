@@ -16,6 +16,11 @@ pub struct HttpRequestLog {
     pub date: i64,
     pub ip: Option<String>,
     pub country: Option<String>,
+    pub port: i32,
+    pub protocol: String,
+    pub fragment: String,
+    pub query: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

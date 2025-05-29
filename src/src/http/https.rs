@@ -51,6 +51,11 @@ pub async fn run_https_server(app: Router) -> Result<()> {
                 }
             };
             
+            let peer_addr = match tls_stream.get_ref().0.peer_addr() {
+                Ok(addr) => addr,
+                Err(_) => SocketAddr::from(([127, 0, 0, 1], 0)),
+            };
+            
             let io = TokioIo::new(tls_stream);
             
             let service = service_fn(move |req| {
