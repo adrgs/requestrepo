@@ -434,12 +434,12 @@ pub async fn catch_all(
             uid: subdomain.clone(),
             method: method.to_string(),
             path: path.to_string(),
-            headers: CasePreservingHeaders(headers
+            headers: headers
                 .iter()
                 .map(|(k, v)| {
-                    (k.as_str().to_string(), v.to_str().unwrap_or("").to_string())
+                    (k.to_string(), v.to_str().unwrap_or("").to_string())
                 })
-                .collect()),
+                .collect(),
             date: get_current_timestamp(),
             ip: Some(client_ip),
             country,

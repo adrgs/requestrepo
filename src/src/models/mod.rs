@@ -39,7 +39,7 @@ pub struct HttpRequestLog {
     pub uid: String,
     pub method: String,
     pub path: String,
-    pub headers: CasePreservingHeaders,
+    pub headers: HashMap<String, String>,
     pub date: i64,
     pub ip: Option<String>,
     pub country: Option<String>,

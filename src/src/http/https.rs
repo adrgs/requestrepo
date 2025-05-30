@@ -65,6 +65,8 @@ pub async fn run_https_server(app: Router) -> Result<()> {
             });
             
             if let Err(e) = http1::Builder::new()
+                .preserve_header_case(true)
+                .title_case_headers(false)
                 .serve_connection(io, service)
                 .await
             {

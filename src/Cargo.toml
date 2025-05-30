@@ -49,8 +49,9 @@ thiserror = "1.0.57"
 anyhow = "1.0.79"
 async-trait = "0.1.77"
 futures = "0.3.31"
-hyper-util = { version = "0.1.13", features = ["server"] }
+hyper-util = { version = "0.1.13", features = ["server", "server-auto"] }
 futures-util = "0.3.31"
+tokio-stream = { version = "0.1.14", features = ["net"] }
 
 # TLS and certificates
 rustls = "0.21.10"

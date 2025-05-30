@@ -9,10 +9,10 @@ use axum::{
     http::{HeaderMap, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post, delete},
-    Router,
+    Router, serve,
 };
 use hyper::server::conn::http1;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -93,15 +93,9 @@ impl Server {
         let addr = SocketAddr::from(([0, 0, 0, 0], CONFIG.http_port));
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         
-        let service = app.into_make_service_with_connect_info::<SocketAddr>();
+        info!("HTTP server listening on {}", addr);
         
-        hyper_util::server::Builder::new(hyper_util::rt::TokioExecutor::new())
-            .http1()
-            .preserve_header_case(true)
-            .serve_with_incoming(
-                hyper_util::rt::TokioIo::new(listener.into_std().unwrap()),
-                service,
-            )
+        axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
             .await
             .map_err(|e| anyhow!("HTTP server error: {}", e))?;
 
