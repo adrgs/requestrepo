@@ -411,17 +411,28 @@ pub async fn catch_all(
         };
         let protocol = format!("{}/{}", scheme, http_version);
         
-        let fragment = String::new(); // No direct way to get fragment in Axum
-        let query = if let Some(q) = uri.query() {
-            format!("?{}", q)
+        let fragment = if let Some(f) = uri.fragment() {
+            format!("#{}", f)
         } else {
             String::new()
         };
+        
+        let query = if let Some(q) = uri.query() {
+            q.to_string()
+        } else {
+            String::new()
+        };
+        let url_query = if !query.is_empty() {
+            format!("?{}", query)
+        } else {
+            String::new()
+        };
+        
         let url = format!("{}://{}{}{}{}", 
             scheme.to_lowercase(), 
             host, 
             path,
-            query,
+            url_query,
             fragment
         );
         

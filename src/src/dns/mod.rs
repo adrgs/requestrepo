@@ -145,7 +145,7 @@ impl DnsRequestHandler {
         &self,
         request: &Request,
         mut response_handle: R,
-        subdomain: &str,
+        _subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
