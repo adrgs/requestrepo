@@ -4,48 +4,65 @@ import { Button } from "primereact/button";
 import { Utils } from "../utils";
 import { toast } from "react-toastify";
 import { Tag } from "primereact/tag";
+import { HttpRequest, DnsRequest, Request } from "../types/app-types";
 
-export class RequestInfo extends Component {
-  constructor(props) {
+function isHttpRequest(req: Request): req is HttpRequest {
+  return req.type === "http";
+}
+
+function isDnsRequest(req: Request): req is DnsRequest {
+  return req.type === "dns";
+}
+
+interface RequestInfoProps {
+  request: Request;
+  isShared?: boolean;
+}
+
+interface RequestInfoState {
+  [key: string]: unknown;
+}
+
+export class RequestInfo extends Component<RequestInfoProps, RequestInfoState> {
+  constructor(props: RequestInfoProps) {
     super(props);
     this.state = { ...props };
   }
 
-  updateDimensions = () => {
+  updateDimensions = (): void => {
     this.setState(this.state);
   };
-  componentDidMount() {
+
+  componentDidMount(): void {
     window.addEventListener("resize", this.updateDimensions);
   }
-  componentWillUnmount() {
+
+  componentWillUnmount(): void {
     window.removeEventListener("resize", this.updateDimensions);
   }
 
-  convertUTCDateToLocalDate(date) {
-    var utcSeconds = date;
-    var d = new Date(0);
+  convertUTCDateToLocalDate(date: number): Date {
+    const utcSeconds = date;
+    const d = new Date(0);
     d.setUTCSeconds(utcSeconds);
     return d;
   }
 
-  isDesktop() {
+  isDesktop(): boolean {
     return window.innerWidth > 768;
   }
 
-  encodePathWithSlashes(path) {
-    // Split the path by forward slashes
+  encodePathWithSlashes(path: string): string {
     const segments = path.split("/");
 
-    // Encode each segment individually
     const encodedSegments = segments.map((segment) =>
       segment ? encodeURIComponent(segment) : "",
     );
 
-    // Join segments back with slashes
     return encodedSegments.join("/");
   }
 
-  shareRequest = () => {
+  shareRequest = (): void => {
     const id = this.props.request._id;
     const subdomain = this.props.request.uid;
 
@@ -69,40 +86,55 @@ export class RequestInfo extends Component {
       });
   };
 
-  render() {
-    let request = this.props.request;
+  render(): React.ReactNode {
+    const request = this.props.request;
     const isShared = this.props.isShared || false;
-    let data = request.raw ? Utils.base64Decode(request.raw) : "";
+    let data = "";
 
-    let headerKeys;
-    if (request.headers) headerKeys = Object.keys(request.headers);
+    if (request.raw && typeof request.raw === "string") {
+      data = Utils.base64Decode(request.raw);
+    }
 
-    if (request.name === undefined) {
+    let headerKeys: string[] = [];
+
+    if (isHttpRequest(request) && request.headers) {
+      headerKeys = Object.keys(request.headers);
+    }
+
+    if (isHttpRequest(request)) {
       data =
         request.method +
         " " +
         this.encodePathWithSlashes(request.path) +
-        request.query +
-        request.fragment +
+        request.query_string +
         " " +
-        request.protocol.replace("HTTPS", "HTTP") +
+        "HTTP/1.1" +
         "\r\n";
-      data += "host: " + request.headers["host"] + "\r\n";
-      headerKeys.map((item) => {
+
+      if (request.headers["host"]) {
+        data += "host: " + request.headers["host"] + "\r\n";
+      }
+
+      headerKeys.forEach((item) => {
         if (item !== "host") {
           data += item + ": " + request.headers[item] + "\r\n";
         }
-        return 1;
       });
+
       data += "\r\n";
-      if (request.raw) {
+
+      if (request.raw && typeof request.raw === "string") {
         data += Utils.base64Decode(request.raw) + "\r\n";
       }
     }
 
     let out;
 
-    if (request.name === undefined) {
+    if (isHttpRequest(request)) {
+      const timestamp = request.timestamp
+        ? new Date(request.timestamp)
+        : new Date();
+
       out = (
         <div className="grid">
           <div className="col-12">
@@ -133,7 +165,7 @@ export class RequestInfo extends Component {
                       style={{ position: "static" }}
                       className="count other"
                     >
-                      {request.protocol}
+                      HTTP
                     </span>
                     <span
                       style={{ position: "static" }}
@@ -146,14 +178,16 @@ export class RequestInfo extends Component {
                 <tr>
                   <td className="req-table-a">URL</td>
                   <td className="req-table-b">
-                    <a href={request.url}>{request.url}</a>
+                    <a
+                      href={`http://${request.headers["host"]}${request.path}`}
+                    >
+                      {`http://${request.headers["host"]}${request.path}`}
+                    </a>
                   </td>
                 </tr>
                 <tr>
                   <td className="req-table-a">Sender</td>
-                  <td className="req-table-b">
-                    {request.ip}:{request.port}
-                  </td>
+                  <td className="req-table-b">{request.ip}</td>
                 </tr>
                 {request.country && (
                   <tr>
@@ -169,11 +203,7 @@ export class RequestInfo extends Component {
                 )}
                 <tr>
                   <td className="req-table-a">Date</td>
-                  <td className="req-table-b">
-                    {this.convertUTCDateToLocalDate(
-                      request.date,
-                    ).toLocaleString()}
-                  </td>
+                  <td className="req-table-b">{timestamp.toLocaleString()}</td>
                 </tr>
                 <tr>
                   <td className="req-table-a">Path</td>
@@ -181,11 +211,7 @@ export class RequestInfo extends Component {
                 </tr>
                 <tr>
                   <td className="req-table-a">Query string</td>
-                  <td className="req-table-b">{request.query}</td>
-                </tr>
-                <tr>
-                  <td className="req-table-a">Fragment</td>
-                  <td className="req-table-b">{request.fragment}</td>
+                  <td className="req-table-b">{request.query_string}</td>
                 </tr>
               </tbody>
             </table>
@@ -207,20 +233,23 @@ export class RequestInfo extends Component {
           </div>
           <div className="col-12">
             <h1>Query Parameters</h1>
-            {request.query ? (
+            {request.query_string ? (
               <table className="req-table">
-                {request.query
-                  .substring(1)
-                  .split("&")
-                  .map((dict, index) => {
-                    let q = dict.split("=");
-                    return (
-                      <tr key={index}>
-                        <td className="req-table-a">{q[0]}</td>
-                        <td className="req-table-b">{q[1]}</td>
-                      </tr>
-                    );
-                  })}
+                <tbody>
+                  {request.query_string
+                    .substring(1)
+                    .split("&")
+                    .filter((param) => param.length > 0)
+                    .map((dict: string, index: number) => {
+                      const q = dict.split("=");
+                      return (
+                        <tr key={index}>
+                          <td className="req-table-a">{q[0]}</td>
+                          <td className="req-table-b">{q[1]}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
               </table>
             ) : (
               <p>(empty)</p>
@@ -228,16 +257,16 @@ export class RequestInfo extends Component {
           </div>
           <div className="col-12">
             <h1>Form Data</h1>
-            {request.raw ? (
+            {request.body ? (
               <div>
                 <InputText
                   type="text"
                   style={{ width: "100%" }}
-                  value={request.raw}
+                  value={request.body}
                 />
                 <br />
                 <pre style={{ maxHeight: "400px", overflowY: "scroll" }}>
-                  {Utils.base64Decode(request.raw)}
+                  {request.body}
                 </pre>
               </div>
             ) : (
@@ -258,7 +287,13 @@ export class RequestInfo extends Component {
           </div>
         </div>
       );
-    } else {
+    } else if (isDnsRequest(request)) {
+      const timestamp = request.timestamp
+        ? new Date(request.timestamp)
+        : new Date();
+      const country =
+        typeof request.country === "string" ? request.country : "";
+
       out = (
         <div className="grid">
           <div className="col-12">
@@ -292,53 +327,37 @@ export class RequestInfo extends Component {
                 </tr>
                 <tr>
                   <td className="req-table-a">Hostname</td>
-                  <td className="req-table-b">{request.name}</td>
+                  <td className="req-table-b">{request.query}</td>
                 </tr>
                 <tr>
                   <td className="req-table-a">Sender</td>
                   <td className="req-table-b">
-                    {request.ip}:{request.port}
+                    {typeof request.ip === "string" ? request.ip : "Unknown"}
                   </td>
                 </tr>
-                {request.country && (
+                {country && (
                   <tr>
                     <td className="req-table-a">Country</td>
                     <td className="req-table-b">
-                      <span
-                        className={"fi fi-" + request.country.toLowerCase()}
-                      ></span>{" "}
-                      {request.country} (
+                      <span className={"fi fi-" + country.toLowerCase()}></span>{" "}
+                      {country} (
                       <a href="https://db-ip.com">IP Geolocation by DB-IP</a>)
                     </td>
                   </tr>
                 )}
                 <tr>
                   <td className="req-table-a">Date</td>
-                  <td className="req-table-b">
-                    {this.convertUTCDateToLocalDate(
-                      request.date,
-                    ).toLocaleString()}
-                  </td>
+                  <td className="req-table-b">{timestamp.toLocaleString()}</td>
                 </tr>
                 <tr>
                   <td className="req-table-a">Type</td>
-                  <td className="req-table-b">{request.dtype}</td>
+                  <td className="req-table-b">{request.record_type}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div className="col-12">
-            <h1>Reply</h1>
-            <pre style={{ overflowWrap: "break-word" }}>{request.reply}</pre>
-          </div>
           <div className="col-12 raw-req">
             <h1>Raw request</h1>
-            <InputText
-              type="text"
-              style={{ width: "100%" }}
-              value={request.raw}
-            />
-            <br />
             <pre style={{ overflowWrap: "break-word", padding: "10px" }}>
               {data}
             </pre>

@@ -1,8 +1,21 @@
 import React, { useEffect, useRef, useState } from "react";
-import MonacoEditor from "@monaco-editor/react";
+import MonacoEditor, { Monaco, OnMount } from "@monaco-editor/react";
 import { Utils } from "../utils";
 
-export const EditorComponent = ({
+interface EditorCommand {
+  exec: () => void;
+}
+
+interface EditorComponentProps {
+  value: string;
+  onChange: (value: string) => void;
+  commands: EditorCommand[];
+  language: string;
+  onFocus?: () => void;
+  onBlur?: () => void;
+}
+
+export const EditorComponent: React.FC<EditorComponentProps> = ({
   value,
   onChange,
   commands,
@@ -10,9 +23,9 @@ export const EditorComponent = ({
   onFocus,
   onBlur,
 }) => {
-  const editorRef = useRef(null);
-  const monacoRef = useRef(null);
-  const [theme, setTheme] = useState(
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
+  const [theme, setTheme] = useState<string>(
     Utils.getTheme() === "dark" ? "vs-dark" : "vs-light",
   );
 
@@ -21,8 +34,6 @@ export const EditorComponent = ({
       setTheme(Utils.getTheme() === "dark" ? "vs-dark" : "vs-light");
     };
 
-    // Assume there's an event or method to detect theme changes
-    // You need to implement this part based on how your application handles theme changes
     window.addEventListener("themeChange", handleThemeChange);
 
     return () => {
@@ -42,11 +53,10 @@ export const EditorComponent = ({
     });
   }, [commands]);
 
-  const handleEditorDidMount = (editor, monaco) => {
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Implement focus and blur events
     if (onFocus) {
       editor.onDidFocusEditorWidget(() => {
         onFocus();
@@ -75,7 +85,7 @@ export const EditorComponent = ({
         tabSize: 2,
         wordWrap: "on",
       }}
-      onChange={onChange}
+      onChange={(value) => onChange(value || "")}
       onMount={handleEditorDidMount}
     />
   );

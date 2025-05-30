@@ -34,6 +34,10 @@ jest.mock("../../utils", () => ({
     domain: "example.com",
     isDarkTheme: mockIsDarkTheme,
     removeSession: mockRemoveSession,
+    getAllSessions: jest.fn(() => [
+      { subdomain: "test123", token: "test-token" },
+    ]),
+    sessions: [{ subdomain: "test123", token: "test-token" }],
   },
 }));
 
@@ -47,7 +51,7 @@ describe("DnsSettingsPage Component", () => {
       error: jest.fn(),
       success: jest.fn(),
     },
-    activeSession: { subdomain: "test123", token: "test-token" },
+    activeSession: "test123",
   };
 
   beforeEach(() => {
@@ -83,8 +87,13 @@ describe("DnsSettingsPage Component", () => {
   });
 
   test("shows error when no active session", async () => {
+    const noSessionProps = {
+      ...mockProps,
+      activeSession: null,
+    };
+
     await act(async () => {
-      render(<DnsSettingsPage {...mockProps} activeSession={null} />);
+      render(<DnsSettingsPage {...noSessionProps} />);
       await flushPromises();
     });
 
@@ -94,7 +103,7 @@ describe("DnsSettingsPage Component", () => {
       await flushPromises();
     });
 
-    expect(mockProps.toast.error).toHaveBeenCalledWith(
+    expect(noSessionProps.toast.error).toHaveBeenCalledWith(
       "No active session selected",
       expect.anything(),
     );

@@ -11,10 +11,26 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/api/ws2": {
-        target: "ws://localhost:21337", // Replace with your WebSocket server URL
+        target: "ws://localhost:21337",
         ws: true,
+        changeOrigin: true,
+        secure: false,
+        onError: (err) => {
+          console.error(
+            "WebSocket proxy error:",
+            err?.message || "Unknown error",
+          );
+        },
+        headers: {
+          Origin: "http://localhost:21337",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+        },
       },
     },
     open: true,
+  },
+  resolve: {
+    extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json"],
   },
 });

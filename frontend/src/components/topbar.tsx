@@ -1,11 +1,34 @@
 import React, { Component } from "react";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
-import { Utils } from "../utils";
+import { Utils, Session } from "../utils";
 import { toast } from "react-toastify";
+import { AppSession } from "../types/app-types";
 
-export class AppTopbar extends Component {
-  constructor(props) {
+interface AppTopbarProps {
+  sessions?: Record<string, AppSession>;
+  activeSession?: string;
+  onSessionChange?: (subdomain: string) => void;
+  onSessionRemove?: (subdomain: string) => void;
+  updateSearchValue?: (value: string) => void;
+  onToggleMenu?: () => void;
+  staticMenuInactive?: boolean;
+  copyUrl?: () => void;
+  copyDomain?: () => void;
+  handleNewURL?: () => Promise<void>;
+}
+
+interface AppTopbarState {
+  searchValue: string;
+  themeToggler: boolean;
+  sessions: Record<string, AppSession>;
+  activeSession: string;
+  unseenRequests: Record<string, number>;
+  isCreatingSession: boolean;
+}
+
+export class AppTopbar extends Component<AppTopbarProps, AppTopbarState> {
+  constructor(props: AppTopbarProps) {
     super(props);
     this.state = {
       searchValue: "",
@@ -23,7 +46,7 @@ export class AppTopbar extends Component {
     this.handleShareSession = this.handleShareSession.bind(this);
   }
 
-  handleShareSession() {
+  handleShareSession(): void {
     const token = Utils.getSessionToken(this.state.activeSession);
     const url = `${window.location.origin}/?share=${token}`;
     navigator.clipboard
@@ -42,18 +65,14 @@ export class AppTopbar extends Component {
       });
   }
 
-  toggleTheme() {
+  toggleTheme(): void {
     Utils.toggleTheme();
     this.setState((prevState) => ({
       themeToggler: !prevState.themeToggler,
     }));
   }
 
-  static defaultProps = {};
-
-  static propTypes = {};
-
-  componentDidUpdate(prevProps) {
+  componentDidUpdate(prevProps: AppTopbarProps): void {
     const sessionsChanged = prevProps.sessions !== this.props.sessions;
     const activeSessionChanged =
       prevProps.activeSession !== this.props.activeSession;
@@ -62,14 +81,14 @@ export class AppTopbar extends Component {
       const sessions = this.props.sessions || {};
       const activeSession = this.props.activeSession || "";
 
-      const unseenRequests = Object.keys(this.props.sessions).reduce(
+      const unseenRequests = Object.keys(this.props.sessions || {}).reduce(
         (acc, subdomain) => ({
           ...acc,
           [subdomain]: this.calculateUnseenRequests(
-            this.props.sessions[subdomain],
+            this.props.sessions?.[subdomain],
           ),
         }),
-        {},
+        {} as Record<string, number>,
       );
 
       this.setState({
@@ -80,7 +99,7 @@ export class AppTopbar extends Component {
     }
   }
 
-  calculateUnseenRequests(session) {
+  calculateUnseenRequests(session?: AppSession): number {
     if (!session) return 0;
     const totalRequests =
       (session.httpRequests?.length || 0) + (session.dnsRequests?.length || 0);
@@ -88,24 +107,22 @@ export class AppTopbar extends Component {
     return Math.max(0, totalRequests - visitedCount);
   }
 
-  handleSessionSelect(subdomain) {
+  handleSessionSelect(subdomain: string): void {
     if (this.props.onSessionChange) {
       this.props.onSessionChange(subdomain);
     }
   }
 
-  handleSessionRemove(subdomain) {
+  handleSessionRemove(subdomain: string): void {
     try {
-      // Get and update sessions array
       const sessionsStr = localStorage.getItem("sessions");
       if (sessionsStr) {
         const sessions = JSON.parse(sessionsStr);
         const updatedSessions = sessions.filter(
-          (s) => s.subdomain !== subdomain,
+          (s: Session) => s.subdomain !== subdomain,
         );
         localStorage.setItem("sessions", JSON.stringify(updatedSessions));
 
-        // Update selectedSessionIndex if needed
         let selectedIndex = parseInt(
           localStorage.getItem("selectedSessionIndex") || "0",
         );
@@ -118,7 +135,6 @@ export class AppTopbar extends Component {
         }
       }
 
-      // Update state
       this.setState((prevState) => {
         const newSessions = { ...prevState.sessions };
         delete newSessions[subdomain];
@@ -140,20 +156,17 @@ export class AppTopbar extends Component {
     }
   }
 
-  async handleNewSession() {
+  async handleNewSession(): Promise<void> {
     if (this.state.isCreatingSession) return;
 
     try {
       this.setState({ isCreatingSession: true });
 
-      // Get new subdomain and token
       const { subdomain, token } = await Utils.getRandomSubdomain();
 
-      // Get current sessions array
       const sessionsStr = localStorage.getItem("sessions");
       const sessions = JSON.parse(sessionsStr || "[]");
 
-      // Get the new session data
       const session = {
         subdomain,
         token,
@@ -161,13 +174,10 @@ export class AppTopbar extends Component {
         unseenRequests: 0,
       };
 
-      // Add new session to array
       sessions.push(session);
 
-      // Update localStorage
       localStorage.setItem("sessions", JSON.stringify(sessions));
 
-      // Update parent component
       if (this.props.onSessionChange) {
         this.props.onSessionChange(subdomain);
       }
@@ -179,11 +189,14 @@ export class AppTopbar extends Component {
     }
   }
 
-  handleSearchValueChange(event) {
+  handleSearchValueChange(event: React.ChangeEvent<HTMLInputElement>): void {
     this.setState({ searchValue: event.target.value });
-    this.props.updateSearchValue(event.target.value);
+    if (this.props.updateSearchValue) {
+      this.props.updateSearchValue(event.target.value);
+    }
   }
-  render() {
+
+  render(): React.ReactNode {
     const showTabs = Object.keys(this.state.sessions).length > 1;
 
     return (
