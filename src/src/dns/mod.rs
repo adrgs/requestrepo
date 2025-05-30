@@ -272,7 +272,7 @@ impl DnsRequestHandler {
         &self,
         request: &Request,
         mut response_handle: R,
-        subdomain: &str,
+        _subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
@@ -392,7 +392,7 @@ impl DnsRequestHandler {
         &self,
         request: &Request,
         mut response_handle: R,
-        subdomain: &str,
+        _subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
@@ -508,7 +508,7 @@ impl DnsRequestHandler {
         &self,
         request: &Request,
         mut response_handle: R,
-        subdomain: &str,
+        _subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
@@ -631,7 +631,7 @@ impl DnsRequestHandler {
         request: &Request,
         mut response_handle: R,
     ) -> ResponseInfo {
-        let query = request.query();
+        let _query = request.query();
         
         let mut header = Header::new();
         header.set_message_type(MessageType::Response);

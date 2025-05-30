@@ -51,7 +51,7 @@ pub async fn run_https_server(app: Router) -> Result<()> {
                 }
             };
             
-            let peer_addr = match tls_stream.get_ref().0.peer_addr() {
+            let _peer_addr = match tls_stream.get_ref().0.peer_addr() {
                 Ok(addr) => addr,
                 Err(_) => SocketAddr::from(([127, 0, 0, 1], 0)),
             };
