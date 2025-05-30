@@ -305,6 +305,52 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                     }
                                 }
                             }
+                            "requests" => {
+                                let sessions_list = {
+                                    let sessions = sessions_clone.lock().unwrap();
+                                    sessions.iter().cloned().collect::<Vec<String>>()
+                                };
+                                
+                                if sessions_list.is_empty() {
+                                    info!("No sessions registered for requests command");
+                                    let response = json!({
+                                        "cmd": "requests",
+                                        "data": [],
+                                        "subdomain": ""
+                                    });
+                                    
+                                    let mut sender_lock = sender.lock().await;
+                                    if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                        error!("Error sending WebSocket message: {}", e);
+                                    }
+                                } else {
+                                    for subdomain in sessions_list {
+                                        let requests = match state.cache.lrange(&format!("requests:{}", subdomain), 0, -1).await {
+                                            Ok(req_list) => req_list
+                                                .into_iter()
+                                                .filter(|r| r != "{}")
+                                                .filter_map(|r| serde_json::from_str::<Value>(&r).ok())
+                                                .collect::<Vec<Value>>(),
+                                            Err(e) => {
+                                                error!("Error fetching requests for {}: {}", subdomain, e);
+                                                vec![]
+                                            }
+                                        };
+                                        
+                                        let response = json!({
+                                            "cmd": "requests",
+                                            "data": requests,
+                                            "subdomain": subdomain
+                                        });
+                                        
+                                        let mut sender_lock = sender.lock().await;
+                                        if let Err(e) = sender_lock.send(Message::Text(response.to_string())).await {
+                                            error!("Error sending WebSocket message: {}", e);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
