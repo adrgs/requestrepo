@@ -158,12 +158,16 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                     }
                 };
 
+                // Format message for WebSocket v2 client compatibility
+                let cmd = if msg.cmd == "new_request" { "request" } else { &msg.cmd };
+                
                 let ws_msg = json!({
-                    "cmd": msg.cmd,
+                    "cmd": cmd,
                     "data": data_value,
                     "subdomain": subdomain
                 });
 
+                info!("Sending real-time update for {} to WebSocket v2", msg.cmd);
                 let mut sender_lock = sender_clone.lock().await;
                 if let Err(e) = sender_lock.send(Message::Text(ws_msg.to_string())).await {
                     error!("Error sending WebSocket message: {}", e);

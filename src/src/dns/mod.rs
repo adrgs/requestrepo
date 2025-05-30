@@ -151,43 +151,7 @@ impl DnsRequestHandler {
         let name = query.name().to_string();
         
         let dns_key = format!("dns:A:{}", name);
-        info!("Looking up DNS key: {}", dns_key);
         let custom_record = self.cache.get(&dns_key).await.unwrap_or(None);
-        info!("Custom record found: {:?}", custom_record);
-        
-        let mut header = Header::new();
-        header.set_message_type(MessageType::Response);
-        header.set_op_code(OpCode::Query);
-        header.set_response_code(ResponseCode::NoError);
-        header.set_id(request.header().id());
-        header.set_recursion_desired(request.header().recursion_desired());
-        header.set_recursion_available(true);
-        header.set_authoritative(true);
-        
-        let mut records = Vec::new();
-        
-        if let Some(value) = custom_record {
-            if let Ok(ip) = value.parse::<Ipv4Addr>() {
-                let octets = ip.octets();
-                let rdata = RData::A(A::new(octets[0], octets[1], octets[2], octets[3]));
-                let record = Record::from_rdata(
-                    Name::from_str(&name).unwrap(),
-                    300, // TTL
-                    rdata,
-                );
-                records.push(record);
-            }
-        } else {
-            let ip = Ipv4Addr::from_str(&CONFIG.server_ip).unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1));
-            let octets = ip.octets();
-            let rdata = RData::A(A::new(octets[0], octets[1], octets[2], octets[3]));
-            let record = Record::from_rdata(
-                Name::from_str(&name).unwrap(),
-                300, // TTL
-                rdata,
-            );
-            records.push(record);
-        }
         
         let mut response_message = trust_dns_proto::op::Message::new();
         let mut header = Header::new();
@@ -201,17 +165,35 @@ impl DnsRequestHandler {
         
         response_message.set_header(header);
         
-        for record in records {
+        if let Some(value) = custom_record {
+            if let Ok(ip) = value.parse::<Ipv4Addr>() {
+                let octets = ip.octets();
+                let rdata = RData::A(A::new(octets[0], octets[1], octets[2], octets[3]));
+                let record = Record::from_rdata(
+                    Name::from_str(&name).unwrap(),
+                    300, // TTL
+                    rdata,
+                );
+                response_message.add_answer(record);
+            }
+        } else {
+            let ip = Ipv4Addr::from_str(&CONFIG.server_ip).unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1));
+            let octets = ip.octets();
+            let rdata = RData::A(A::new(octets[0], octets[1], octets[2], octets[3]));
+            let record = Record::from_rdata(
+                Name::from_str(&name).unwrap(),
+                300, // TTL
+                rdata,
+            );
             response_message.add_answer(record);
         }
         
         let header = response_message.header().clone();
-        let records: Vec<Record> = response_message.answers().iter().cloned().collect();
-        let records_refs: Vec<&Record> = records.iter().collect();
+        let records: Vec<&Record> = response_message.answers().iter().collect();
         
         let response = MessageResponseBuilder::from_message_request(request).build(
             header,
-            records_refs.into_iter(),
+            records.into_iter(),
             Vec::<&Record>::new().into_iter(),
             None,
             Vec::<&Record>::new().into_iter()
@@ -221,49 +203,9 @@ impl DnsRequestHandler {
             Ok(response_info) => response_info,
             Err(e) => {
                 error!("Error sending A record response: {}", e);
-                {
-                    let mut header = Header::new();
-                    header.set_response_code(ResponseCode::ServFail);
-                    let mut response = trust_dns_proto::op::Message::new();
-                    response.set_header(header);
-                    let header = response.header().clone();
-                    let records: Vec<Record> = response.answers().iter().cloned().collect();
-                    let records_refs: Vec<&Record> = records.iter().collect();
-                    let response = MessageResponseBuilder::from_message_request(request).build(
-                        header,
-                        records_refs.into_iter(),
-                        Vec::<&Record>::new().into_iter(),
-                        None,
-                        Vec::<&Record>::new().into_iter()
-                    );
-                    match response_handle.send_response(response).await {
-                        Ok(info) => info,
-                        Err(_) => {
-                            let mut header = Header::new();
-                            header.set_response_code(ResponseCode::ServFail);
-                            let mut response = trust_dns_proto::op::Message::new();
-                            response.set_header(header);
-                            let header = response.header().clone();
-                            let records: Vec<Record> = response.answers().iter().cloned().collect();
-                            let records_refs: Vec<&Record> = records.iter().collect();
-                            let response = MessageResponseBuilder::from_message_request(request).build(
-                                header,
-                                records_refs.into_iter(),
-                                Vec::<&Record>::new().into_iter(),
-                                None,
-                                Vec::<&Record>::new().into_iter()
-                            );
-                            match response_handle.send_response(response).await {
-                                Ok(info) => info,
-                                Err(_) => {
-                                    let mut header = Header::new();
-                                    header.set_response_code(ResponseCode::ServFail);
-                                    ResponseInfo::from(header)
-                                }
-                            }
-                        }
-                    }
-                }
+                let mut header = Header::new();
+                header.set_response_code(ResponseCode::ServFail);
+                ResponseInfo::from(header)
             }
         }
     }
@@ -280,16 +222,15 @@ impl DnsRequestHandler {
         let dns_key = format!("dns:AAAA:{}", name);
         let custom_record = self.cache.get(&dns_key).await.unwrap_or(None);
         
+        let mut response_message = trust_dns_proto::op::Message::new();
         let mut header = Header::new();
+        header.set_id(request.header().id());
         header.set_message_type(MessageType::Response);
         header.set_op_code(OpCode::Query);
         header.set_response_code(ResponseCode::NoError);
-        header.set_id(request.header().id());
         header.set_recursion_desired(request.header().recursion_desired());
         header.set_recursion_available(true);
         header.set_authoritative(true);
-        
-        let mut records = Vec::new();
         
         if let Some(value) = custom_record {
             if let Ok(ip) = value.parse::<Ipv6Addr>() {
@@ -303,35 +244,21 @@ impl DnsRequestHandler {
                     300, // TTL
                     rdata,
                 );
-                records.push(record);
+                response_message.add_answer(record);
             }
         } else {
             header.set_response_code(ResponseCode::NXDomain);
+            response_message.set_header(header);
         }
-        
-        let mut response_message = trust_dns_proto::op::Message::new();
-        let mut header = Header::new();
-        header.set_id(request.header().id());
-        header.set_message_type(MessageType::Response);
-        header.set_op_code(OpCode::Query);
-        header.set_response_code(ResponseCode::NoError);
-        header.set_recursion_desired(request.header().recursion_desired());
-        header.set_recursion_available(true);
-        header.set_authoritative(true);
         
         response_message.set_header(header);
         
-        for record in records {
-            response_message.add_answer(record);
-        }
-        
         let header = response_message.header().clone();
-        let records: Vec<Record> = response_message.answers().iter().cloned().collect();
-        let records_refs: Vec<&Record> = records.iter().collect();
+        let records: Vec<&Record> = response_message.answers().iter().collect();
         
         let response = MessageResponseBuilder::from_message_request(request).build(
             header,
-            records_refs.into_iter(),
+            records.into_iter(),
             Vec::<&Record>::new().into_iter(),
             None,
             Vec::<&Record>::new().into_iter()
@@ -341,49 +268,9 @@ impl DnsRequestHandler {
             Ok(response_info) => response_info,
             Err(e) => {
                 error!("Error sending AAAA record response: {}", e);
-                {
-                    let mut header = Header::new();
-                    header.set_response_code(ResponseCode::ServFail);
-                    let mut response = trust_dns_proto::op::Message::new();
-                    response.set_header(header);
-                    let header = response.header().clone();
-                    let records: Vec<Record> = response.answers().iter().cloned().collect();
-                    let records_refs: Vec<&Record> = records.iter().collect();
-                    let response = MessageResponseBuilder::from_message_request(request).build(
-                        header,
-                        records_refs.into_iter(),
-                        Vec::<&Record>::new().into_iter(),
-                        None,
-                        Vec::<&Record>::new().into_iter()
-                    );
-                    match response_handle.send_response(response).await {
-                        Ok(info) => info,
-                        Err(_) => {
-                            let mut header = Header::new();
-                            header.set_response_code(ResponseCode::ServFail);
-                            let mut response = trust_dns_proto::op::Message::new();
-                            response.set_header(header);
-                            let header = response.header().clone();
-                            let records: Vec<Record> = response.answers().iter().cloned().collect();
-                            let records_refs: Vec<&Record> = records.iter().collect();
-                            let response = MessageResponseBuilder::from_message_request(request).build(
-                                header,
-                                records_refs.into_iter(),
-                                Vec::<&Record>::new().into_iter(),
-                                None,
-                                Vec::<&Record>::new().into_iter()
-                            );
-                            match response_handle.send_response(response).await {
-                                Ok(info) => info,
-                                Err(_) => {
-                                    let mut header = Header::new();
-                                    header.set_response_code(ResponseCode::ServFail);
-                                    ResponseInfo::from(header)
-                                }
-                            }
-                        }
-                    }
-                }
+                let mut header = Header::new();
+                header.set_response_code(ResponseCode::ServFail);
+                ResponseInfo::from(header)
             }
         }
     }
@@ -400,31 +287,6 @@ impl DnsRequestHandler {
         let dns_key = format!("dns:CNAME:{}", name);
         let custom_record = self.cache.get(&dns_key).await.unwrap_or(None);
         
-        let mut header = Header::new();
-        header.set_message_type(MessageType::Response);
-        header.set_op_code(OpCode::Query);
-        header.set_response_code(ResponseCode::NoError);
-        header.set_id(request.header().id());
-        header.set_recursion_desired(request.header().recursion_desired());
-        header.set_recursion_available(true);
-        header.set_authoritative(true);
-        
-        let mut records = Vec::new();
-        
-        if let Some(value) = custom_record {
-            if let Ok(target) = Name::from_str(&value) {
-                let rdata = RData::CNAME(CNAME(target));
-                let record = Record::from_rdata(
-                    Name::from_str(&name).unwrap(),
-                    300, // TTL
-                    rdata,
-                );
-                records.push(record);
-            }
-        } else {
-            header.set_response_code(ResponseCode::NXDomain);
-        }
-        
         let mut response_message = trust_dns_proto::op::Message::new();
         let mut header = Header::new();
         header.set_id(request.header().id());
@@ -435,19 +297,28 @@ impl DnsRequestHandler {
         header.set_recursion_available(true);
         header.set_authoritative(true);
         
-        response_message.set_header(header);
-        
-        for record in records {
-            response_message.add_answer(record);
+        if let Some(value) = custom_record {
+            if let Ok(target) = Name::from_str(&value) {
+                let rdata = RData::CNAME(CNAME(target));
+                let record = Record::from_rdata(
+                    Name::from_str(&name).unwrap(),
+                    300, // TTL
+                    rdata,
+                );
+                response_message.add_answer(record);
+            }
+        } else {
+            header.set_response_code(ResponseCode::NXDomain);
         }
         
+        response_message.set_header(header);
+        
         let header = response_message.header().clone();
-        let records: Vec<Record> = response_message.answers().iter().cloned().collect();
-        let records_refs: Vec<&Record> = records.iter().collect();
+        let records: Vec<&Record> = response_message.answers().iter().collect();
         
         let response = MessageResponseBuilder::from_message_request(request).build(
             header,
-            records_refs.into_iter(),
+            records.into_iter(),
             Vec::<&Record>::new().into_iter(),
             None,
             Vec::<&Record>::new().into_iter()
@@ -457,49 +328,9 @@ impl DnsRequestHandler {
             Ok(response_info) => response_info,
             Err(e) => {
                 error!("Error sending CNAME record response: {}", e);
-                {
-                    let mut header = Header::new();
-                    header.set_response_code(ResponseCode::ServFail);
-                    let mut response = trust_dns_proto::op::Message::new();
-                    response.set_header(header);
-                    let header = response.header().clone();
-                    let records: Vec<Record> = response.answers().iter().cloned().collect();
-                    let records_refs: Vec<&Record> = records.iter().collect();
-                    let response = MessageResponseBuilder::from_message_request(request).build(
-                        header,
-                        records_refs.into_iter(),
-                        Vec::<&Record>::new().into_iter(),
-                        None,
-                        Vec::<&Record>::new().into_iter()
-                    );
-                    match response_handle.send_response(response).await {
-                        Ok(info) => info,
-                        Err(_) => {
-                            let mut header = Header::new();
-                            header.set_response_code(ResponseCode::ServFail);
-                            let mut response = trust_dns_proto::op::Message::new();
-                            response.set_header(header);
-                            let header = response.header().clone();
-                            let records: Vec<Record> = response.answers().iter().cloned().collect();
-                            let records_refs: Vec<&Record> = records.iter().collect();
-                            let response = MessageResponseBuilder::from_message_request(request).build(
-                                header,
-                                records_refs.into_iter(),
-                                Vec::<&Record>::new().into_iter(),
-                                None,
-                                Vec::<&Record>::new().into_iter()
-                            );
-                            match response_handle.send_response(response).await {
-                                Ok(info) => info,
-                                Err(_) => {
-                                    let mut header = Header::new();
-                                    header.set_response_code(ResponseCode::ServFail);
-                                    ResponseInfo::from(header)
-                                }
-                            }
-                        }
-                    }
-                }
+                let mut header = Header::new();
+                header.set_response_code(ResponseCode::ServFail);
+                ResponseInfo::from(header)
             }
         }
     }
@@ -516,16 +347,15 @@ impl DnsRequestHandler {
         let dns_key = format!("dns:TXT:{}", name);
         let custom_record = self.cache.get(&dns_key).await.unwrap_or(None);
         
+        let mut response_message = trust_dns_proto::op::Message::new();
         let mut header = Header::new();
+        header.set_id(request.header().id());
         header.set_message_type(MessageType::Response);
         header.set_op_code(OpCode::Query);
         header.set_response_code(ResponseCode::NoError);
-        header.set_id(request.header().id());
         header.set_recursion_desired(request.header().recursion_desired());
         header.set_recursion_available(true);
         header.set_authoritative(true);
-        
-        let mut records = Vec::new();
         
         if let Some(value) = custom_record {
             let txt_data = TXT::new(vec![value.clone()]);
@@ -535,7 +365,7 @@ impl DnsRequestHandler {
                 300, // TTL
                 rdata,
             );
-            records.push(record);
+            response_message.add_answer(record);
         } else {
             let txt_data = TXT::new(vec![CONFIG.txt_record.clone()]);
             let rdata = RData::TXT(txt_data);
@@ -544,32 +374,17 @@ impl DnsRequestHandler {
                 300, // TTL
                 rdata,
             );
-            records.push(record);
-        }
-        
-        let mut response_message = trust_dns_proto::op::Message::new();
-        let mut header = Header::new();
-        header.set_id(request.header().id());
-        header.set_message_type(MessageType::Response);
-        header.set_op_code(OpCode::Query);
-        header.set_response_code(ResponseCode::NoError);
-        header.set_recursion_desired(request.header().recursion_desired());
-        header.set_recursion_available(true);
-        header.set_authoritative(true);
-        
-        response_message.set_header(header);
-        
-        for record in records {
             response_message.add_answer(record);
         }
         
+        response_message.set_header(header);
+        
         let header = response_message.header().clone();
-        let records: Vec<Record> = response_message.answers().iter().cloned().collect();
-        let records_refs: Vec<&Record> = records.iter().collect();
+        let records: Vec<&Record> = response_message.answers().iter().collect();
         
         let response = MessageResponseBuilder::from_message_request(request).build(
             header,
-            records_refs.into_iter(),
+            records.into_iter(),
             Vec::<&Record>::new().into_iter(),
             None,
             Vec::<&Record>::new().into_iter()
@@ -579,49 +394,9 @@ impl DnsRequestHandler {
             Ok(response_info) => response_info,
             Err(e) => {
                 error!("Error sending TXT record response: {}", e);
-                {
-                    let mut header = Header::new();
-                    header.set_response_code(ResponseCode::ServFail);
-                    let mut response = trust_dns_proto::op::Message::new();
-                    response.set_header(header);
-                    let header = response.header().clone();
-                    let records: Vec<Record> = response.answers().iter().cloned().collect();
-                    let records_refs: Vec<&Record> = records.iter().collect();
-                    let response = MessageResponseBuilder::from_message_request(request).build(
-                        header,
-                        records_refs.into_iter(),
-                        Vec::<&Record>::new().into_iter(),
-                        None,
-                        Vec::<&Record>::new().into_iter()
-                    );
-                    match response_handle.send_response(response).await {
-                        Ok(info) => info,
-                        Err(_) => {
-                            let mut header = Header::new();
-                            header.set_response_code(ResponseCode::ServFail);
-                            let mut response = trust_dns_proto::op::Message::new();
-                            response.set_header(header);
-                            let header = response.header().clone();
-                            let records: Vec<Record> = response.answers().iter().cloned().collect();
-                            let records_refs: Vec<&Record> = records.iter().collect();
-                            let response = MessageResponseBuilder::from_message_request(request).build(
-                                header,
-                                records_refs.into_iter(),
-                                Vec::<&Record>::new().into_iter(),
-                                None,
-                                Vec::<&Record>::new().into_iter()
-                            );
-                            match response_handle.send_response(response).await {
-                                Ok(info) => info,
-                                Err(_) => {
-                                    let mut header = Header::new();
-                                    header.set_response_code(ResponseCode::ServFail);
-                                    ResponseInfo::from(header)
-                                }
-                            }
-                        }
-                    }
-                }
+                let mut header = Header::new();
+                header.set_response_code(ResponseCode::ServFail);
+                ResponseInfo::from(header)
             }
         }
     }
@@ -631,17 +406,6 @@ impl DnsRequestHandler {
         request: &Request,
         mut response_handle: R,
     ) -> ResponseInfo {
-        let _query = request.query();
-        
-        let mut header = Header::new();
-        header.set_message_type(MessageType::Response);
-        header.set_op_code(OpCode::Query);
-        header.set_response_code(ResponseCode::NXDomain);
-        header.set_id(request.header().id());
-        header.set_recursion_desired(request.header().recursion_desired());
-        header.set_recursion_available(true);
-        header.set_authoritative(true);
-        
         let mut response_message = trust_dns_proto::op::Message::new();
         let mut header = Header::new();
         header.set_id(request.header().id());
@@ -655,12 +419,11 @@ impl DnsRequestHandler {
         response_message.set_header(header);
         
         let header = response_message.header().clone();
-        let records: Vec<Record> = response_message.answers().iter().cloned().collect();
-        let records_refs: Vec<&Record> = records.iter().collect();
+        let records: Vec<&Record> = response_message.answers().iter().collect();
         
         let response = MessageResponseBuilder::from_message_request(request).build(
             header,
-            records_refs.into_iter(),
+            records.into_iter(),
             Vec::<&Record>::new().into_iter(),
             None,
             Vec::<&Record>::new().into_iter()
@@ -670,49 +433,9 @@ impl DnsRequestHandler {
             Ok(response_info) => response_info,
             Err(e) => {
                 error!("Error sending default response: {}", e);
-                {
-                    let mut header = Header::new();
-                    header.set_response_code(ResponseCode::ServFail);
-                    let mut response = trust_dns_proto::op::Message::new();
-                    response.set_header(header);
-                    let header = response.header().clone();
-                    let records: Vec<Record> = response.answers().iter().cloned().collect();
-                    let records_refs: Vec<&Record> = records.iter().collect();
-                    let response = MessageResponseBuilder::from_message_request(request).build(
-                        header,
-                        records_refs.into_iter(),
-                        Vec::<&Record>::new().into_iter(),
-                        None,
-                        Vec::<&Record>::new().into_iter()
-                    );
-                    match response_handle.send_response(response).await {
-                        Ok(info) => info,
-                        Err(_) => {
-                            let mut header = Header::new();
-                            header.set_response_code(ResponseCode::ServFail);
-                            let mut response = trust_dns_proto::op::Message::new();
-                            response.set_header(header);
-                            let header = response.header().clone();
-                            let records: Vec<Record> = response.answers().iter().cloned().collect();
-                            let records_refs: Vec<&Record> = records.iter().collect();
-                            let response = MessageResponseBuilder::from_message_request(request).build(
-                                header,
-                                records_refs.into_iter(),
-                                Vec::<&Record>::new().into_iter(),
-                                None,
-                                Vec::<&Record>::new().into_iter()
-                            );
-                            match response_handle.send_response(response).await {
-                                Ok(info) => info,
-                                Err(_) => {
-                                    let mut header = Header::new();
-                                    header.set_response_code(ResponseCode::ServFail);
-                                    ResponseInfo::from(header)
-                                }
-                            }
-                        }
-                    }
-                }
+                let mut header = Header::new();
+                header.set_response_code(ResponseCode::ServFail);
+                ResponseInfo::from(header)
             }
         }
     }

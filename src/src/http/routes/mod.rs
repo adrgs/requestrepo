@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::http::AppState;
 use crate::ip2country::lookup_country;
-use crate::models::{CacheMessage, CasePreservingHeaders, DnsRecords, FileTree, HttpRequestLog, Response as ResponseModel};
+use crate::models::{CacheMessage, DnsRecords, HttpRequestLog, Response as ResponseModel};
 use crate::utils::{
     generate_jwt, generate_request_id, get_current_timestamp, get_random_subdomain,
     get_subdomain_from_hostname, get_subdomain_from_path, verify_jwt, write_basic_file,
@@ -270,11 +270,14 @@ pub async fn update_file(
 
 pub async fn get_token(
     State(state): State<AppState>,
-    Json(request): Json<Value>,
+    request: Option<Json<Value>>,
 ) -> impl IntoResponse {
-    let subdomain = match request.get("subdomain") {
-        Some(subdomain) => match subdomain.as_str() {
-            Some(subdomain) => subdomain.to_string(),
+    let subdomain = match request {
+        Some(Json(req)) => match req.get("subdomain") {
+            Some(subdomain) => match subdomain.as_str() {
+                Some(subdomain) => subdomain.to_string(),
+                None => get_random_subdomain(),
+            },
             None => get_random_subdomain(),
         },
         None => get_random_subdomain(),
@@ -344,7 +347,13 @@ pub async fn get_files(
 
     let files = match state.cache.get(&format!("files:{}", subdomain)).await {
         Ok(Some(files)) => files,
-        _ => "{}".to_string(),
+        _ => {
+            let _ = crate::utils::write_basic_file(&subdomain, &state.cache).await;
+            match state.cache.get(&format!("files:{}", subdomain)).await {
+                Ok(Some(files)) => files,
+                _ => "{}".to_string(),
+            }
+        }
     };
 
     let files: Value = serde_json::from_str(&files).unwrap_or(json!({}));
@@ -355,7 +364,7 @@ pub async fn get_files(
 pub async fn update_files(
     State(state): State<AppState>,
     Query(params): Query<TokenQuery>,
-    Json(files): Json<FileTree>,
+    Json(tree): Json<HashMap<String, Value>>,
 ) -> impl IntoResponse {
     let subdomain = match verify_jwt(&params.token) {
         Some(subdomain) => subdomain,
@@ -363,8 +372,100 @@ pub async fn update_files(
             return (StatusCode::FORBIDDEN, Json(json!({"detail": "Invalid token"}))).into_response();
         }
     };
-
-    let _ = state.cache.set(&format!("files:{}", subdomain), &serde_json::to_string(&files).unwrap()).await;
+    
+    fn validate_tree(tree: &HashMap<String, Value>) -> Result<(), String> {
+        fn validate_tree_recursive(tree_dict: &HashMap<String, Value>, path: &str) -> Result<(), String> {
+            for (key, value) in tree_dict {
+                let current_path = format!("{}{}", path, key);
+                
+                if value.is_string() {
+                    continue;
+                }
+                
+                if let Some(obj) = value.as_object() {
+                    if key.ends_with("/") {
+                        let dir_map = obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<HashMap<String, Value>>();
+                        validate_tree_recursive(&dir_map, &current_path)?;
+                    } else {
+                        if !obj.contains_key("raw") || !obj.contains_key("headers") || !obj.contains_key("status_code") {
+                            return Err(format!("Invalid file structure for {}", current_path));
+                        }
+                        
+                        if !obj["raw"].is_string() {
+                            return Err(format!("Invalid raw file structure for {}", current_path));
+                        }
+                        
+                        if !obj["headers"].is_array() {
+                            return Err(format!("Invalid headers file structure for {}", current_path));
+                        }
+                        
+                        if !obj["status_code"].is_number() {
+                            return Err(format!("Invalid status_code file structure for {}", current_path));
+                        }
+                    }
+                } else {
+                    return Err(format!("Invalid structure for {}", current_path));
+                }
+            }
+            Ok(())
+        }
+        
+        validate_tree_recursive(tree, "")
+    }
+    
+    if let Err(err) = validate_tree(&tree) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": err}))).into_response();
+    }
+    
+    let existing_files = match state.cache.get(&format!("files:{}", subdomain)).await {
+        Ok(Some(files)) => {
+            match serde_json::from_str::<HashMap<String, Value>>(&files) {
+                Ok(map) => map,
+                Err(_) => HashMap::new(),
+            }
+        },
+        _ => {
+            let _ = crate::utils::write_basic_file(&subdomain, &state.cache).await;
+            match state.cache.get(&format!("files:{}", subdomain)).await {
+                Ok(Some(files)) => {
+                    match serde_json::from_str::<HashMap<String, Value>>(&files) {
+                        Ok(map) => map,
+                        Err(_) => HashMap::new(),
+                    }
+                },
+                _ => HashMap::new(),
+            }
+        }
+    };
+    
+    let mut merged_files = existing_files.clone();
+    for (key, value) in tree.iter() {
+        if key == "index.html" && value.is_null() {
+            return (StatusCode::BAD_REQUEST, Json(json!({"error": "index.html cannot be deleted"}))).into_response();
+        }
+        
+        if let Some(content) = value.as_str() {
+            let response = json!({
+                "raw": BASE64.encode(content.as_bytes()),
+                "headers": [
+                    {
+                        "header": "Content-Type",
+                        "value": "text/plain"
+                    }
+                ],
+                "status_code": 200
+            });
+            merged_files.insert(key.clone(), response);
+        } else {
+            merged_files.insert(key.clone(), value.clone());
+        }
+    }
+    
+    if !merged_files.contains_key("index.html") {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "index.html cannot be deleted"}))).into_response();
+    }
+    
+    let _ = state.cache.set(&format!("files:{}", subdomain), &serde_json::to_string(&merged_files).unwrap()).await;
 
     (StatusCode::OK, Json(json!({"msg": "Updated files"}))).into_response()
 }
@@ -441,12 +542,18 @@ pub async fn catch_all(
             uid: subdomain.clone(),
             method: method.to_string(),
             path: path.to_string(),
-            headers: headers
-                .iter()
-                .map(|(k, v)| {
-                    (k.to_string(), v.to_str().unwrap_or("").to_string())
-                })
-                .collect(),
+            headers: {
+                let mut header_map = HashMap::new();
+                
+                for (name, value) in headers.iter() {
+                    let header_name = name.to_string();
+                    let header_value = value.to_str().unwrap_or("").to_string();
+                    
+                    header_map.insert(header_name, header_value);
+                }
+                
+                header_map
+            },
             date: get_current_timestamp(),
             ip: Some(client_ip),
             country,
@@ -483,7 +590,13 @@ pub async fn catch_all(
 async fn serve_file(state: AppState, subdomain: String, path: &str) -> Response {
     let files = match state.cache.get(&format!("files:{}", subdomain)).await {
         Ok(Some(files)) => files,
-        _ => "{}".to_string(),
+        _ => {
+            let _ = crate::utils::write_basic_file(&subdomain, &state.cache).await;
+            match state.cache.get(&format!("files:{}", subdomain)).await {
+                Ok(Some(files)) => files,
+                _ => "{}".to_string(),
+            }
+        }
     };
     
     let files: HashMap<String, ResponseModel> = serde_json::from_str(&files).unwrap_or_default();

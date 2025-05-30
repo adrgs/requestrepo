@@ -55,21 +55,21 @@ impl Config {
             .parse()
             .unwrap_or(7);
         let http_port = env::var("HTTP_PORT")
-            .unwrap_or_else(|_| "8001".to_string())
+            .unwrap_or_else(|_| "9001".to_string())
             .parse()
-            .unwrap_or(8001);
+            .unwrap_or(9001);
         let https_port = env::var("HTTPS_PORT")
-            .unwrap_or_else(|_| "8443".to_string())
+            .unwrap_or_else(|_| "9443".to_string())
             .parse()
-            .unwrap_or(8443);
+            .unwrap_or(9443);
         let dns_port = env::var("DNS_PORT")
-            .unwrap_or_else(|_| "5353".to_string())
+            .unwrap_or_else(|_| "9053".to_string())
             .parse()
-            .unwrap_or(5353);
+            .unwrap_or(9053);
         let smtp_port = env::var("SMTP_PORT")
-            .unwrap_or_else(|_| "2525".to_string())
+            .unwrap_or_else(|_| "9025".to_string())
             .parse()
-            .unwrap_or(2525);
+            .unwrap_or(9025);
         let tcp_port_range_start = env::var("TCP_PORT_RANGE_START")
             .unwrap_or_else(|_| "10000".to_string())
             .parse()

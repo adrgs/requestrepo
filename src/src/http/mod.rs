@@ -2,22 +2,24 @@
 pub mod routes;
 mod websocket;
 mod https;
+pub mod custom_server;
 
 use anyhow::{anyhow, Result};
 use axum::{
-    extract::{Path, Query, State},
-    http::{HeaderMap, Method, StatusCode, Uri},
-    response::{IntoResponse, Response},
+    extract::State,
+    http::Method,
     routing::{get, post, delete},
-    Router, serve,
+    Router,
 };
 use hyper::server::conn::http1;
-use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper::service::service_fn;
+use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tower::Service;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::cache::Cache;
 use crate::models::CacheMessage;
@@ -91,20 +93,10 @@ impl Server {
         });
 
         let addr = SocketAddr::from(([0, 0, 0, 0], CONFIG.http_port));
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
         
-        info!("HTTP server listening on {}", addr);
+        let app = app.into_make_service_with_connect_info::<SocketAddr>();
+        crate::http::custom_server::run_custom_server(app, addr).await?;
         
-        serve(
-            listener,
-            app.into_make_service_with_connect_info::<SocketAddr>()
-        )
-        .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
-        })
-        .await
-        .map_err(|e| anyhow!("HTTP server error: {}", e))?;
-
         Ok(())
     }
 }
