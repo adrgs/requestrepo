@@ -50,7 +50,7 @@ impl Server {
     }
 }
 
-fn extract_subdomain_from_email(email: &str, server_domain: &str) -> Option<String> {
+fn extract_subdomain_from_email(email: &str, _server_domain: &str) -> Option<String> {
     let email = email.trim_start_matches('<').trim_end_matches('>');
     
     let parts: Vec<&str> = email.split('@').collect();
@@ -58,7 +58,6 @@ fn extract_subdomain_from_email(email: &str, server_domain: &str) -> Option<Stri
         return None;
     }
     
-    let local_part = parts[0];
     let domain = parts[1];
     
     let domain_parts: Vec<&str> = domain.split('.').collect();
