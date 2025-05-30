@@ -24,8 +24,8 @@ mod tests {
         let (tx, _) = broadcast::channel(1024);
         let tx = Arc::new(tx);
         
-        // Use port 5353 for this test
-        let port = 5353;
+        // Use port 5355 for this test to avoid conflicts with running DNS server
+        let port = 5355;
         
         // Create a domain name that matches the format expected by the DNS handler
         let subdomain = CONFIG.subdomain_alphabet.chars().take(CONFIG.subdomain_length).collect::<String>();
