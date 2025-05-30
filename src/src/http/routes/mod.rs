@@ -411,11 +411,7 @@ pub async fn catch_all(
         };
         let protocol = format!("{}/{}", scheme, http_version);
         
-        let fragment = if let Some(f) = uri.fragment() {
-            format!("#{}", f)
-        } else {
-            String::new()
-        };
+        let fragment = String::new();
         
         let query = if let Some(q) = uri.query() {
             q.to_string()
