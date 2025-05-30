@@ -61,16 +61,19 @@ fn extract_subdomain_from_email(email: &str, server_domain: &str) -> Option<Stri
     let local_part = parts[0];
     let domain = parts[1];
     
-    if !domain.eq_ignore_ascii_case(server_domain) {
+    let domain_parts: Vec<&str> = domain.split('.').collect();
+    if domain_parts.len() < 2 {
         return None;
     }
     
-    if local_part.len() != CONFIG.subdomain_length || 
-       !local_part.chars().all(|c| CONFIG.subdomain_alphabet_set.contains(&c)) {
+    let subdomain = domain_parts[0];
+    
+    if subdomain.len() != CONFIG.subdomain_length || 
+       !subdomain.chars().all(|c| CONFIG.subdomain_alphabet_set.contains(&c)) {
         return None;
     }
     
-    Some(local_part.to_string())
+    Some(subdomain.to_string())
 }
 
 fn extract_email_from_rcpt(rcpt_command: &str) -> Option<String> {
