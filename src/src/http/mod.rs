@@ -95,14 +95,15 @@ impl Server {
         
         info!("HTTP server listening on {}", addr);
         
-        let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
-        let server = hyper::Server::bind(&addr)
-            .http1_preserve_header_case(true)
-            .http1_title_case_headers(false)
-            .serve(make_service);
-            
-        server.await
-            .map_err(|e| anyhow!("HTTP server error: {}", e))?;
+        serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>()
+        )
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
+        })
+        .await
+        .map_err(|e| anyhow!("HTTP server error: {}", e))?;
 
         Ok(())
     }
