@@ -322,6 +322,7 @@ impl Cache {
             Ok(())
         }
     }
+}
 
 impl Clone for Cache {
     fn clone(&self) -> Self {
