@@ -113,12 +113,24 @@ impl DnsRequestHandler {
         
         let country = lookup_country(&source_ip);
         
-        let raw_bytes = query.original().unwrap_or_default();
+        let mut bytes = Vec::new();
+        let lower_query = request.query();
+        let query = lower_query.original().clone();
+        let mut message = Message::new();
+        message.set_id(request.header().id());
+        message.set_op_code(request.header().op_code());
+        message.set_message_type(MessageType::Query);
+        message.set_recursion_desired(request.header().recursion_desired());
+        message.add_query(query);
+        
+        if let Ok(encoded) = message.to_vec() {
+            bytes = encoded;
+        }
         
         let request_log = DnsRequestLog {
             _id: request_id.clone(),
             r#type: "dns".to_string(),
-            raw: base64::engine::general_purpose::STANDARD.encode(raw_bytes),
+            raw: base64::engine::general_purpose::STANDARD.encode(&bytes),
             uid: subdomain.to_string(),
             query_type: format!("{:?}", query_type),
             domain: name,
@@ -270,10 +282,10 @@ impl DnsRequestHandler {
         
         let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
-                let reply = self.format_dns_response(&response_message);
+                let reply_str = self.format_dns_response(&response_message).await;
                 
                 let request_id_str = format!("{}", request.header().id());
-                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply_str).await {
                     error!("Failed to update DNS reply: {}", e);
                 }
                 
@@ -346,10 +358,10 @@ impl DnsRequestHandler {
         
         let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
-                let reply = self.format_dns_response(&response_message);
+                let reply_str = self.format_dns_response(&response_message).await;
                 
                 let request_id_str = format!("{}", request.header().id());
-                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply_str).await {
                     error!("Failed to update DNS reply: {}", e);
                 }
                 
@@ -417,10 +429,10 @@ impl DnsRequestHandler {
         
         let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
-                let reply = self.format_dns_response(&response_message);
+                let reply_str = self.format_dns_response(&response_message).await;
                 
                 let request_id_str = format!("{}", request.header().id());
-                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply_str).await {
                     error!("Failed to update DNS reply: {}", e);
                 }
                 
@@ -494,10 +506,10 @@ impl DnsRequestHandler {
         
         let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
-                let reply = self.format_dns_response(&response_message);
+                let reply_str = self.format_dns_response(&response_message).await;
                 
                 let request_id_str = format!("{}", request.header().id());
-                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply_str).await {
                     error!("Failed to update DNS reply: {}", e);
                 }
                 
@@ -546,10 +558,10 @@ impl DnsRequestHandler {
         
         let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
-                let reply = self.format_dns_response(&response_message);
+                let reply_str = self.format_dns_response(&response_message).await;
                 
                 let request_id_str = format!("{}", request.header().id());
-                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply_str).await {
                     error!("Failed to update DNS reply: {}", e);
                 }
                 
