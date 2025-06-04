@@ -270,8 +270,30 @@ pub async fn update_file(
 
 pub async fn get_token(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     request: Option<Json<Value>>,
 ) -> impl IntoResponse {
+    let client_ip = addr.ip().to_string();
+    let rate_limit_key = format!("rate_limit:token:{}", client_ip);
+    
+    if let Ok(Some(count)) = state.cache.get(&rate_limit_key).await {
+        if let Ok(count) = count.parse::<u32>() {
+            if count >= 10 {
+                return (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    Json(json!({"detail": "Rate limit exceeded. Try again later."})),
+                ).into_response();
+            }
+        }
+    }
+    
+    let current_count = match state.cache.get(&rate_limit_key).await {
+        Ok(Some(count)) => count.parse::<u32>().unwrap_or(0) + 1,
+        _ => 1,
+    };
+    
+    let _ = state.cache.set(&rate_limit_key, &current_count.to_string()).await;
+    let _ = state.cache.set(&format!("{}:ttl", rate_limit_key), &(get_current_timestamp() + 60).to_string()).await;
     let subdomain = match request {
         Some(Json(req)) => match req.get("subdomain") {
             Some(subdomain) => match subdomain.as_str() {
@@ -489,10 +511,26 @@ pub async fn catch_all(
         .or_else(|| get_subdomain_from_path(path));
     
     if let Some(subdomain) = subdomain.clone() {
-        let body_bytes = match axum::body::to_bytes(body, 1024 * 1024 * 10).await {
-            Ok(bytes) => bytes.to_vec(),
-            Err(_) => Vec::new(),
-        };
+        use futures_util::StreamExt;
+        let max_request_size = 1024 * 1024 * 10; // 10MB limit
+        let mut body_bytes = Vec::new();
+        let mut body_stream = body.into_data_stream();
+        
+        while let Some(chunk) = body_stream.next().await {
+            match chunk {
+                Ok(data) => {
+                    body_bytes.extend_from_slice(&data);
+                    if body_bytes.len() > max_request_size {
+                        return Response::builder()
+                            .status(StatusCode::PAYLOAD_TOO_LARGE)
+                            .body(Body::from("Request body too large"))
+                            .unwrap()
+                            .into_response();
+                    }
+                }
+                Err(_) => break,
+            }
+        }
         
         let request_id = generate_request_id();
         

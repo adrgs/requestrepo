@@ -36,6 +36,8 @@ pub struct DnsRequestLog {
     pub date: i64,
     pub ip: Option<String>,
     pub country: Option<String>,
+    pub reply: String,
+    pub port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

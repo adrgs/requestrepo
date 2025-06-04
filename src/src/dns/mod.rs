@@ -113,16 +113,23 @@ impl DnsRequestHandler {
         
         let country = lookup_country(&source_ip);
         
+        let raw_bytes = match request.raw_message() {
+            Some(bytes) => bytes.to_vec(),
+            None => Vec::new(),
+        };
+        
         let request_log = DnsRequestLog {
             _id: request_id.clone(),
             r#type: "dns".to_string(),
-            raw: base64::engine::general_purpose::STANDARD.encode(format!("{:?}", request)),
+            raw: base64::engine::general_purpose::STANDARD.encode(&raw_bytes),
             uid: subdomain.to_string(),
             query_type: format!("{:?}", query_type),
             domain: name,
             date: get_current_timestamp(),
             ip: Some(source_ip),
             country,
+            reply: String::new(), // Will be updated after response is generated
+            port: Some(request.src().port()),
         };
         
         let request_json = serde_json::to_string(&request_log)?;
@@ -141,11 +148,76 @@ impl DnsRequestHandler {
         Ok(())
     }
 
+    async fn format_dns_response(&self, response_message: &Message) -> String {
+        let mut result = String::new();
+        
+        let header = response_message.header();
+        result.push_str(&format!(";; ->>HEADER<<- opcode: {:?}, status: {:?}, id: {}\n", 
+            header.op_code(), header.response_code(), header.id()));
+        
+        let flags = format!(
+            "qr {} aa {} rd {} ra {}", 
+            if header.message_type() == MessageType::Response { "1" } else { "0" },
+            if header.authoritative() { "1" } else { "0" },
+            if header.recursion_desired() { "1" } else { "0" },
+            if header.recursion_available() { "1" } else { "0" }
+        );
+        
+        result.push_str(&format!(";; flags: {}; QUERY: {}, ANSWER: {}, AUTHORITY: {}, ADDITIONAL: {}\n",
+            flags, response_message.queries().len(), response_message.answers().len(),
+            response_message.name_servers().len(), response_message.additionals().len()));
+        
+        if !response_message.queries().is_empty() {
+            result.push_str("\n;; QUESTION SECTION:\n");
+            for query in response_message.queries() {
+                result.push_str(&format!(";{}\t\tIN\t{:?}\n", 
+                    query.name(), query.query_type()));
+            }
+        }
+        
+        if !response_message.answers().is_empty() {
+            result.push_str("\n;; ANSWER SECTION:\n");
+            for record in response_message.answers() {
+                result.push_str(&format!("{}\t{}\tIN\t{:?}\t{:?}\n", 
+                    record.name(), record.ttl(), record.record_type(), record.rdata()));
+            }
+        }
+        
+        result
+    }
+    
+    async fn update_dns_reply(&self, subdomain: &str, request_id: &str, reply: String) -> Result<()> {
+        let key = format!("requests:{}", subdomain);
+        let logs = self.cache.lrange(&key, 0, -1).await?;
+        
+        for log_json in logs {
+            let mut log: DnsRequestLog = serde_json::from_str(&log_json)?;
+            if log._id == request_id {
+                log.reply = reply;
+                let updated_json = serde_json::to_string(&log)?;
+                
+                self.cache.lrem(&key, 0, &log_json).await?;
+                self.cache.lpush(&key, &updated_json).await?;
+                
+                let message = CacheMessage {
+                    cmd: "update_request".to_string(),
+                    subdomain: subdomain.to_string(),
+                    data: updated_json,
+                };
+                let _ = self.tx.send(message);
+                
+                break;
+            }
+        }
+        
+        Ok(())
+    }
+    
     async fn handle_a_record<R: ResponseHandler>(
         &self,
         request: &Request,
         mut response_handle: R,
-        _subdomain: &str,
+        subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
@@ -171,7 +243,7 @@ impl DnsRequestHandler {
                 let rdata = RData::A(A::new(octets[0], octets[1], octets[2], octets[3]));
                 let record = Record::from_rdata(
                     Name::from_str(&name).unwrap(),
-                    300, // TTL
+                    1, // TTL - 1 second to match Python implementation
                     rdata,
                 );
                 response_message.add_answer(record);
@@ -182,7 +254,7 @@ impl DnsRequestHandler {
             let rdata = RData::A(A::new(octets[0], octets[1], octets[2], octets[3]));
             let record = Record::from_rdata(
                 Name::from_str(&name).unwrap(),
-                300, // TTL
+                1, // TTL - 1 second to match Python implementation
                 rdata,
             );
             response_message.add_answer(record);
@@ -199,22 +271,35 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        match response_handle.send_response(response).await {
-            Ok(response_info) => response_info,
+        let response_info = match response_handle.send_response(response.clone()).await {
+            Ok(response_info) => {
+                let reply = self.format_dns_response(&response_message);
+                
+                let request_id = request.extensions().get::<String>().map(|s| s.clone());
+                if let Some(id) = request_id {
+                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
+                        error!("Failed to update DNS reply: {}", e);
+                    }
+                }
+                
+                response_info
+            },
             Err(e) => {
                 error!("Error sending A record response: {}", e);
                 let mut header = Header::new();
                 header.set_response_code(ResponseCode::ServFail);
                 ResponseInfo::from(header)
             }
-        }
+        };
+        
+        response_info
     }
 
     async fn handle_aaaa_record<R: ResponseHandler>(
         &self,
         request: &Request,
         mut response_handle: R,
-        _subdomain: &str,
+        subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
@@ -241,7 +326,7 @@ impl DnsRequestHandler {
                 ));
                 let record = Record::from_rdata(
                     Name::from_str(&name).unwrap(),
-                    300, // TTL
+                    1, // TTL - 1 second to match Python implementation
                     rdata,
                 );
                 response_message.add_answer(record);
@@ -264,15 +349,28 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        match response_handle.send_response(response).await {
-            Ok(response_info) => response_info,
+        let response_info = match response_handle.send_response(response.clone()).await {
+            Ok(response_info) => {
+                let reply = self.format_dns_response(&response_message);
+                
+                let request_id = request.extensions().get::<String>().map(|s| s.clone());
+                if let Some(id) = request_id {
+                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
+                        error!("Failed to update DNS reply: {}", e);
+                    }
+                }
+                
+                response_info
+            },
             Err(e) => {
                 error!("Error sending AAAA record response: {}", e);
                 let mut header = Header::new();
                 header.set_response_code(ResponseCode::ServFail);
                 ResponseInfo::from(header)
             }
-        }
+        };
+        
+        response_info
     }
 
     async fn handle_cname_record<R: ResponseHandler>(
@@ -302,7 +400,7 @@ impl DnsRequestHandler {
                 let rdata = RData::CNAME(CNAME(target));
                 let record = Record::from_rdata(
                     Name::from_str(&name).unwrap(),
-                    300, // TTL
+                    1, // TTL - 1 second to match Python implementation
                     rdata,
                 );
                 response_message.add_answer(record);
@@ -324,15 +422,28 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        match response_handle.send_response(response).await {
-            Ok(response_info) => response_info,
+        let response_info = match response_handle.send_response(response.clone()).await {
+            Ok(response_info) => {
+                let reply = self.format_dns_response(&response_message);
+                
+                let request_id = request.extensions().get::<String>().map(|s| s.clone());
+                if let Some(id) = request_id {
+                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
+                        error!("Failed to update DNS reply: {}", e);
+                    }
+                }
+                
+                response_info
+            },
             Err(e) => {
                 error!("Error sending CNAME record response: {}", e);
                 let mut header = Header::new();
                 header.set_response_code(ResponseCode::ServFail);
                 ResponseInfo::from(header)
             }
-        }
+        };
+        
+        response_info
     }
 
     async fn handle_txt_record<R: ResponseHandler>(
@@ -362,7 +473,7 @@ impl DnsRequestHandler {
             let rdata = RData::TXT(txt_data);
             let record = Record::from_rdata(
                 Name::from_str(&name).unwrap(),
-                300, // TTL
+                1, // TTL - 1 second to match Python implementation
                 rdata,
             );
             response_message.add_answer(record);
@@ -371,7 +482,7 @@ impl DnsRequestHandler {
             let rdata = RData::TXT(txt_data);
             let record = Record::from_rdata(
                 Name::from_str(&name).unwrap(),
-                300, // TTL
+                1, // TTL - 1 second to match Python implementation
                 rdata,
             );
             response_message.add_answer(record);
@@ -390,15 +501,28 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        match response_handle.send_response(response).await {
-            Ok(response_info) => response_info,
+        let response_info = match response_handle.send_response(response.clone()).await {
+            Ok(response_info) => {
+                let reply = self.format_dns_response(&response_message);
+                
+                let request_id = request.extensions().get::<String>().map(|s| s.clone());
+                if let Some(id) = request_id {
+                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
+                        error!("Failed to update DNS reply: {}", e);
+                    }
+                }
+                
+                response_info
+            },
             Err(e) => {
                 error!("Error sending TXT record response: {}", e);
                 let mut header = Header::new();
                 header.set_response_code(ResponseCode::ServFail);
                 ResponseInfo::from(header)
             }
-        }
+        };
+        
+        response_info
     }
 
     async fn handle_default_response<R: ResponseHandler>(
@@ -429,14 +553,27 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        match response_handle.send_response(response).await {
-            Ok(response_info) => response_info,
+        let response_info = match response_handle.send_response(response.clone()).await {
+            Ok(response_info) => {
+                let reply = self.format_dns_response(&response_message);
+                
+                let request_id = request.extensions().get::<String>().map(|s| s.clone());
+                if let Some(id) = request_id {
+                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
+                        error!("Failed to update DNS reply: {}", e);
+                    }
+                }
+                
+                response_info
+            },
             Err(e) => {
                 error!("Error sending default response: {}", e);
                 let mut header = Header::new();
                 header.set_response_code(ResponseCode::ServFail);
                 ResponseInfo::from(header)
             }
-        }
+        };
+        
+        response_info
     }
 }
