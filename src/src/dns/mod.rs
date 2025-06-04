@@ -113,15 +113,12 @@ impl DnsRequestHandler {
         
         let country = lookup_country(&source_ip);
         
-        let raw_bytes = match request.raw_message() {
-            Some(bytes) => bytes.to_vec(),
-            None => Vec::new(),
-        };
+        let raw_bytes = query.original().unwrap_or_default();
         
         let request_log = DnsRequestLog {
             _id: request_id.clone(),
             r#type: "dns".to_string(),
-            raw: base64::engine::general_purpose::STANDARD.encode(&raw_bytes),
+            raw: base64::engine::general_purpose::STANDARD.encode(raw_bytes),
             uid: subdomain.to_string(),
             query_type: format!("{:?}", query_type),
             domain: name,
@@ -179,7 +176,7 @@ impl DnsRequestHandler {
             result.push_str("\n;; ANSWER SECTION:\n");
             for record in response_message.answers() {
                 result.push_str(&format!("{}\t{}\tIN\t{:?}\t{:?}\n", 
-                    record.name(), record.ttl(), record.record_type(), record.rdata()));
+                    record.name(), record.ttl(), record.record_type(), record.data()));
             }
         }
         
@@ -271,15 +268,13 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        let response_info = match response_handle.send_response(response.clone()).await {
+        let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
                 let reply = self.format_dns_response(&response_message);
                 
-                let request_id = request.extensions().get::<String>().map(|s| s.clone());
-                if let Some(id) = request_id {
-                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
-                        error!("Failed to update DNS reply: {}", e);
-                    }
+                let request_id_str = format!("{}", request.header().id());
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                    error!("Failed to update DNS reply: {}", e);
                 }
                 
                 response_info
@@ -349,15 +344,13 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        let response_info = match response_handle.send_response(response.clone()).await {
+        let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
                 let reply = self.format_dns_response(&response_message);
                 
-                let request_id = request.extensions().get::<String>().map(|s| s.clone());
-                if let Some(id) = request_id {
-                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
-                        error!("Failed to update DNS reply: {}", e);
-                    }
+                let request_id_str = format!("{}", request.header().id());
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                    error!("Failed to update DNS reply: {}", e);
                 }
                 
                 response_info
@@ -377,7 +370,7 @@ impl DnsRequestHandler {
         &self,
         request: &Request,
         mut response_handle: R,
-        _subdomain: &str,
+        subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
@@ -422,15 +415,13 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        let response_info = match response_handle.send_response(response.clone()).await {
+        let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
                 let reply = self.format_dns_response(&response_message);
                 
-                let request_id = request.extensions().get::<String>().map(|s| s.clone());
-                if let Some(id) = request_id {
-                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
-                        error!("Failed to update DNS reply: {}", e);
-                    }
+                let request_id_str = format!("{}", request.header().id());
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                    error!("Failed to update DNS reply: {}", e);
                 }
                 
                 response_info
@@ -450,7 +441,7 @@ impl DnsRequestHandler {
         &self,
         request: &Request,
         mut response_handle: R,
-        _subdomain: &str,
+        subdomain: &str,
     ) -> ResponseInfo {
         let query = request.query();
         let name = query.name().to_string();
@@ -501,15 +492,13 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        let response_info = match response_handle.send_response(response.clone()).await {
+        let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
                 let reply = self.format_dns_response(&response_message);
                 
-                let request_id = request.extensions().get::<String>().map(|s| s.clone());
-                if let Some(id) = request_id {
-                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
-                        error!("Failed to update DNS reply: {}", e);
-                    }
+                let request_id_str = format!("{}", request.header().id());
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                    error!("Failed to update DNS reply: {}", e);
                 }
                 
                 response_info
@@ -530,6 +519,8 @@ impl DnsRequestHandler {
         request: &Request,
         mut response_handle: R,
     ) -> ResponseInfo {
+        let name = request.query().name().to_string();
+        let subdomain = get_subdomain_from_hostname(&name).unwrap_or_else(|| "unknown".to_string());
         let mut response_message = trust_dns_proto::op::Message::new();
         let mut header = Header::new();
         header.set_id(request.header().id());
@@ -553,15 +544,13 @@ impl DnsRequestHandler {
             Vec::<&Record>::new().into_iter()
         );
         
-        let response_info = match response_handle.send_response(response.clone()).await {
+        let response_info = match response_handle.send_response(response).await {
             Ok(response_info) => {
                 let reply = self.format_dns_response(&response_message);
                 
-                let request_id = request.extensions().get::<String>().map(|s| s.clone());
-                if let Some(id) = request_id {
-                    if let Err(e) = self.update_dns_reply(subdomain, &id, reply).await {
-                        error!("Failed to update DNS reply: {}", e);
-                    }
+                let request_id_str = format!("{}", request.header().id());
+                if let Err(e) = self.update_dns_reply(&subdomain, &request_id_str, reply.to_string()).await {
+                    error!("Failed to update DNS reply: {}", e);
                 }
                 
                 response_info
