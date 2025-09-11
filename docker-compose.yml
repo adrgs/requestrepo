@@ -2,11 +2,9 @@ version: "3"
 services:
   redisdb:
     image: redis:latest
-    command: redis-server --appendonly yes --maxmemory 16gb --maxmemory-policy allkeys-lru --maxclients 1048576
+    command: redis-server --save "" --appendonly no --maxmemory 16gb --maxmemory-policy allkeys-lru --maxclients 1048576
     container_name: requestrepo_redisdb
     restart: always
-    volumes:
-      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 60s
@@ -63,5 +61,4 @@ services:
       retries: 5
       start_period: 10s
 volumes:
-  redis_data:
   backend_cert:
