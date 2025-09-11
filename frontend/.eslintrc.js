@@ -33,6 +33,8 @@ module.exports = {
         ignoreRestSiblings: true,
       },
     ],
+    "react/prop-types": "off",
+    "react/no-unescaped-entities": "off",
   },
   overrides: [
     {
