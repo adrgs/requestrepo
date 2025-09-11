@@ -501,7 +501,7 @@ const App = () => {
           }
         }
       } else if (cmd === "requests") {
-        const requests = data["data"]//.map(JSON.parse);
+        const requests = data["data"]; //.map(JSON.parse);
         requests.forEach((request) => {
           const key = request["_id"];
 
