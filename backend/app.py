@@ -41,7 +41,7 @@ from websockets.exceptions import (
     ConnectionClosedOK,
 )
 
-app = FastAPI(server_header=False)
+app = FastAPI(server_header=False, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @dataclass
