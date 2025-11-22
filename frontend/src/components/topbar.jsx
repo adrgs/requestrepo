@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import PropTypes from "prop-types";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
@@ -51,7 +52,14 @@ export class AppTopbar extends Component {
 
   static defaultProps = {};
 
-  static propTypes = {};
+  static propTypes = {
+    sessions: PropTypes.object,
+    activeSession: PropTypes.string,
+    onSessionChange: PropTypes.func,
+    onSessionRemove: PropTypes.func,
+    updateSearchValue: PropTypes.func.isRequired,
+    onToggleMenu: PropTypes.func,
+  };
 
   componentDidUpdate(prevProps) {
     const sessionsChanged = prevProps.sessions !== this.props.sessions;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import PropTypes from "prop-types";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
 import { HeaderInput } from "./header-input";
@@ -397,3 +398,11 @@ export const EditResponsePage = ({
 };
 
 export default EditResponsePage;
+
+EditResponsePage.propTypes = {
+  headers: PropTypes.array,
+  content: PropTypes.string,
+  statusCode: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  toast: PropTypes.object.isRequired,
+  user: PropTypes.object,
+};

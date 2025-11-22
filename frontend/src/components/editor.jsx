@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import { Utils } from "../utils";
 
+import PropTypes from "prop-types";
+
 export const EditorComponent = ({
   value,
   onChange,
@@ -82,3 +84,12 @@ export const EditorComponent = ({
 };
 
 export default EditorComponent;
+
+EditorComponent.propTypes = {
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+  onChange: PropTypes.func,
+  commands: PropTypes.array,
+  language: PropTypes.string,
+  onFocus: PropTypes.func,
+  onBlur: PropTypes.func,
+};

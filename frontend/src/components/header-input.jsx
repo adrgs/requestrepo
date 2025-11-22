@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import { AutoComplete } from "primereact/autocomplete";
 import { Button } from "primereact/button";
+import PropTypes from "prop-types";
 
 export class HeaderInput extends Component {
   constructor(props) {
@@ -111,3 +112,11 @@ export class HeaderInput extends Component {
     );
   }
 }
+
+HeaderInput.propTypes = {
+  header: PropTypes.string,
+  value: PropTypes.string,
+  headersData: PropTypes.array,
+  index: PropTypes.number,
+  handleHeaderInputChange: PropTypes.func,
+};

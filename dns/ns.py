@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import datetime
 import os
-import random
+import secrets
 import threading
 
 from dnslib import DNSRecord, QTYPE
@@ -59,8 +59,7 @@ class Resolver:
                         new_record = Record(A if dtype == "A" else AAAA, ips)
                     else:
                         ips_list = ips.split("%")
-                        idx = random.randint(0, len(ips_list) - 1)
-                        new_record = Record(A if dtype == "A" else AAAA, ips_list[idx])
+                        new_record = Record(A if dtype == "A" else AAAA, secrets.choice(ips_list))
                     new_records.append(new_record)
         except:
             pass

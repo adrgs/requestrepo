@@ -3,6 +3,7 @@ import { RequestCard } from "./request-card";
 import { Checkbox } from "primereact/checkbox";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
+import PropTypes from "prop-types";
 export class AppSidebar extends Component {
   constructor(props) {
     super(props);
@@ -42,7 +43,9 @@ export class AppSidebar extends Component {
       nextProps.activeSession !== this.props.activeSession ||
       nextProps.sessions !== this.props.sessions ||
       nextProps.searchValue !== this.props.searchValue ||
+      // eslint-disable-next-line react/prop-types
       this.state.http_filter !== nextProps.http_filter ||
+      // eslint-disable-next-line react/prop-types
       this.state.dns_filter !== nextProps.dns_filter
     );
   }
@@ -211,7 +214,7 @@ export class AppSidebar extends Component {
         return (
           hasValue(
             (this.props.user?.requests && this.props.user.requests[item.id]) ||
-              {},
+            {},
             searchValue,
           ) &&
           ((item.type === "DNS" && dns_filter) ||
@@ -304,3 +307,13 @@ export class AppSidebar extends Component {
     );
   }
 }
+
+AppSidebar.propTypes = {
+  activeSession: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
+  user: PropTypes.object,
+  sessions: PropTypes.object,
+  searchValue: PropTypes.string,
+  clickRequestAction: PropTypes.func,
+  deleteAllRequests: PropTypes.func,
+  markAllAsVisited: PropTypes.func,
+};

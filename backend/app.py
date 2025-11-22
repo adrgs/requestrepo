@@ -35,13 +35,27 @@ from utils import (
     verify_subdomain,
     write_basic_file,
 )
+from renewer import get_certificate
 from websockets.exceptions import (
     ConnectionClosed,
     ConnectionClosedError,
     ConnectionClosedOK,
 )
 
-app = FastAPI(server_header=False, docs_url=None, redoc_url=None, openapi_url=None)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    redis = await redis_dependency.get_redis()
+    await renew_certificate()
+
+    yield
+
+    await redis.close()
+    await redis_dependency.close_pool()  # Close the entire pool on shutdown
+
+
+app = FastAPI(server_header=False, docs_url=None, redoc_url=None,
+              openapi_url=None, lifespan=lifespan)
 
 
 @dataclass
@@ -99,7 +113,8 @@ class SessionManager:
         try:
             if self.pubsub and self.sessions:
                 # Unsubscribe from all channels
-                channels = [f"pubsub:{subdomain}" for subdomain in self.sessions]
+                channels = [
+                    f"pubsub:{subdomain}" for subdomain in self.sessions]
                 if channels:
                     await self.pubsub.unsubscribe(*channels)
             self.sessions.clear()
@@ -174,17 +189,6 @@ async def renew_certificate() -> None:
         logger.info("Released lock for renewer")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    redis = await redis_dependency.get_redis()
-    await renew_certificate()
-
-    yield
-
-    await redis.close()
-    await redis_dependency.close_pool()  # Close the entire pool on shutdown
-
-
 def validation_error(msg: str) -> Response:
     response = JSONResponse({"error": msg})
     response.status_code = 401
@@ -250,7 +254,8 @@ async def update_dns(
 
         key = f"dns:{new_dtype}:{new_domain}"
 
-        new_record = {"domain": new_domain, "type": new_dtype, "value": new_value}
+        new_record = {"domain": new_domain,
+                      "type": new_dtype, "value": new_value}
         final_records.append(new_record)
 
         values[key].append(new_value)
@@ -551,7 +556,8 @@ async def _main_message_loop(
     """Handle both WebSocket and PubSub messages in an event-driven manner."""
     # Create tasks for receiving messages from both sources
     ws_receiver = asyncio.create_task(_receive_websocket_message(websocket))
-    pubsub_receiver = asyncio.create_task(_receive_pubsub_message(session_manager))
+    pubsub_receiver = asyncio.create_task(
+        _receive_pubsub_message(session_manager))
 
     try:
         while True:
@@ -664,7 +670,8 @@ async def update_files(
                     validate_tree(value, current_path)
                 else:
                     if not all(k in value for k in ["raw", "headers", "status_code"]):
-                        raise ValueError(f"Invalid file structure for {current_path}")
+                        raise ValueError(
+                            f"Invalid file structure for {current_path}")
                     if not isinstance(value["raw"], str):
                         raise ValueError(
                             f"Invalid raw file structure for {current_path}"
@@ -700,9 +707,11 @@ async def catch_all(
     request: Request, redis: aioredis.Redis = Depends(redis_dependency.get_redis)
 ) -> Response:
     host = request.headers.get("host") or config.server_domain
-    subdomain = get_subdomain_from_hostname(host) or get_subdomain_from_path(
-        request.url.path
-    )
+    on_main_domain = False
+    subdomain = get_subdomain_from_hostname(host)
+    if not subdomain:
+        subdomain = get_subdomain_from_path(request.url.path)
+        on_main_domain = True
 
     if subdomain is None:
         path = Path(request.url.path)
@@ -712,7 +721,8 @@ async def catch_all(
             if Path("public/index.html").exists():
                 response = FileResponse("public/index.html")
             else:
-                response = JSONResponse({"error": "Not found"}, status_code=404)
+                response = JSONResponse(
+                    {"error": "Not found"}, status_code=404)
         else:
             response = FileResponse(path)
         response.headers["Access-Control-Allow-Origin"] = "*"
@@ -765,6 +775,9 @@ async def catch_all(
 
     for header in file_data["headers"]:
         key = header["header"]
+        if on_main_domain and key.lower() in ["service-worker-allowed"]:
+            continue  # Prevent registering service worker to /
+
         value = header["value"]
         headers_obj[key] = value
 
@@ -781,7 +794,8 @@ class AlwaysTrueSet(set):
         return True
 
 
-list(filter(lambda r: r.name == "catch_all", app.routes))[0].methods = AlwaysTrueSet()
+list(filter(lambda r: r.name == "catch_all", app.routes))[
+    0].methods = AlwaysTrueSet()
 
 
 async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -> None:
@@ -811,7 +825,8 @@ async def log_request(request: Request, subdomain: str, redis: aioredis.Redis) -
         port=port,
         headers=headers,
         method=request.method,
-        protocol=request.scope["scheme"].upper() + "/" + request.scope["http_version"],
+        protocol=request.scope["scheme"].upper(
+        ) + "/" + request.scope["http_version"],
         path=request.url.path,
         fragment="#" + request.url.fragment if request.url.fragment else "",
         query="?" + request.url.query if request.url.query else "",
