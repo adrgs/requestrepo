@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import PropTypes from "prop-types";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
@@ -350,3 +351,8 @@ export class RequestInfo extends Component {
     return <div>{out}</div>;
   }
 }
+
+RequestInfo.propTypes = {
+  request: PropTypes.object.isRequired,
+  isShared: PropTypes.bool,
+};

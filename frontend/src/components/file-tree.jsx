@@ -5,6 +5,7 @@ import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
 import "./file-tree.scss";
+import PropTypes from "prop-types";
 
 export const FileTree = ({
   files,
@@ -464,10 +465,10 @@ export const FileTree = ({
     current[lastPart] = isDir
       ? {}
       : {
-          raw: "",
-          headers: getDefaultHeaders(lastPart),
-          status_code: 200,
-        };
+        raw: "",
+        headers: getDefaultHeaders(lastPart),
+        status_code: 200,
+      };
 
     onUpdate({ ...files });
     setEditingNode(null);
@@ -539,4 +540,12 @@ export const FileTree = ({
       />
     </div>
   );
+};
+
+FileTree.propTypes = {
+  files: PropTypes.object,
+  selectedFile: PropTypes.object,
+  onSelect: PropTypes.func,
+  onUpdate: PropTypes.func,
+  toast: PropTypes.object,
 };

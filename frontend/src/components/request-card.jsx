@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import PropTypes from "prop-types";
 
 export class RequestCard extends Component {
   constructor(props) {
@@ -56,3 +57,16 @@ export class RequestCard extends Component {
     );
   }
 }
+
+RequestCard.propTypes = {
+  clickRequestAction: PropTypes.func,
+  id: PropTypes.string,
+  new: PropTypes.bool,
+  active: PropTypes.bool,
+  visited: PropTypes.bool,
+  method: PropTypes.string,
+  title: PropTypes.string,
+  country: PropTypes.string,
+  detail: PropTypes.string,
+  time: PropTypes.string,
+};

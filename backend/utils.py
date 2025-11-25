@@ -1,4 +1,4 @@
-import random
+import secrets
 import json
 import jwt
 from config import config
@@ -37,7 +37,7 @@ def verify_jwt(
 def get_random_subdomain(
     alphabet: str = config.subdomain_alphabet, length: int = config.subdomain_length
 ) -> str:
-    return "".join(random.choices(alphabet, k=length))
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def get_subdomain_from_path(

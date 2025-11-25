@@ -3,6 +3,7 @@ import { Dropdown } from "primereact/dropdown";
 import { InputText } from "primereact/inputtext";
 import { Button } from "primereact/button";
 import { Utils } from "../utils";
+import PropTypes from "prop-types";
 
 export class RecordInput extends Component {
   constructor(props) {
@@ -127,3 +128,12 @@ export class RecordInput extends Component {
     );
   }
 }
+
+RecordInput.propTypes = {
+  type: PropTypes.number,
+  domain: PropTypes.string,
+  value: PropTypes.string,
+  index: PropTypes.number,
+  handleRecordInputChange: PropTypes.func,
+  subdomain: PropTypes.string,
+};

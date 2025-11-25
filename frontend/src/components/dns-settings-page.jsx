@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "primereact/button";
 import { RecordInput } from "./record-input";
 import { Utils } from "../utils";
+import PropTypes from "prop-types";
 
 export const DnsSettingsPage = ({
   dnsRecords: propDnsRecords = [],
@@ -202,3 +203,10 @@ export const DnsSettingsPage = ({
 };
 
 export default DnsSettingsPage;
+
+DnsSettingsPage.propTypes = {
+  dnsRecords: PropTypes.array,
+  user: PropTypes.object,
+  toast: PropTypes.object.isRequired,
+  activeSession: PropTypes.object,
+};
