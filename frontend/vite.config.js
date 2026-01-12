@@ -1,25 +1,20 @@
-const { defineConfig } = require("vite");
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import eslint from "vite-plugin-eslint";
 
-module.exports = async () => {
-  // Dynamically import the ESM-only plugin so this config works when Vite's
-  // CJS Node API is used (some environments call require() on the config).
-  const react = (await import("@vitejs/plugin-react")).default;
-  const eslint = (await import("vite-plugin-eslint")).default || (await import("vite-plugin-eslint"));
-
-  return defineConfig({
-    plugins: [react(), eslint()],
-    server: {
-      proxy: {
-        "/api": {
-          target: "http://localhost:21337",
-          changeOrigin: true,
-        },
-        "/api/ws2": {
-          target: "ws://localhost:21337",
-          ws: true,
-        },
+export default defineConfig({
+  plugins: [react(), eslint()],
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:21337",
+        changeOrigin: true,
       },
-      open: true,
+      "/api/v2/ws": {
+        target: "ws://localhost:21337",
+        ws: true,
+      },
     },
-  });
-};
+    open: true,
+  },
+});
