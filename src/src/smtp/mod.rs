@@ -1,18 +1,31 @@
-
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
-use uuid::Uuid;
+use tokio::time::timeout;
+use tracing::{error, info, warn};
 
 use crate::cache::Cache;
+use crate::ip2country::lookup_country;
 use crate::models::{CacheMessage, SmtpRequestLog};
 use crate::utils::config::CONFIG;
 use crate::utils::{generate_request_id, get_current_timestamp};
-use crate::ip2country::lookup_country;
+
+/// Maximum size for email data (10 MB)
+const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+
+/// Connection timeout (5 minutes)
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Read timeout for individual commands (60 seconds)
+const READ_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Maximum line length (prevent memory exhaustion)
+const MAX_LINE_LENGTH: usize = 16 * 1024;
 
 pub struct Server {
     cache: Arc<Cache>,
@@ -34,10 +47,22 @@ impl Server {
                 Ok((socket, addr)) => {
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
-                    
+
                     tokio::spawn(async move {
-                        if let Err(e) = handle_smtp_connection(socket, addr, cache, tx).await {
-                            error!("Error handling SMTP connection: {}", e);
+                        // Apply overall connection timeout
+                        match timeout(
+                            CONNECTION_TIMEOUT,
+                            handle_smtp_connection(socket, addr, cache, tx),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => {}
+                            Ok(Err(e)) => {
+                                warn!("SMTP connection error from {}: {}", addr, e);
+                            }
+                            Err(_) => {
+                                warn!("SMTP connection timeout from {}", addr);
+                            }
                         }
                     });
                 }
@@ -55,93 +80,204 @@ async fn handle_smtp_connection(
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
 ) -> Result<()> {
+    // Extract subdomain from connection - in practice this would come from
+    // the RCPT TO domain, but for logging purposes we generate one
     let subdomain = crate::utils::get_random_subdomain();
-    
-    socket.write_all(format!("220 {} ESMTP RequestRepo\r\n", CONFIG.server_domain).as_bytes()).await?;
-    
+    let client_ip = addr.ip().to_string();
+
+    info!("SMTP connection from {} (subdomain: {})", addr, subdomain);
+
+    // Send greeting
+    let greeting = format!("220 {} ESMTP RequestRepo\r\n", CONFIG.server_domain);
+    socket.write_all(greeting.as_bytes()).await?;
+
     let (reader, mut writer) = socket.split();
     let mut reader = BufReader::new(reader);
-    
+
     let mut line = String::new();
-    
-    let mut current_command = String::new();
     let mut data_mode = false;
     let mut email_data = String::new();
-    
-    let client_ip = addr.ip().to_string();
-    
-    while reader.read_line(&mut line).await? > 0 {
+    let mut mail_from: Option<String> = None;
+    let mut rcpt_to: Vec<String> = Vec::new();
+
+    loop {
+        line.clear();
+
+        // Read with timeout
+        let read_result = timeout(READ_TIMEOUT, reader.read_line(&mut line)).await;
+
+        let bytes_read = match read_result {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => {
+                warn!("SMTP read error from {}: {}", addr, e);
+                break;
+            }
+            Err(_) => {
+                warn!("SMTP read timeout from {}", addr);
+                let _ = writer.write_all(b"421 Connection timeout\r\n").await;
+                break;
+            }
+        };
+
+        if bytes_read == 0 {
+            break;
+        }
+
+        // Check line length
+        if line.len() > MAX_LINE_LENGTH {
+            let _ = writer.write_all(b"500 Line too long\r\n").await;
+            break;
+        }
+
         let line_trimmed = line.trim();
-        
+
         if data_mode {
             if line_trimmed == "." {
                 data_mode = false;
-                
+
+                // Log the complete email
                 log_smtp_request(
                     &subdomain,
                     "DATA",
                     Some(&email_data),
                     &client_ip,
+                    mail_from.as_deref(),
+                    &rcpt_to,
                     &cache,
                     &tx,
-                ).await?;
-                
+                )
+                .await?;
+
                 email_data.clear();
-                
+
                 writer.write_all(b"250 OK: Message received\r\n").await?;
             } else {
-                email_data.push_str(line_trimmed);
+                // Check message size
+                if email_data.len() + line.len() > MAX_MESSAGE_SIZE {
+                    data_mode = false;
+                    email_data.clear();
+                    writer
+                        .write_all(b"552 Message size exceeds maximum\r\n")
+                        .await?;
+                    continue;
+                }
+
+                // Handle dot-stuffing (lines starting with . have the . removed)
+                let content = if line_trimmed.starts_with('.') {
+                    &line_trimmed[1..]
+                } else {
+                    line_trimmed
+                };
+                email_data.push_str(content);
                 email_data.push('\n');
             }
         } else {
             if line_trimmed.is_empty() {
-                line.clear();
                 continue;
             }
-            
+
             let parts: Vec<&str> = line_trimmed.splitn(2, ' ').collect();
             let command = parts[0].to_uppercase();
-            
-            log_smtp_request(
-                &subdomain,
-                &command,
-                None,
-                &client_ip,
-                &cache,
-                &tx,
-            ).await?;
-            
+            let args = parts.get(1).map(|s| s.to_string());
+
+            // Log non-DATA commands
+            if command != "DATA" {
+                log_smtp_request(
+                    &subdomain,
+                    &format!("{} {}", command, args.as_deref().unwrap_or("")),
+                    None,
+                    &client_ip,
+                    mail_from.as_deref(),
+                    &rcpt_to,
+                    &cache,
+                    &tx,
+                )
+                .await?;
+            }
+
             match command.as_str() {
-                "HELO" | "EHLO" => {
-                    writer.write_all(b"250-RequestRepo\r\n").await?;
-                    writer.write_all(b"250-SIZE 10485760\r\n").await?;
-                    writer.write_all(b"250 HELP\r\n").await?;
+                "HELO" => {
+                    let response = format!("250 {} Hello\r\n", CONFIG.server_domain);
+                    writer.write_all(response.as_bytes()).await?;
+                }
+                "EHLO" => {
+                    let responses = format!(
+                        "250-{} Hello\r\n250-SIZE {}\r\n250-8BITMIME\r\n250 HELP\r\n",
+                        CONFIG.server_domain, MAX_MESSAGE_SIZE
+                    );
+                    writer.write_all(responses.as_bytes()).await?;
                 }
                 "MAIL" => {
-                    writer.write_all(b"250 OK\r\n").await?;
+                    // Parse MAIL FROM:<address>
+                    if let Some(ref arg) = args {
+                        let arg_upper = arg.to_uppercase();
+                        if arg_upper.starts_with("FROM:") {
+                            mail_from = Some(arg[5..].trim().to_string());
+                            writer.write_all(b"250 OK\r\n").await?;
+                        } else {
+                            writer.write_all(b"501 Syntax error\r\n").await?;
+                        }
+                    } else {
+                        writer.write_all(b"501 Syntax error\r\n").await?;
+                    }
                 }
                 "RCPT" => {
-                    writer.write_all(b"250 OK\r\n").await?;
+                    // Parse RCPT TO:<address>
+                    if let Some(ref arg) = args {
+                        let arg_upper = arg.to_uppercase();
+                        if arg_upper.starts_with("TO:") {
+                            rcpt_to.push(arg[3..].trim().to_string());
+                            writer.write_all(b"250 OK\r\n").await?;
+                        } else {
+                            writer.write_all(b"501 Syntax error\r\n").await?;
+                        }
+                    } else {
+                        writer.write_all(b"501 Syntax error\r\n").await?;
+                    }
                 }
                 "DATA" => {
-                    writer.write_all(b"354 Start mail input; end with <CRLF>.<CRLF>\r\n").await?;
-                    data_mode = true;
+                    if mail_from.is_none() {
+                        writer.write_all(b"503 Need MAIL command first\r\n").await?;
+                    } else if rcpt_to.is_empty() {
+                        writer.write_all(b"503 Need RCPT command first\r\n").await?;
+                    } else {
+                        writer
+                            .write_all(b"354 Start mail input; end with <CRLF>.<CRLF>\r\n")
+                            .await?;
+                        data_mode = true;
+                    }
+                }
+                "RSET" => {
+                    mail_from = None;
+                    rcpt_to.clear();
+                    email_data.clear();
+                    writer.write_all(b"250 OK\r\n").await?;
+                }
+                "NOOP" => {
+                    writer.write_all(b"250 OK\r\n").await?;
                 }
                 "QUIT" => {
                     writer.write_all(b"221 Bye\r\n").await?;
                     break;
+                }
+                "VRFY" | "EXPN" => {
+                    writer
+                        .write_all(b"252 Cannot verify user, but will accept message\r\n")
+                        .await?;
+                }
+                "HELP" => {
+                    writer
+                        .write_all(b"214 RequestRepo SMTP server - https://requestrepo.com\r\n")
+                        .await?;
                 }
                 _ => {
                     writer.write_all(b"500 Command not recognized\r\n").await?;
                 }
             }
         }
-        
-        current_command = line_trimmed.to_string();
-        
-        line.clear();
     }
-    
+
+    info!("SMTP connection closed from {}", addr);
     Ok(())
 }
 
@@ -150,17 +286,30 @@ async fn log_smtp_request(
     command: &str,
     data: Option<&str>,
     client_ip: &str,
+    mail_from: Option<&str>,
+    rcpt_to: &[String],
     cache: &Cache,
     tx: &broadcast::Sender<CacheMessage>,
 ) -> Result<()> {
     let request_id = generate_request_id();
-    
     let country = lookup_country(client_ip);
-    
+
+    // Build raw content for logging
+    let raw_content = if let Some(email_data) = data {
+        format!(
+            "From: {}\nTo: {}\n\n{}",
+            mail_from.unwrap_or("<unknown>"),
+            rcpt_to.join(", "),
+            email_data
+        )
+    } else {
+        format!("Command: {}", command)
+    };
+
     let request_log = SmtpRequestLog {
         _id: request_id.clone(),
         r#type: "smtp".to_string(),
-        raw: base64::encode(format!("Command: {}\nData: {:?}", command, data)),
+        raw: BASE64.encode(raw_content.as_bytes()),
         uid: subdomain.to_string(),
         command: command.to_string(),
         data: data.map(|s| s.to_string()),
@@ -168,19 +317,23 @@ async fn log_smtp_request(
         ip: Some(client_ip.to_string()),
         country,
     };
-    
+
     let request_json = serde_json::to_string(&request_log)?;
-    
-    cache.rpush(&format!("requests:{}", subdomain), &request_json).await?;
-    cache.set(&format!("request:{}:{}", subdomain, request_id), "0").await?;
-    
+
+    cache
+        .rpush(&format!("requests:{}", subdomain), &request_json)
+        .await?;
+    cache
+        .set(&format!("request:{}:{}", subdomain, request_id), "0")
+        .await?;
+
     let message = CacheMessage {
         cmd: "new_request".to_string(),
         subdomain: subdomain.to_string(),
         data: request_json,
     };
-    
+
     let _ = tx.send(message);
-    
+
     Ok(())
 }

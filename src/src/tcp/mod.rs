@@ -1,12 +1,13 @@
 
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::cache::Cache;
@@ -179,7 +180,7 @@ async fn handle_tcp_connection(
         let request_log = TcpRequestLog {
             _id: request_id.clone(),
             r#type: "tcp".to_string(),
-            raw: base64::encode(&buffer[..n]),
+            raw: BASE64.encode(&buffer[..n]),
             uid: subdomain.to_string(),
             port,
             date: get_current_timestamp(),

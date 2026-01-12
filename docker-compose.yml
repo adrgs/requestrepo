@@ -1,64 +1,70 @@
-version: "3"
+# Docker Compose for RequestRepo Rust backend (single container)
+# No Redis dependency - uses in-memory cache with LRU eviction
+
+version: "3.8"
+
 services:
-  redisdb:
-    image: redis:latest
-    command: redis-server --save "" --appendonly no --maxmemory 16gb --maxmemory-policy allkeys-lru --maxclients 1048576
-    container_name: requestrepo_redisdb
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 60s
-      timeout: 20s
-      retries: 5
-      start_period: 10s
-  backend:
+  requestrepo:
     build:
       context: .
-      args:
-        - DOMAIN=${DOMAIN:-requestrepo.com}
-    container_name: requestrepo_backend
+      dockerfile: Dockerfile
+    container_name: requestrepo
     restart: always
     ports:
-      - 80:80
-      - 443:443
+      - "80:80"       # HTTP
+      - "443:443"     # HTTPS
+      - "53:53/tcp"   # DNS TCP
+      - "53:53/udp"   # DNS UDP
+      - "25:25"       # SMTP
     env_file:
       - .env
     environment:
-      - REDIS_HOST=requestrepo_redisdb
-    depends_on:
-      - redisdb
+      # Required
+      - JWT_SECRET=${JWT_SECRET}
+      - DOMAIN=${DOMAIN:-requestrepo.com}
+      - SERVER_IP=${SERVER_IP:-127.0.0.1}
+      # Optional - Auth
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      # Optional - Ports
+      - HTTP_PORT=${HTTP_PORT:-80}
+      - HTTPS_PORT=${HTTPS_PORT:-443}
+      - DNS_PORT=${DNS_PORT:-53}
+      - SMTP_PORT=${SMTP_PORT:-25}
+      # Optional - TLS/ACME
+      - TLS_ENABLED=${TLS_ENABLED:-false}
+      - ACME_EMAIL=${ACME_EMAIL:-}
+      - ACME_DIRECTORY=${ACME_DIRECTORY:-https://acme-v02.api.letsencrypt.org/directory}
+      - CERT_RENEWAL_DAYS=${CERT_RENEWAL_DAYS:-7}
+      - CERT_CHECK_HOURS=${CERT_CHECK_HOURS:-12}
+      # Optional - Memory management
+      - CACHE_MAX_MEMORY_PCT=${CACHE_MAX_MEMORY_PCT:-0.7}
+      - MAX_SUBDOMAIN_SIZE_MB=${MAX_SUBDOMAIN_SIZE_MB:-10}
+      # Logging
+      - RUST_LOG=${RUST_LOG:-info}
     volumes:
-      - backend_cert:/app/cert
+      - certs:/app/certs
+    # Memory limits - adjust based on your needs
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 256M
     healthcheck:
-      test:
-        - CMD
-        - curl
-        - '-f'
-        - 'http://127.0.0.1:80'
-      interval: 60s
-      timeout: 20s
-      retries: 5
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
       start_period: 10s
-  dns:
-    build:
-      context: ./
-      dockerfile: ./dns/Dockerfile
-    container_name: requestrepo_dns
-    restart: always
-    ports:
-      - "53:53/tcp"
-      - "53:53/udp"
-    env_file:
-      - .env
-    environment:
-      - REDIS_HOST=requestrepo_redisdb
-    depends_on:
-      - redisdb
-    healthcheck:
-      test: ["CMD", "pgrep", "python3"]
-      interval: 60s
-      timeout: 20s
-      retries: 5
-      start_period: 10s
+    # Security options
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE  # Required for binding to ports < 1024
+    tmpfs:
+      - /tmp
+
+# Named volumes for persistent data
 volumes:
-  backend_cert:
+  certs:
+    driver: local

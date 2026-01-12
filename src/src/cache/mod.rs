@@ -1,219 +1,461 @@
-
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Duration, Utc};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use serde::{de::DeserializeOwned, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use linked_hash_map::LinkedHashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
-use std::sync::{Arc, RwLock};
-use std::time::{Duration as StdDuration, Instant, SystemTime};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::RwLock;
+use std::time::Duration as StdDuration;
 use tokio::sync::broadcast;
 use tokio::time::sleep;
-use tracing::{debug, error, info};
+use tracing::info;
 
 use crate::models::CacheMessage;
 use crate::utils::config::CONFIG;
 
-struct CacheEntry {
-    data: Vec<u8>,
-    expires_at: Instant,
+/// Cache entry for key-value data (compressed)
+struct KvEntry {
+    data: Vec<u8>,          // Gzip compressed
+    uncompressed_size: usize, // Original size for tracking
 }
 
-struct ListEntry {
+/// List entry for request logs (ordered by insertion time for LRU)
+struct RequestList {
     items: VecDeque<String>,
-    expires_at: Instant,
+    total_size: usize,
 }
 
+/// Cache statistics for monitoring
+#[derive(Debug, Clone)]
+pub struct CacheStats {
+    pub kv_entries: usize,
+    pub request_lists: usize,
+    pub total_requests: usize,
+    pub memory_used_bytes: usize,
+    pub memory_limit_bytes: usize,
+}
+
+/// Smart cache with tiered storage:
+/// - Session data (files, DNS): Per-subdomain size limits, never expires
+/// - Request logs: LRU eviction under memory pressure
 pub struct Cache {
-    kv_store: RwLock<HashMap<String, CacheEntry>>,
-    list_store: RwLock<HashMap<String, ListEntry>>,
+    // Key-value store for session data (files, DNS records)
+    // Keys: files:{subdomain}, dns:{subdomain}, dns:{type}:{domain}
+    kv_store: RwLock<HashMap<String, KvEntry>>,
+
+    // Request logs per subdomain - LRU evicted under memory pressure
+    // LinkedHashMap maintains insertion order for LRU
+    request_store: RwLock<LinkedHashMap<String, RequestList>>,
+
+    // Index mapping: request:{subdomain}:{id} -> index in request list
+    request_index: RwLock<HashMap<String, usize>>,
+
+    // Per-subdomain size tracking for limits
+    subdomain_sizes: RwLock<HashMap<String, usize>>,
+
+    // Memory tracking
+    current_memory: AtomicUsize,
+    max_memory: AtomicUsize,
+
+    // Broadcast channel for pub/sub
     tx: broadcast::Sender<CacheMessage>,
 }
 
 impl Cache {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(1024);
-        let cache = Self {
-            kv_store: RwLock::new(HashMap::new()),
-            list_store: RwLock::new(HashMap::new()),
-            tx,
-        };
 
-        let cache_clone = Arc::new(cache.clone());
+        // Calculate max memory from container limits or config
+        let max_memory = get_memory_limit();
+        info!("Cache initialized with max memory: {} MB", max_memory / 1024 / 1024);
+
+        Self {
+            kv_store: RwLock::new(HashMap::new()),
+            request_store: RwLock::new(LinkedHashMap::new()),
+            request_index: RwLock::new(HashMap::new()),
+            subdomain_sizes: RwLock::new(HashMap::new()),
+            current_memory: AtomicUsize::new(0),
+            max_memory: AtomicUsize::new(max_memory),
+            tx,
+        }
+    }
+
+    /// Start the background cleanup task
+    pub fn start_cleanup_task(cache: std::sync::Arc<Self>) {
         tokio::spawn(async move {
             loop {
                 sleep(StdDuration::from_secs(60)).await;
-                cache_clone.cleanup_expired();
+                cache.maybe_evict_requests();
             }
         });
-
-        cache
     }
 
-    pub async fn set(&self, key: &str, value: &str) -> Result<()> {
-        let ttl = StdDuration::from_secs(60 * 60 * 24 * CONFIG.cache_ttl_days);
-        let expires_at = Instant::now() + ttl;
+    /// Get cache statistics
+    pub fn stats(&self) -> CacheStats {
+        let kv_entries = self.kv_store.read().map(|s| s.len()).unwrap_or(0);
+        let request_lists = self.request_store.read().map(|s| s.len()).unwrap_or(0);
+        let total_requests = self.request_store
+            .read()
+            .map(|s| s.values().map(|r| r.items.len()).sum())
+            .unwrap_or(0);
 
+        CacheStats {
+            kv_entries,
+            request_lists,
+            total_requests,
+            memory_used_bytes: self.current_memory.load(Ordering::Relaxed),
+            memory_limit_bytes: self.max_memory.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Set a key-value pair (for files, DNS records)
+    /// Enforces per-subdomain size limits for session data
+    pub async fn set(&self, key: &str, value: &str) -> Result<()> {
+        let uncompressed_size = value.len();
+
+        // Check per-subdomain limit for session data (files:*, dns:*)
+        if let Some(subdomain) = extract_subdomain_from_key(key) {
+            let current_size = self.get_subdomain_size(&subdomain);
+            if current_size + uncompressed_size > CONFIG.max_subdomain_size_bytes {
+                return Err(anyhow!(
+                    "Subdomain {} storage limit exceeded ({} bytes max)",
+                    subdomain,
+                    CONFIG.max_subdomain_size_bytes
+                ));
+            }
+        }
+
+        // Compress the data
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(value.as_bytes())?;
         let compressed_data = encoder.finish()?;
+        let compressed_size = compressed_data.len();
 
-        let mut store = self.kv_store.write().map_err(|_| anyhow!("Failed to acquire write lock"))?;
+        // Update memory tracking
+        let mut store = self.kv_store.write().map_err(|_| anyhow!("Lock error"))?;
+
+        // If key exists, subtract old size
+        if let Some(old_entry) = store.get(key) {
+            self.current_memory.fetch_sub(old_entry.data.len(), Ordering::Relaxed);
+            if let Some(subdomain) = extract_subdomain_from_key(key) {
+                self.update_subdomain_size(&subdomain, -(old_entry.uncompressed_size as isize));
+            }
+        }
+
+        // Insert new entry
         store.insert(
             key.to_string(),
-            CacheEntry {
+            KvEntry {
                 data: compressed_data,
-                expires_at,
+                uncompressed_size,
             },
         );
+
+        self.current_memory.fetch_add(compressed_size, Ordering::Relaxed);
+        if let Some(subdomain) = extract_subdomain_from_key(key) {
+            self.update_subdomain_size(&subdomain, uncompressed_size as isize);
+        }
 
         Ok(())
     }
 
+    /// Get a value by key
     pub async fn get(&self, key: &str) -> Result<Option<String>> {
-        let store = self.kv_store.read().map_err(|_| anyhow!("Failed to acquire read lock"))?;
-        
+        let store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
+
         if let Some(entry) = store.get(key) {
-            if entry.expires_at > Instant::now() {
-                let mut decoder = GzDecoder::new(&entry.data[..]);
-                let mut decompressed = String::new();
-                decoder.read_to_string(&mut decompressed)?;
-                
-                return Ok(Some(decompressed));
-            }
+            let mut decoder = GzDecoder::new(&entry.data[..]);
+            let mut decompressed = String::new();
+            decoder.read_to_string(&mut decompressed)?;
+            return Ok(Some(decompressed));
         }
-        
+
         Ok(None)
     }
 
+    /// Delete a key
     pub async fn delete(&self, key: &str) -> Result<bool> {
-        let mut store = self.kv_store.write().map_err(|_| anyhow!("Failed to acquire write lock"))?;
-        Ok(store.remove(key).is_some())
+        let mut store = self.kv_store.write().map_err(|_| anyhow!("Lock error"))?;
+
+        if let Some(entry) = store.remove(key) {
+            self.current_memory.fetch_sub(entry.data.len(), Ordering::Relaxed);
+            if let Some(subdomain) = extract_subdomain_from_key(key) {
+                self.update_subdomain_size(&subdomain, -(entry.uncompressed_size as isize));
+            }
+            return Ok(true);
+        }
+
+        // Also check request index
+        let mut index = self.request_index.write().map_err(|_| anyhow!("Lock error"))?;
+        Ok(index.remove(key).is_some())
     }
 
+    /// Check if key exists
     pub async fn exists(&self, key: &str) -> Result<bool> {
-        let store = self.kv_store.read().map_err(|_| anyhow!("Failed to acquire read lock"))?;
-        Ok(store.contains_key(key) && store.get(key).unwrap().expires_at > Instant::now())
+        let store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
+        Ok(store.contains_key(key))
     }
 
+    /// Push to a request list (right push)
+    /// This is used for request logs - LRU evicted under memory pressure
     pub async fn rpush(&self, key: &str, value: &str) -> Result<usize> {
-        let ttl = StdDuration::from_secs(60 * 60 * 24 * CONFIG.cache_ttl_days);
-        let expires_at = Instant::now() + ttl;
+        let value_size = value.len();
 
-        let mut store = self.list_store.write().map_err(|_| anyhow!("Failed to acquire write lock"))?;
-        
-        let entry = store.entry(key.to_string()).or_insert_with(|| ListEntry {
-            items: VecDeque::new(),
-            expires_at,
-        });
-        
-        entry.items.push_back(value.to_string());
-        entry.expires_at = expires_at; // Reset expiration on push
-        
-        Ok(entry.items.len())
+        // Maybe evict old requests if memory is high
+        self.maybe_evict_requests();
+
+        let mut store = self.request_store.write().map_err(|_| anyhow!("Lock error"))?;
+
+        // Insert if not exists
+        if !store.contains_key(key) {
+            store.insert(key.to_string(), RequestList {
+                items: VecDeque::new(),
+                total_size: 0,
+            });
+        }
+
+        // Now get_refresh to move to end (most recently used) and modify
+        let len = if let Some(entry) = store.get_refresh(key) {
+            entry.items.push_back(value.to_string());
+            entry.total_size += value_size;
+            entry.items.len()
+        } else {
+            return Err(anyhow!("Failed to insert into request store"));
+        };
+
+        self.current_memory.fetch_add(value_size, Ordering::Relaxed);
+
+        Ok(len)
     }
 
+    /// Get range from list
     pub async fn lrange(&self, key: &str, start: isize, stop: isize) -> Result<Vec<String>> {
-        let store = self.list_store.read().map_err(|_| anyhow!("Failed to acquire read lock"))?;
-        
+        let store = self.request_store.read().map_err(|_| anyhow!("Lock error"))?;
+
         if let Some(entry) = store.get(key) {
-            if entry.expires_at > Instant::now() {
-                let len = entry.items.len() as isize;
-                
-                let start = if start < 0 { len + start } else { start };
-                let stop = if stop < 0 { len + stop } else { stop };
-                
-                let start = start.max(0) as usize;
-                let stop = stop.min(len - 1) as usize;
-                
-                if start <= stop && start < len as usize {
-                    return Ok(entry.items.iter().skip(start).take(stop - start + 1).cloned().collect());
-                }
+            let len = entry.items.len() as isize;
+
+            let start = if start < 0 { (len + start).max(0) } else { start };
+            let stop = if stop < 0 { len + stop } else { stop };
+
+            let start = start as usize;
+            let stop = (stop as usize).min(entry.items.len().saturating_sub(1));
+
+            if start <= stop && start < entry.items.len() {
+                return Ok(entry.items.iter().skip(start).take(stop - start + 1).cloned().collect());
             }
         }
-        
+
         Ok(Vec::new())
     }
 
+    /// Get length of list
+    pub async fn llen(&self, key: &str) -> Result<usize> {
+        let store = self.request_store.read().map_err(|_| anyhow!("Lock error"))?;
+        Ok(store.get(key).map(|e| e.items.len()).unwrap_or(0))
+    }
+
+    /// Set value at index in list
     pub async fn lset(&self, key: &str, index: isize, value: &str) -> Result<()> {
-        let mut store = self.list_store.write().map_err(|_| anyhow!("Failed to acquire write lock"))?;
-        
+        let mut store = self.request_store.write().map_err(|_| anyhow!("Lock error"))?;
+
         if let Some(entry) = store.get_mut(key) {
-            if entry.expires_at > Instant::now() {
-                let len = entry.items.len() as isize;
-                
-                let index = if index < 0 { len + index } else { index };
-                
-                if index >= 0 && index < len {
-                    entry.items[index as usize] = value.to_string();
-                    return Ok(());
-                }
+            let len = entry.items.len() as isize;
+            let index = if index < 0 { len + index } else { index };
+
+            if index >= 0 && index < len {
+                let old_size = entry.items[index as usize].len();
+                let new_size = value.len();
+
+                entry.items[index as usize] = value.to_string();
+                entry.total_size = entry.total_size - old_size + new_size;
+
+                self.current_memory.fetch_sub(old_size, Ordering::Relaxed);
+                self.current_memory.fetch_add(new_size, Ordering::Relaxed);
+
+                return Ok(());
             }
         }
-        
+
         Err(anyhow!("List or index not found"))
     }
 
+    /// Get keys matching pattern
     pub async fn keys(&self, pattern: &str) -> Result<Vec<String>> {
-        let kv_store = self.kv_store.read().map_err(|_| anyhow!("Failed to acquire read lock"))?;
-        let list_store = self.list_store.read().map_err(|_| anyhow!("Failed to acquire read lock"))?;
-        
+        let kv_store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
+        let request_store = self.request_store.read().map_err(|_| anyhow!("Lock error"))?;
+
         let mut result = Vec::new();
-        
+
         let pattern = pattern.replace("*", ".*");
         let re = regex::Regex::new(&format!("^{}$", pattern))?;
-        
+
         for key in kv_store.keys() {
             if re.is_match(key) {
                 result.push(key.clone());
             }
         }
-        
-        for key in list_store.keys() {
+
+        for key in request_store.keys() {
             if re.is_match(key) {
                 result.push(key.clone());
             }
         }
-        
+
         Ok(result)
     }
 
+    /// Publish a message to subscribers
     pub async fn publish(&self, channel: &str, message: &str) -> Result<usize> {
         let cache_message = CacheMessage {
             cmd: "message".to_string(),
             subdomain: channel.to_string(),
             data: message.to_string(),
         };
-        
+
         let receivers = self.tx.send(cache_message)?;
         Ok(receivers)
     }
 
+    /// Subscribe to cache messages
     pub fn subscribe(&self) -> broadcast::Receiver<CacheMessage> {
         self.tx.subscribe()
     }
 
-    fn cleanup_expired(&self) {
-        if let Ok(mut store) = self.kv_store.write() {
-            let now = Instant::now();
-            store.retain(|_, entry| entry.expires_at > now);
+    /// Get the broadcast sender
+    pub fn sender(&self) -> broadcast::Sender<CacheMessage> {
+        self.tx.clone()
+    }
+
+    // --- Private helper methods ---
+
+    fn get_subdomain_size(&self, subdomain: &str) -> usize {
+        self.subdomain_sizes
+            .read()
+            .ok()
+            .and_then(|s| s.get(subdomain).copied())
+            .unwrap_or(0)
+    }
+
+    fn update_subdomain_size(&self, subdomain: &str, delta: isize) {
+        if let Ok(mut sizes) = self.subdomain_sizes.write() {
+            let entry = sizes.entry(subdomain.to_string()).or_insert(0);
+            if delta >= 0 {
+                *entry = entry.saturating_add(delta as usize);
+            } else {
+                *entry = entry.saturating_sub((-delta) as usize);
+            }
         }
-        
-        if let Ok(mut store) = self.list_store.write() {
-            let now = Instant::now();
-            store.retain(|_, entry| entry.expires_at > now);
+    }
+
+    /// Evict oldest request lists if memory usage is above threshold
+    fn maybe_evict_requests(&self) {
+        let current = self.current_memory.load(Ordering::Relaxed);
+        let max = self.max_memory.load(Ordering::Relaxed);
+
+        // Start evicting at 70% capacity
+        let threshold = (max as f64 * CONFIG.cache_max_memory_pct) as usize;
+
+        if current > threshold {
+            self.evict_oldest_requests(current - threshold);
+        }
+    }
+
+    /// Evict oldest request lists to free up `bytes_to_free` bytes
+    fn evict_oldest_requests(&self, bytes_to_free: usize) {
+        let mut freed = 0usize;
+
+        if let Ok(mut store) = self.request_store.write() {
+            // LinkedHashMap iterates in insertion order (oldest first)
+            let keys_to_remove: Vec<String> = store
+                .iter()
+                .take_while(|(_, entry)| {
+                    if freed < bytes_to_free {
+                        freed += entry.total_size;
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .map(|(k, _)| k.clone())
+                .collect();
+
+            for key in keys_to_remove {
+                if let Some(entry) = store.remove(&key) {
+                    self.current_memory.fetch_sub(entry.total_size, Ordering::Relaxed);
+                    info!("Evicted request list {} ({} bytes)", key, entry.total_size);
+                }
+            }
         }
     }
 }
 
 impl Clone for Cache {
     fn clone(&self) -> Self {
+        // Clone shares the broadcast sender but creates new empty stores
+        // This is intentional - use Arc<Cache> to share actual data
         Self {
             kv_store: RwLock::new(HashMap::new()),
-            list_store: RwLock::new(HashMap::new()),
+            request_store: RwLock::new(LinkedHashMap::new()),
+            request_index: RwLock::new(HashMap::new()),
+            subdomain_sizes: RwLock::new(HashMap::new()),
+            current_memory: AtomicUsize::new(0),
+            max_memory: AtomicUsize::new(self.max_memory.load(Ordering::Relaxed)),
             tx: self.tx.clone(),
         }
     }
+}
+
+/// Extract subdomain from cache key for size tracking
+fn extract_subdomain_from_key(key: &str) -> Option<String> {
+    // files:{subdomain} -> subdomain
+    // dns:{subdomain} -> subdomain
+    if key.starts_with("files:") || key.starts_with("file:") {
+        return Some(key.split(':').nth(1)?.to_string());
+    }
+    if key.starts_with("dns:") {
+        // dns:{subdomain} or dns:{type}:{domain}
+        let parts: Vec<&str> = key.split(':').collect();
+        if parts.len() == 2 {
+            return Some(parts[1].to_string());
+        }
+        // dns:{type}:{domain} - extract subdomain from domain
+        // e.g., dns:A:test.abc123.example.com. -> abc123
+        if parts.len() >= 3 {
+            let domain = parts[2];
+            // Try to extract subdomain from domain name
+            let domain_parts: Vec<&str> = domain.split('.').collect();
+            if domain_parts.len() >= 2 {
+                // Second-to-last part before the base domain might be the subdomain
+                return Some(domain_parts[1].to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Get container memory limit from cgroups or system
+fn get_memory_limit() -> usize {
+    // Try cgroups v2
+    if let Ok(content) = std::fs::read_to_string("/sys/fs/cgroup/memory.max") {
+        if let Ok(limit) = content.trim().parse::<usize>() {
+            if limit < usize::MAX / 2 {
+                return ((limit as f64) * CONFIG.cache_max_memory_pct) as usize;
+            }
+        }
+    }
+
+    // Try cgroups v1
+    if let Ok(content) = std::fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes") {
+        if let Ok(limit) = content.trim().parse::<usize>() {
+            if limit < usize::MAX / 2 {
+                return ((limit as f64) * CONFIG.cache_max_memory_pct) as usize;
+            }
+        }
+    }
+
+    // Default: 1GB
+    1024 * 1024 * 1024
 }

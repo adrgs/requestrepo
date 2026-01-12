@@ -8,29 +8,45 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{error, info, warn};
 
+/// IP range entry storing start IP and country code
+/// Uses DB-IP format: we only store the start IP and country
+/// and use binary search to find the matching range
 #[derive(Debug, Clone)]
-struct IpRange {
+struct IpEntry {
     start: u32,
-    end: u32,
     country: String,
 }
 
 lazy_static! {
-    static ref IP_RANGES: RwLock<Vec<IpRange>> = RwLock::new(Vec::new());
+    static ref IP_ENTRIES: RwLock<Vec<IpEntry>> = RwLock::new(Vec::new());
+    static ref SHOW_COUNTRY: RwLock<bool> = RwLock::new(false);
 }
 
 pub fn init() -> Result<()> {
-    if !IP_RANGES.read().unwrap().is_empty() {
+    if !IP_ENTRIES.read().unwrap().is_empty() {
         return Ok(());
     }
 
-    let csv_path = Path::new("ip2country/ip2country.csv.gz");
-    if !csv_path.exists() {
-        error!("IP2Country database not found at {}", csv_path.display());
-        return Ok(());
-    }
+    // Try multiple possible paths for the database
+    let paths = [
+        "ip2country/vendor/dbip-country-lite.csv.gz",
+        "../ip2country/vendor/dbip-country-lite.csv.gz",
+        "dbip-country-lite.csv.gz",
+    ];
+
+    let csv_path = paths.iter().find(|p| Path::new(p).exists());
+
+    let csv_path = match csv_path {
+        Some(path) => Path::new(path),
+        None => {
+            warn!("IP2Country database not found. Country lookup disabled.");
+            warn!("Download from: https://db-ip.com/db/download/ip-to-country-lite");
+            warn!("Place at: ip2country/vendor/dbip-country-lite.csv.gz");
+            return Ok(());
+        }
+    };
 
     info!("Loading IP2Country database from {}", csv_path.display());
 
@@ -38,24 +54,31 @@ pub fn init() -> Result<()> {
     let decoder = GzDecoder::new(file);
     let reader = BufReader::new(decoder);
 
-    let mut ranges = Vec::new();
+    let mut entries = Vec::new();
     for line in reader.lines() {
         let line = line?;
         let parts: Vec<&str> = line.split(',').collect();
         if parts.len() >= 3 {
-            let start = u32::from_str(parts[0])?;
-            let end = u32::from_str(parts[1])?;
-            let country = parts[2].to_string();
-            ranges.push(IpRange { start, end, country });
+            // DB-IP format: start_ip,end_ip,country_code
+            let start_ip = parts[0];
+            let country = parts[2].trim().to_string();
+
+            // Only process IPv4 addresses
+            if let Some(start) = ip_to_u32(start_ip) {
+                entries.push(IpEntry { start, country });
+            }
         }
     }
 
-    ranges.sort_by_key(|range| range.start);
+    entries.sort_by_key(|e| e.start);
 
-    let mut db = IP_RANGES.write().unwrap();
-    *db = ranges;
+    let count = entries.len();
+    let mut db = IP_ENTRIES.write().unwrap();
+    *db = entries;
 
-    info!("Loaded {} IP ranges", db.len());
+    *SHOW_COUNTRY.write().unwrap() = true;
+
+    info!("Loaded {} IP ranges", count);
 
     Ok(())
 }
@@ -64,32 +87,41 @@ fn ip_to_u32(ip: &str) -> Option<u32> {
     Ipv4Addr::from_str(ip).ok().map(|ip| u32::from(ip))
 }
 
+/// Check if an IP string is a valid IPv4 address
+fn is_ipv4(ip: &str) -> bool {
+    ip.split('.')
+        .filter_map(|p| p.parse::<u8>().ok())
+        .count() == 4
+}
+
+/// Look up the country code for an IP address
+/// Returns None if IP is invalid or database not loaded
 pub fn lookup_country(ip: &str) -> Option<String> {
-    let ip_num = match ip_to_u32(ip) {
-        Some(num) => num,
-        None => return None,
-    };
-
-    let db = match IP_RANGES.read() {
-        Ok(db) => db,
-        Err(_) => return None,
-    };
-
-    let mut left = 0;
-    let mut right = db.len();
-
-    while left < right {
-        let mid = left + (right - left) / 2;
-        let range = &db[mid];
-
-        if ip_num < range.start {
-            right = mid;
-        } else if ip_num > range.end {
-            left = mid + 1;
-        } else {
-            return Some(range.country.clone());
-        }
+    // Check if country lookup is enabled
+    if !*SHOW_COUNTRY.read().ok()? {
+        return None;
     }
 
-    None
+    // Validate and convert IP
+    if !is_ipv4(ip) {
+        return None;
+    }
+
+    let ip_num = ip_to_u32(ip)?;
+
+    let db = IP_ENTRIES.read().ok()?;
+    if db.is_empty() {
+        return None;
+    }
+
+    // Binary search to find the entry where start <= ip_num
+    // We want the rightmost entry where start <= ip_num
+    let idx = db.partition_point(|e| e.start <= ip_num);
+
+    if idx == 0 {
+        return None;
+    }
+
+    // The country is in the entry just before the partition point
+    Some(db[idx - 1].country.clone())
 }

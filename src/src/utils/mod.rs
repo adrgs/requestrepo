@@ -1,4 +1,5 @@
 
+pub mod auth;
 pub mod config;
 
 use crate::models::Claims;
@@ -101,7 +102,7 @@ pub fn generate_jwt(subdomain: &str) -> Result<String, jsonwebtoken::errors::Err
     
     let claims = Claims {
         iat: now,
-        exp: now + 60 * 60 * 24 * 30, // 30 days
+        exp: now + 60 * 60 * 24 * 365, // 1 year
         subdomain: subdomain.to_string(),
     };
     

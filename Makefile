@@ -1,21 +1,13 @@
-# Makefile
+# Makefile for RequestRepo v2
 
 # Variables
 FRONTEND_DIR := frontend
-BACKEND_DIR := backend
-PYTHON_DIR := backend  # Assuming your Python code is in the backend directory
-LINT_PATHS := $(FRONTEND_DIR) $(BACKEND_DIR)
+RUST_DIR := src
 HOOKS_DIR := .git/hooks
 
 # Commands
 FRONTEND_START_CMD := npm run dev
-BACKEND_START_CMD := poetry run uvicorn app:app --port 21337 --no-server-header --reload
-FRONTEND_LINT_CMD := npm run lint
-PYTHON_LINT_CMD := poetry run ruff check
-FORMAT_PYTHON := poetry run ruff format
 FORMAT_JS_CMD := cd $(FRONTEND_DIR) && npx prettier --write --log-level silent
-REDIS_CONTAINER_NAME := redis-requestrepo-dev
-REDIS_PORT := 6379
 
 # Install dependencies and git hooks
 .PHONY: install
@@ -24,7 +16,7 @@ install: install-deps install-hooks
 # Install dependencies only
 .PHONY: install-deps
 install-deps:
-	poetry install
+	cd $(RUST_DIR) && cargo build --release
 	cd $(FRONTEND_DIR) && npm install --legacy-peer-deps
 
 # Install git hooks
@@ -48,48 +40,27 @@ pre-push: format lint test
 
 # Start the backend server
 .PHONY: start-backend
-start-backend: start-redis
+start-backend:
 	if [ ! -f .env ]; then cp .env.example .env; fi
-	cd $(BACKEND_DIR) && $(BACKEND_START_CMD)
-
-# Start the Redis container
-.PHONY: start-redis
-start-redis:
-	@if [ `docker ps -q -f name=$(REDIS_CONTAINER_NAME)` ]; then \
-		echo "$(REDIS_CONTAINER_NAME) is already running"; \
-	else \
-		if [ `docker ps -aq -f name=$(REDIS_CONTAINER_NAME)` ]; then \
-			docker start $(REDIS_CONTAINER_NAME); \
-		else \
-			docker run -d --name $(REDIS_CONTAINER_NAME) -p $(REDIS_PORT):6379 redis; \
-		fi \
-	fi
-
-# Stop the Redis container
-.PHONY: stop-redis
-stop-redis:
-	@if [ `docker ps -q -f name=$(REDIS_CONTAINER_NAME)` ]; then \
-		docker stop $(REDIS_CONTAINER_NAME); \
-	else \
-		echo "$(REDIS_CONTAINER_NAME) is not running"; \
-	fi
+	cd $(RUST_DIR) && cargo run --release
 
 # Start the frontend application
 .PHONY: start-frontend
 start-frontend:
 	cd $(FRONTEND_DIR) && $(FRONTEND_START_CMD)
 
+# Build the backend
+.PHONY: build
+build:
+	cd $(RUST_DIR) && cargo build --release
+
 # Run tests
 .PHONY: test
-test: test-backend test-dns test-frontend
+test: test-backend test-frontend
 
 .PHONY: test-backend
 test-backend:
-	poetry run pytest backend/tests
-
-.PHONY: test-dns
-test-dns:
-	poetry run pytest dns/tests
+	cd $(RUST_DIR) && cargo test
 
 .PHONY: test-frontend
 test-frontend:
@@ -97,24 +68,43 @@ test-frontend:
 
 # Lint the codebase
 .PHONY: lint
-lint: lint-js lint-python
+lint: lint-js lint-rust
 
 .PHONY: lint-js
 lint-js:
-	cd $(FRONTEND_DIR) && $(FRONTEND_LINT_CMD)
+	cd $(FRONTEND_DIR) && npm run lint
 
-.PHONY: lint-python
-lint-python:
-	$(PYTHON_LINT_CMD) $(PYTHON_DIR)
+.PHONY: lint-rust
+lint-rust:
+	cd $(RUST_DIR) && cargo clippy -- -D warnings
 
 # Format the codebase
 .PHONY: format
-format: format-js format-python
+format: format-js format-rust
 
 .PHONY: format-js
 format-js:
 	$(FORMAT_JS_CMD) .
 
-.PHONY: format-python
-format-python:
-	$(FORMAT_PYTHON) $(PYTHON_DIR)
+.PHONY: format-rust
+format-rust:
+	cd $(RUST_DIR) && cargo fmt
+
+# Clean build artifacts
+.PHONY: clean
+clean:
+	cd $(RUST_DIR) && cargo clean
+	rm -rf $(FRONTEND_DIR)/node_modules $(FRONTEND_DIR)/build
+
+# Docker commands
+.PHONY: docker-build
+docker-build:
+	docker compose build
+
+.PHONY: docker-up
+docker-up:
+	docker compose up -d
+
+.PHONY: docker-down
+docker-down:
+	docker compose down
