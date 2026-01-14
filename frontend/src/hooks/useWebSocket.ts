@@ -8,8 +8,12 @@ const HEARTBEAT_INTERVAL = 30000;
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   // Track tokens being registered to correlate with errors
   const pendingTokensRef = useRef<string[]>([]);
   // Track validated subdomains
@@ -70,9 +74,14 @@ export function useWebSocket() {
 
           case "error":
             // If invalid token, remove the session that caused it
-            if (message.code === "invalid_token" && pendingTokensRef.current.length > 0) {
+            if (
+              message.code === "invalid_token" &&
+              pendingTokensRef.current.length > 0
+            ) {
               const badToken = pendingTokensRef.current.shift();
-              const badSession = sessionsRef.current.find((s) => s.token === badToken);
+              const badSession = sessionsRef.current.find(
+                (s) => s.token === badToken,
+              );
               if (badSession) {
                 removeSession(badSession.subdomain);
               }
@@ -83,7 +92,7 @@ export function useWebSocket() {
         console.error("WebSocket message parse error:", error);
       }
     },
-    [addRequest, setRequests, removeRequest, clearRequests, removeSession]
+    [addRequest, setRequests, removeRequest, clearRequests, removeSession],
   );
 
   const connect = useCallback(() => {
@@ -103,7 +112,7 @@ export function useWebSocket() {
           JSON.stringify({
             cmd: "connect",
             token: session.token,
-          })
+          }),
         );
       }
 
@@ -161,7 +170,7 @@ export function useWebSocket() {
         JSON.stringify({
           cmd: "connect",
           token,
-        })
+        }),
       );
     }
   }, []);

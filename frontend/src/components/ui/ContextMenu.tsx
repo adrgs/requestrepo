@@ -119,8 +119,8 @@ export function ContextMenu({
               item.disabled
                 ? "cursor-not-allowed opacity-50"
                 : item.danger
-                ? "hover:bg-danger/10 hover:text-danger"
-                : "hover:bg-default-100"
+                  ? "hover:bg-danger/10 hover:text-danger"
+                  : "hover:bg-default-100",
             )}
             disabled={item.disabled}
             onClick={() => {

@@ -25,7 +25,10 @@ impl TlsManager {
     /// Returns None if no certificate is configured
     pub fn acceptor(&self) -> Option<TlsAcceptor> {
         let config = self.config.load();
-        config.as_ref().as_ref().map(|c| TlsAcceptor::from(c.clone()))
+        config
+            .as_ref()
+            .as_ref()
+            .map(|c| TlsAcceptor::from(c.clone()))
     }
 
     /// Reload the TLS configuration with new certificates

@@ -39,7 +39,9 @@ export function isAdminRequiredError(error: unknown): boolean {
 }
 
 // Session API
-export async function createSession(adminToken?: string): Promise<SessionCreateResponse> {
+export async function createSession(
+  adminToken?: string,
+): Promise<SessionCreateResponse> {
   const payload = adminToken ? { admin_token: adminToken } : {};
   const { data } = await api.post<SessionCreateResponse>("/sessions", payload);
   return data;
@@ -63,7 +65,7 @@ export async function getDnsRecords(token: string): Promise<DnsRecord[]> {
 
 export async function updateDnsRecords(
   token: string,
-  records: DnsRecord[]
+  records: DnsRecord[],
 ): Promise<void> {
   await api.put("/dns", { records }, { params: { token } });
 }
@@ -92,7 +94,7 @@ export async function getFiles(token: string): Promise<FileTree> {
 
 export async function updateFiles(
   token: string,
-  files: FileTree
+  files: FileTree,
 ): Promise<void> {
   await api.put("/files", files, { params: { token } });
 }
@@ -101,7 +103,7 @@ export async function updateFiles(
 export async function getRequests(
   token: string,
   limit = 100,
-  offset = 0
+  offset = 0,
 ): Promise<PaginatedResponse<Request>> {
   try {
     const { data } = await api.get<PaginatedResponse<Request>>("/requests", {
@@ -111,7 +113,10 @@ export async function getRequests(
   } catch (error) {
     if (isNetworkError(error)) {
       console.log("Requests API offline - returning empty list");
-      return { requests: [], pagination: { total: 0, limit, offset, has_more: false } };
+      return {
+        requests: [],
+        pagination: { total: 0, limit, offset, has_more: false },
+      };
     }
     throw error;
   }
@@ -119,7 +124,7 @@ export async function getRequests(
 
 export async function getRequest(
   token: string,
-  requestId: string
+  requestId: string,
 ): Promise<Request> {
   const { data } = await api.get<Request>(`/requests/${requestId}`, {
     params: { token },
@@ -129,7 +134,7 @@ export async function getRequest(
 
 export async function deleteRequest(
   token: string,
-  requestId: string
+  requestId: string,
 ): Promise<void> {
   await api.delete(`/requests/${requestId}`, {
     params: { token },
@@ -145,18 +150,20 @@ export async function deleteAllRequests(token: string): Promise<void> {
 // Create a share token for a request (requires auth)
 export async function createShareToken(
   token: string,
-  requestId: string
+  requestId: string,
 ): Promise<string> {
   const { data } = await api.post<{ share_token: string }>(
     `/requests/${requestId}/share`,
     {},
-    { params: { token } }
+    { params: { token } },
   );
   return data.share_token;
 }
 
 // Get a shared request by share token (public endpoint, no auth required)
-export async function getSharedRequest(shareToken: string): Promise<Request | null> {
+export async function getSharedRequest(
+  shareToken: string,
+): Promise<Request | null> {
   try {
     const { data } = await api.get<Request>(`/requests/shared/${shareToken}`);
     return data;

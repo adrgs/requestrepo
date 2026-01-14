@@ -16,12 +16,12 @@ use std::net::SocketAddr;
 
 use crate::http::AppState;
 use crate::models::{DnsRecord, DnsRecords, FileTree};
+use crate::utils::config::CONFIG;
 use crate::utils::{
     auth::{can_create_session, is_admin_token_required},
-    generate_jwt, generate_share_jwt, get_current_timestamp,
-    get_random_subdomain, verify_jwt, verify_share_jwt, write_basic_file,
+    generate_jwt, generate_share_jwt, get_current_timestamp, get_random_subdomain, verify_jwt,
+    verify_share_jwt, write_basic_file,
 };
-use crate::utils::config::CONFIG;
 
 // ============================================================================
 // Request/Response Types
@@ -205,7 +205,9 @@ pub async fn create_session(
     // Set cookie if admin token was provided in body (first-time auth)
     // This persists the admin token for future session creations
     if body.admin_token.is_some() && is_admin_token_required() {
-        if let Ok(cookie_value) = HeaderValue::from_str(&build_admin_cookie(body.admin_token.as_ref().unwrap())) {
+        if let Ok(cookie_value) =
+            HeaderValue::from_str(&build_admin_cookie(body.admin_token.as_ref().unwrap()))
+        {
             response.headers_mut().insert(SET_COOKIE, cookie_value);
         }
     }
@@ -292,9 +294,7 @@ pub async fn get_dns(
 
     let dns_key = format!("dns:{subdomain}");
     let records = match state.cache.get(&dns_key).await {
-        Ok(Some(json_str)) => {
-            serde_json::from_str::<Vec<DnsRecord>>(&json_str).unwrap_or_default()
-        }
+        Ok(Some(json_str)) => serde_json::from_str::<Vec<DnsRecord>>(&json_str).unwrap_or_default(),
         _ => Vec::new(),
     };
 
@@ -343,7 +343,8 @@ pub async fn update_dns(
 
     // Clear old records
     if let Ok(Some(old_records_json)) = state.cache.get(&format!("dns:{subdomain}")).await {
-        if let Ok(old_records) = serde_json::from_str::<Vec<HashMap<String, String>>>(&old_records_json)
+        if let Ok(old_records) =
+            serde_json::from_str::<Vec<HashMap<String, String>>>(&old_records_json)
         {
             for old_record in old_records {
                 if let (Some(record_type), Some(domain)) =
@@ -365,19 +366,11 @@ pub async fn update_dns(
         let short_domain = record.domain.to_lowercase();
 
         // Compute full FQDN for DNS cache key
-        let fqdn = format!(
-            "{}.{}.{}.",
-            short_domain,
-            subdomain,
-            CONFIG.server_domain
-        );
+        let fqdn = format!("{}.{}.{}.", short_domain, subdomain, CONFIG.server_domain);
 
         let _ = state
             .cache
-            .set(
-                &format!("dns:{}:{}", record.r#type, fqdn),
-                &record.value,
-            )
+            .set(&format!("dns:{}:{}", record.r#type, fqdn), &record.value)
             .await;
 
         // Store the short domain for display, not the full FQDN
@@ -525,7 +518,8 @@ pub async fn list_requests(
 ) -> impl IntoResponse {
     // Extract and verify token
     let token = query.token.clone().or_else(|| {
-        headers.get("authorization")
+        headers
+            .get("authorization")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.strip_prefix("Bearer "))
             .map(|s| s.to_string())
@@ -729,10 +723,7 @@ pub async fn delete_all_requests(
     }
 
     // Delete the requests list
-    let _ = state
-        .cache
-        .delete(&format!("requests:{subdomain}"))
-        .await;
+    let _ = state.cache.delete(&format!("requests:{subdomain}")).await;
 
     // Broadcast deletion
     let message = crate::models::CacheMessage {

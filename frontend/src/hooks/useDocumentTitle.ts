@@ -22,6 +22,7 @@ export function useDocumentTitle() {
       totalUnseen += unseenCount;
     }
 
-    document.title = totalUnseen > 0 ? `(${totalUnseen}) ${baseTitle}` : baseTitle;
+    document.title =
+      totalUnseen > 0 ? `(${totalUnseen}) ${baseTitle}` : baseTitle;
   }, [requests, sessions, visitedRequests]);
 }

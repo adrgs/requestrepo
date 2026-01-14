@@ -70,7 +70,8 @@ mod tests {
 
         // Store subdomain DNS configuration
         let subdomain = "testsubdomain";
-        let records_json = r#"[{"domain":"test.testsubdomain.example.com.","type":"A","value":"1.2.3.4"}]"#;
+        let records_json =
+            r#"[{"domain":"test.testsubdomain.example.com.","type":"A","value":"1.2.3.4"}]"#;
 
         cache
             .set(&format!("dns:{subdomain}"), records_json)
@@ -103,18 +104,9 @@ mod tests {
         let cache = Arc::new(Cache::new());
 
         // Store multiple DNS records
-        cache
-            .set("dns:A:a.example.com.", "1.2.3.4")
-            .await
-            .unwrap();
-        cache
-            .set("dns:A:b.example.com.", "5.6.7.8")
-            .await
-            .unwrap();
-        cache
-            .set("dns:AAAA:c.example.com.", "::1")
-            .await
-            .unwrap();
+        cache.set("dns:A:a.example.com.", "1.2.3.4").await.unwrap();
+        cache.set("dns:A:b.example.com.", "5.6.7.8").await.unwrap();
+        cache.set("dns:AAAA:c.example.com.", "::1").await.unwrap();
 
         // Find all A records
         let a_keys = cache.keys("dns:A:*").await.unwrap();

@@ -66,7 +66,8 @@ async fn handle_dns_request(
     tx: Arc<broadcast::Sender<CacheMessage>>,
     socket: Arc<UdpSocket>,
 ) -> Result<()> {
-    let request = Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {}", e))?;
+    let request =
+        Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {}", e))?;
 
     let query = match request.queries().first() {
         Some(q) => q,
@@ -86,13 +87,16 @@ async fn handle_dns_request(
 
     // Log the DNS request if we have a valid subdomain
     if let Some(ref subdomain) = subdomain {
-        if let Err(e) = log_dns_request(&request, data, addr, subdomain, &reply, &cache, &tx).await {
+        if let Err(e) = log_dns_request(&request, data, addr, subdomain, &reply, &cache, &tx).await
+        {
             error!("Failed to log DNS request: {}", e);
         }
     }
 
     // Serialize and send response
-    let response_bytes = response.to_bytes().map_err(|e| anyhow!("Failed to serialize DNS response: {}", e))?;
+    let response_bytes = response
+        .to_bytes()
+        .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e))?;
     socket.send_to(&response_bytes, addr).await?;
 
     Ok(())
@@ -115,10 +119,18 @@ fn format_dns_response(response: &Message) -> String {
 
     let flags = format!(
         ";; flags: {}{}{}{}; QUERY: {}, ANSWER: {}, AUTHORITY: {}, ADDITIONAL: {}",
-        if response.recursion_desired() { "qr " } else { "" },
+        if response.recursion_desired() {
+            "qr "
+        } else {
+            ""
+        },
         if response.authoritative() { "aa " } else { "" },
         if response.truncated() { "tc " } else { "" },
-        if response.recursion_available() { "rd " } else { "" },
+        if response.recursion_available() {
+            "rd "
+        } else {
+            ""
+        },
         queries.len(),
         answers.len(),
         response.name_server_count(),
@@ -162,7 +174,10 @@ async fn log_dns_request(
     cache: &Arc<Cache>,
     tx: &Arc<broadcast::Sender<CacheMessage>>,
 ) -> Result<()> {
-    let query = request.queries().first().ok_or_else(|| anyhow!("No query in request"))?;
+    let query = request
+        .queries()
+        .first()
+        .ok_or_else(|| anyhow!("No query in request"))?;
     let name = query.name().to_string();
     let query_type = query.query_type();
     let source_ip = addr.ip().to_string();
@@ -188,11 +203,17 @@ async fn log_dns_request(
 
     // Push request to list and get the new length to calculate the correct index
     let list_key = format!("requests:{subdomain}");
-    let index = cache.rpush(&list_key, &request_json).await?.saturating_sub(1);
+    let index = cache
+        .rpush(&list_key, &request_json)
+        .await?
+        .saturating_sub(1);
 
     // Store the index for this request ID (used by delete endpoint)
     cache
-        .set(&format!("request:{subdomain}:{request_id}"), &index.to_string())
+        .set(
+            &format!("request:{subdomain}:{request_id}"),
+            &index.to_string(),
+        )
         .await?;
 
     let message = CacheMessage {

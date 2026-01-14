@@ -74,6 +74,6 @@ export const useThemeStore = create<ThemeState>()(
           state.resolvedTheme = resolvedTheme;
         }
       },
-    }
-  )
+    },
+  ),
 );

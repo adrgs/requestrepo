@@ -24,7 +24,10 @@ export function Sidebar() {
   const session = sessions.find((s) => s.subdomain === activeSubdomain);
 
   const allRequests = useRequestStore((s) => s.requests);
-  const requests = activeSubdomain ? (allRequests[activeSubdomain] ?? []) : [];
+  const requests = useMemo(
+    () => (activeSubdomain ? (allRequests[activeSubdomain] ?? []) : []),
+    [activeSubdomain, allRequests]
+  );
   const clearRequests = useRequestStore((s) => s.clearRequests);
 
   const httpFilter = useUiStore((s) => s.httpFilter);
@@ -124,7 +127,10 @@ export function Sidebar() {
     prevRequestCountRef.current = 0;
   }, [activeSubdomain]);
 
-  const handleDeleteRequest = async (e: React.MouseEvent, requestId: string) => {
+  const handleDeleteRequest = async (
+    e: React.MouseEvent,
+    requestId: string,
+  ) => {
     e.stopPropagation();
     if (!session) return;
     try {
@@ -164,7 +170,7 @@ export function Sidebar() {
     if (!activeSubdomain || allRead) return;
     markAllAsRead(
       activeSubdomain,
-      requests.map((r) => r._id)
+      requests.map((r) => r._id),
     );
   };
 
@@ -223,12 +229,15 @@ export function Sidebar() {
       </div>
 
       {/* Request list */}
-      <ScrollShadow ref={scrollContainerRef} className="flex-1 overflow-auto px-2">
+      <ScrollShadow
+        ref={scrollContainerRef}
+        className="flex-1 overflow-auto px-2"
+      >
         <div className="flex flex-col">
           {filteredRequests.map((request, index) => {
             const isActive = request._id === selectedRequestId;
             const isVisited = activeSubdomain
-              ? visitedRequests[activeSubdomain]?.[request._id] ?? false
+              ? (visitedRequests[activeSubdomain]?.[request._id] ?? false)
               : false;
             const isHttp = isHttpRequest(request);
             const isFirst = index === 0;
@@ -247,7 +256,7 @@ export function Sidebar() {
                   isFirst && "rounded-t-md",
                   isLast && "rounded-b-md",
                   isActive && "bg-primary/10",
-                  isVisited && !isActive && "bg-default-100 dark:bg-black/20"
+                  isVisited && !isActive && "bg-default-100 dark:bg-black/20",
                 )}
               >
                 <div className="flex items-center gap-1.5">
@@ -256,17 +265,29 @@ export function Sidebar() {
                       NEW
                     </span>
                   )}
-                  <span className={`shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${
-                    !isHttp ? "bg-[#33daff]" :
-                    request.method === "GET" ? "bg-[#20d077]" :
-                    request.method === "POST" ? "bg-[#ffae00]" :
-                    request.method === "PUT" ? "bg-[#ff9800]" :
-                    request.method === "DELETE" ? "bg-[#f44336]" :
-                    "bg-[#9e9e9e]"
-                  }`}>
+                  <span
+                    className={`shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${
+                      !isHttp
+                        ? "bg-[#33daff]"
+                        : request.method === "GET"
+                          ? "bg-[#20d077]"
+                          : request.method === "POST"
+                            ? "bg-[#ffae00]"
+                            : request.method === "PUT"
+                              ? "bg-[#ff9800]"
+                              : request.method === "DELETE"
+                                ? "bg-[#f44336]"
+                                : "bg-[#9e9e9e]"
+                    }`}
+                  >
                     {isHttp ? request.method : "DNS"}
                   </span>
-                  <span className={cn("truncate text-xs", !isVisited && "font-medium")}>
+                  <span
+                    className={cn(
+                      "truncate text-xs",
+                      !isVisited && "font-medium",
+                    )}
+                  >
                     {isHttp ? request.path : request.domain}
                   </span>
                   <span
@@ -279,7 +300,9 @@ export function Sidebar() {
                 <div className="mt-1.5 flex items-center gap-1 text-[10px] text-default-400">
                   <span className={getFlagClass(request.country)} />
                   <span className="truncate">{request.ip}</span>
-                  <span className="ml-auto shrink-0">{formatRelativeTime(request.date)}</span>
+                  <span className="ml-auto shrink-0">
+                    {formatRelativeTime(request.date)}
+                  </span>
                 </div>
               </div>
             );

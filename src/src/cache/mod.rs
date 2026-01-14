@@ -17,7 +17,7 @@ use crate::utils::config::CONFIG;
 
 /// Cache entry for key-value data (compressed)
 struct KvEntry {
-    data: Vec<u8>,          // Gzip compressed
+    data: Vec<u8>,            // Gzip compressed
     uncompressed_size: usize, // Original size for tracking
 }
 
@@ -69,7 +69,10 @@ impl Cache {
 
         // Calculate max memory from container limits or config
         let max_memory = get_memory_limit();
-        info!("Cache initialized with max memory: {} MB", max_memory / 1024 / 1024);
+        info!(
+            "Cache initialized with max memory: {} MB",
+            max_memory / 1024 / 1024
+        );
 
         Self {
             kv_store: RwLock::new(HashMap::new()),
@@ -96,7 +99,8 @@ impl Cache {
     pub fn stats(&self) -> CacheStats {
         let kv_entries = self.kv_store.read().map(|s| s.len()).unwrap_or(0);
         let request_lists = self.request_store.read().map(|s| s.len()).unwrap_or(0);
-        let total_requests = self.request_store
+        let total_requests = self
+            .request_store
             .read()
             .map(|s| s.values().map(|r| r.items.len()).sum())
             .unwrap_or(0);
@@ -138,7 +142,8 @@ impl Cache {
 
         // If key exists, subtract old size
         if let Some(old_entry) = store.get(key) {
-            self.current_memory.fetch_sub(old_entry.data.len(), Ordering::Relaxed);
+            self.current_memory
+                .fetch_sub(old_entry.data.len(), Ordering::Relaxed);
             if let Some(subdomain) = extract_subdomain_from_key(key) {
                 self.update_subdomain_size(&subdomain, -(old_entry.uncompressed_size as isize));
             }
@@ -153,7 +158,8 @@ impl Cache {
             },
         );
 
-        self.current_memory.fetch_add(compressed_size, Ordering::Relaxed);
+        self.current_memory
+            .fetch_add(compressed_size, Ordering::Relaxed);
         if let Some(subdomain) = extract_subdomain_from_key(key) {
             self.update_subdomain_size(&subdomain, uncompressed_size as isize);
         }
@@ -181,7 +187,8 @@ impl Cache {
         {
             let mut store = self.kv_store.write().map_err(|_| anyhow!("Lock error"))?;
             if let Some(entry) = store.remove(key) {
-                self.current_memory.fetch_sub(entry.data.len(), Ordering::Relaxed);
+                self.current_memory
+                    .fetch_sub(entry.data.len(), Ordering::Relaxed);
                 if let Some(subdomain) = extract_subdomain_from_key(key) {
                     self.update_subdomain_size(&subdomain, -(entry.uncompressed_size as isize));
                 }
@@ -191,15 +198,22 @@ impl Cache {
 
         // Try request_store (for requests:{subdomain} keys)
         {
-            let mut store = self.request_store.write().map_err(|_| anyhow!("Lock error"))?;
+            let mut store = self
+                .request_store
+                .write()
+                .map_err(|_| anyhow!("Lock error"))?;
             if let Some(entry) = store.remove(key) {
-                self.current_memory.fetch_sub(entry.total_size, Ordering::Relaxed);
+                self.current_memory
+                    .fetch_sub(entry.total_size, Ordering::Relaxed);
                 return Ok(true);
             }
         }
 
         // Also check request index
-        let mut index = self.request_index.write().map_err(|_| anyhow!("Lock error"))?;
+        let mut index = self
+            .request_index
+            .write()
+            .map_err(|_| anyhow!("Lock error"))?;
         Ok(index.remove(key).is_some())
     }
 
@@ -211,14 +225,20 @@ impl Cache {
         // Maybe evict old requests if memory is high
         self.maybe_evict_requests();
 
-        let mut store = self.request_store.write().map_err(|_| anyhow!("Lock error"))?;
+        let mut store = self
+            .request_store
+            .write()
+            .map_err(|_| anyhow!("Lock error"))?;
 
         // Insert if not exists
         if !store.contains_key(key) {
-            store.insert(key.to_string(), RequestList {
-                items: VecDeque::new(),
-                total_size: 0,
-            });
+            store.insert(
+                key.to_string(),
+                RequestList {
+                    items: VecDeque::new(),
+                    total_size: 0,
+                },
+            );
         }
 
         // Now get_refresh to move to end (most recently used) and modify
@@ -237,19 +257,32 @@ impl Cache {
 
     /// Get range from list
     pub async fn lrange(&self, key: &str, start: isize, stop: isize) -> Result<Vec<String>> {
-        let store = self.request_store.read().map_err(|_| anyhow!("Lock error"))?;
+        let store = self
+            .request_store
+            .read()
+            .map_err(|_| anyhow!("Lock error"))?;
 
         if let Some(entry) = store.get(key) {
             let len = entry.items.len() as isize;
 
-            let start = if start < 0 { (len + start).max(0) } else { start };
+            let start = if start < 0 {
+                (len + start).max(0)
+            } else {
+                start
+            };
             let stop = if stop < 0 { len + stop } else { stop };
 
             let start = start as usize;
             let stop = (stop as usize).min(entry.items.len().saturating_sub(1));
 
             if start <= stop && start < entry.items.len() {
-                return Ok(entry.items.iter().skip(start).take(stop - start + 1).cloned().collect());
+                return Ok(entry
+                    .items
+                    .iter()
+                    .skip(start)
+                    .take(stop - start + 1)
+                    .cloned()
+                    .collect());
             }
         }
 
@@ -258,13 +291,19 @@ impl Cache {
 
     /// Get length of list
     pub async fn llen(&self, key: &str) -> Result<usize> {
-        let store = self.request_store.read().map_err(|_| anyhow!("Lock error"))?;
+        let store = self
+            .request_store
+            .read()
+            .map_err(|_| anyhow!("Lock error"))?;
         Ok(store.get(key).map(|e| e.items.len()).unwrap_or(0))
     }
 
     /// Set value at index in list
     pub async fn lset(&self, key: &str, index: isize, value: &str) -> Result<()> {
-        let mut store = self.request_store.write().map_err(|_| anyhow!("Lock error"))?;
+        let mut store = self
+            .request_store
+            .write()
+            .map_err(|_| anyhow!("Lock error"))?;
 
         if let Some(entry) = store.get_mut(key) {
             let len = entry.items.len() as isize;
@@ -291,7 +330,10 @@ impl Cache {
     #[allow(dead_code)]
     pub async fn keys(&self, pattern: &str) -> Result<Vec<String>> {
         let kv_store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
-        let request_store = self.request_store.read().map_err(|_| anyhow!("Lock error"))?;
+        let request_store = self
+            .request_store
+            .read()
+            .map_err(|_| anyhow!("Lock error"))?;
 
         let mut result = Vec::new();
 
@@ -368,7 +410,8 @@ impl Cache {
 
             for key in keys_to_remove {
                 if let Some(entry) = store.remove(&key) {
-                    self.current_memory.fetch_sub(entry.total_size, Ordering::Relaxed);
+                    self.current_memory
+                        .fetch_sub(entry.total_size, Ordering::Relaxed);
                     info!("Evicted request list {} ({} bytes)", key, entry.total_size);
                 }
             }

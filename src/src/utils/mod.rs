@@ -1,4 +1,3 @@
-
 pub mod auth;
 pub mod config;
 
@@ -20,11 +19,15 @@ pub fn verify_subdomain(
 pub fn verify_jwt(token: &str) -> Option<String> {
     let validation = Validation::default();
     let key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
-    
+
     match decode::<Claims>(token, &key, &validation) {
         Ok(token_data) => {
             let subdomain = token_data.claims.subdomain;
-            if verify_subdomain(&subdomain, CONFIG.subdomain_length, &CONFIG.subdomain_alphabet_set) {
+            if verify_subdomain(
+                &subdomain,
+                CONFIG.subdomain_length,
+                &CONFIG.subdomain_alphabet_set,
+            ) {
                 Some(subdomain)
             } else {
                 None
@@ -37,7 +40,7 @@ pub fn verify_jwt(token: &str) -> Option<String> {
 pub fn get_random_subdomain() -> String {
     let mut rng = rand::thread_rng();
     let alphabet = CONFIG.subdomain_alphabet.as_bytes();
-    
+
     (0..CONFIG.subdomain_length)
         .map(|_| {
             let idx = rng.gen_range(0..alphabet.len());
@@ -59,10 +62,16 @@ pub fn get_subdomain_from_path(path: &str) -> Option<String> {
     }
 
     let path = path[2..].trim_start_matches('/');
-    let subdomain = path.chars().take(CONFIG.subdomain_length).collect::<String>();
+    let subdomain = path
+        .chars()
+        .take(CONFIG.subdomain_length)
+        .collect::<String>();
 
-    if subdomain.len() != CONFIG.subdomain_length ||
-       !subdomain.chars().all(|c| CONFIG.subdomain_alphabet_set.contains(&c)) {
+    if subdomain.len() != CONFIG.subdomain_length
+        || !subdomain
+            .chars()
+            .all(|c| CONFIG.subdomain_alphabet_set.contains(&c))
+    {
         return None;
     }
 
@@ -81,7 +90,10 @@ pub fn get_file_path_from_url(path: &str) -> String {
 
     // Skip "r/" + subdomain length
     let after_r = trimmed[2..].trim_start_matches('/');
-    let after_subdomain = after_r.chars().skip(CONFIG.subdomain_length).collect::<String>();
+    let after_subdomain = after_r
+        .chars()
+        .skip(CONFIG.subdomain_length)
+        .collect::<String>();
     let trimmed_path = after_subdomain.trim_start_matches('/');
 
     if trimmed_path.is_empty() {
@@ -98,20 +110,23 @@ pub fn get_subdomain_from_hostname(host: &str) -> Option<String> {
 
     let host = host.to_lowercase();
     let domain = &CONFIG.server_domain;
-    
+
     let r_index = host.rfind(domain)?;
     if r_index < CONFIG.subdomain_length + 1 {
         return None;
     }
-    
+
     let subdomain = &host[r_index - 1 - CONFIG.subdomain_length..r_index - 1];
-    
-    if subdomain.is_empty() || 
-       subdomain.len() != CONFIG.subdomain_length || 
-       !subdomain.chars().all(|c| CONFIG.subdomain_alphabet_set.contains(&c)) {
+
+    if subdomain.is_empty()
+        || subdomain.len() != CONFIG.subdomain_length
+        || !subdomain
+            .chars()
+            .all(|c| CONFIG.subdomain_alphabet_set.contains(&c))
+    {
         return None;
     }
-    
+
     Some(subdomain.to_string())
 }
 
@@ -133,7 +148,10 @@ pub fn generate_jwt(subdomain: &str) -> Result<String, jsonwebtoken::errors::Err
     encode(&header, &claims, &key)
 }
 
-pub fn generate_share_jwt(request_id: &str, subdomain: &str) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_share_jwt(
+    request_id: &str,
+    subdomain: &str,
+) -> Result<String, jsonwebtoken::errors::Error> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))

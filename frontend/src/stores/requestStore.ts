@@ -48,7 +48,7 @@ export const useRequestStore = create<RequestState>()((set, get) => ({
       requests: {
         ...state.requests,
         [subdomain]: (state.requests[subdomain] ?? []).filter(
-          (r) => r._id !== requestId
+          (r) => r._id !== requestId,
         ),
       },
     })),

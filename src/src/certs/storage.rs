@@ -90,8 +90,8 @@ impl CertStorage {
 
         let data = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read account file: {path:?}"))?;
-        let creds: AccountCredentials = serde_json::from_str(&data)
-            .with_context(|| "Failed to parse account credentials")?;
+        let creds: AccountCredentials =
+            serde_json::from_str(&data).with_context(|| "Failed to parse account credentials")?;
 
         info!("Loaded existing ACME account from {:?}", path);
         Ok(Some(creds))

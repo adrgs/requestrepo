@@ -1,4 +1,3 @@
-
 use anyhow::Result;
 use flate2::read::GzDecoder;
 use lazy_static::lazy_static;
@@ -89,9 +88,7 @@ fn ip_to_u32(ip: &str) -> Option<u32> {
 
 /// Check if an IP string is a valid IPv4 address
 fn is_ipv4(ip: &str) -> bool {
-    ip.split('.')
-        .filter_map(|p| p.parse::<u8>().ok())
-        .count() == 4
+    ip.split('.').filter_map(|p| p.parse::<u8>().ok()).count() == 4
 }
 
 /// Look up the country code for an IP address

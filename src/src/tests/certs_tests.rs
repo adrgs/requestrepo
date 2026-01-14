@@ -149,7 +149,10 @@ t57I39/asDr7i7haub9Q1cb0
         let manager = TlsManager::new();
 
         // Correct cert but wrong key format
-        let result = manager.reload(TEST_CERT.as_bytes(), b"-----BEGIN RSA PRIVATE KEY-----\ninvalid\n-----END RSA PRIVATE KEY-----");
+        let result = manager.reload(
+            TEST_CERT.as_bytes(),
+            b"-----BEGIN RSA PRIVATE KEY-----\ninvalid\n-----END RSA PRIVATE KEY-----",
+        );
         assert!(result.is_err());
     }
 }

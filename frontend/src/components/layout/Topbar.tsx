@@ -149,13 +149,25 @@ export function Topbar() {
       {/* Right: Icons + Search */}
       <div className="flex items-center gap-1">
         <Tooltip content="New session">
-          <Button isIconOnly variant="light" size="sm" radius="full" onPress={handleCreateSession}>
+          <Button
+            isIconOnly
+            variant="light"
+            size="sm"
+            radius="full"
+            onPress={handleCreateSession}
+          >
             <Plus className="h-4 w-4" />
           </Button>
         </Tooltip>
 
         <Tooltip content="Share session">
-          <Button isIconOnly variant="light" size="sm" radius="full" onPress={handleShare}>
+          <Button
+            isIconOnly
+            variant="light"
+            size="sm"
+            radius="full"
+            onPress={handleShare}
+          >
             <Share2 className="h-4 w-4" />
           </Button>
         </Tooltip>

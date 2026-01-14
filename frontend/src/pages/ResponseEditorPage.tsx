@@ -226,7 +226,7 @@ export function ResponseEditorPage() {
     (newFiles: FileTreeType) => {
       updateFilesMutation.mutate(newFiles);
     },
-    [updateFilesMutation]
+    [updateFilesMutation],
   );
 
   const handleAddHeader = useCallback(() => {
@@ -240,10 +240,10 @@ export function ResponseEditorPage() {
   const handleHeaderChange = useCallback(
     (index: number, field: "header" | "value", value: string) => {
       setHeaders((prev) =>
-        prev.map((h, i) => (i === index ? { ...h, [field]: value } : h))
+        prev.map((h, i) => (i === index ? { ...h, [field]: value } : h)),
       );
     },
-    []
+    [],
   );
 
   if (!session) {
@@ -292,7 +292,9 @@ export function ResponseEditorPage() {
 
             {/* Status Code */}
             <div className="flex items-center gap-4 mb-4">
-              <label className="text-sm text-default-500 w-24">Status Code</label>
+              <label className="text-sm text-default-500 w-24">
+                Status Code
+              </label>
               <Input
                 type="number"
                 size="sm"
@@ -309,7 +311,9 @@ export function ResponseEditorPage() {
 
             {/* Headers */}
             <div className="flex items-start gap-4">
-              <label className="text-sm text-default-500 w-24 pt-2">Headers</label>
+              <label className="text-sm text-default-500 w-24 pt-2">
+                Headers
+              </label>
               <div className="flex-1">
                 <div className="space-y-2">
                   {headers.map((header, index) => (
@@ -319,9 +323,12 @@ export function ResponseEditorPage() {
                         placeholder="Header name"
                         defaultItems={HTTP_HEADERS.map((h) => ({ value: h }))}
                         inputValue={header.header}
-                        onInputChange={(value) => handleHeaderChange(index, "header", value)}
+                        onInputChange={(value) =>
+                          handleHeaderChange(index, "header", value)
+                        }
                         onSelectionChange={(key) => {
-                          if (key) handleHeaderChange(index, "header", String(key));
+                          if (key)
+                            handleHeaderChange(index, "header", String(key));
                         }}
                         className="w-80"
                         classNames={{
@@ -339,7 +346,9 @@ export function ResponseEditorPage() {
                         size="sm"
                         placeholder="Value"
                         value={header.value}
-                        onValueChange={(v) => handleHeaderChange(index, "value", v)}
+                        onValueChange={(v) =>
+                          handleHeaderChange(index, "value", v)
+                        }
                         className="flex-1"
                         classNames={{
                           input: "font-mono text-sm",
@@ -376,7 +385,9 @@ export function ResponseEditorPage() {
           {/* Explorer Header */}
           <div className="flex items-center px-3 py-2 text-xs font-medium uppercase text-default-500">
             <span>Files</span>
-            <span className="ml-1 text-default-400">(right-click for menu)</span>
+            <span className="ml-1 text-default-400">
+              (right-click for menu)
+            </span>
           </div>
 
           {/* File Tree */}

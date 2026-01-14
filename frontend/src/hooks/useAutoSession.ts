@@ -45,7 +45,10 @@ export function useAutoSession() {
 
           // Check if session already exists (use getState for fresh data)
           const currentSessions = useSessionStore.getState().sessions;
-          if (subdomain && !currentSessions.some((s) => s.subdomain === subdomain)) {
+          if (
+            subdomain &&
+            !currentSessions.some((s) => s.subdomain === subdomain)
+          ) {
             addSession({
               subdomain,
               token: sharedToken,
@@ -65,28 +68,33 @@ export function useAutoSession() {
     // Handle shared request link (share token from API)
     if (requestParam) {
       // Fetch the shared request asynchronously
-      apiClient.getSharedRequest(requestParam).then((requestData) => {
-        if (requestData) {
-          const subdomain = requestData.uid;
+      apiClient
+        .getSharedRequest(requestParam)
+        .then((requestData) => {
+          if (requestData) {
+            const subdomain = requestData.uid;
 
-          // Get FRESH sessions from store, not stale closure
-          const currentSessions = useSessionStore.getState().sessions;
-          const existingSession = currentSessions.find((s) => s.subdomain === subdomain);
+            // Get FRESH sessions from store, not stale closure
+            const currentSessions = useSessionStore.getState().sessions;
+            const existingSession = currentSessions.find(
+              (s) => s.subdomain === subdomain,
+            );
 
-          if (existingSession) {
-            // User has the session, just select the request
-            setActiveSession(subdomain);
-            selectRequest(requestData._id);
+            if (existingSession) {
+              // User has the session, just select the request
+              setActiveSession(subdomain);
+              selectRequest(requestData._id);
+            } else {
+              // User doesn't have the session, show the shared request
+              setSharedRequest(requestData);
+            }
           } else {
-            // User doesn't have the session, show the shared request
-            setSharedRequest(requestData);
+            console.error("Failed to load shared request");
           }
-        } else {
-          console.error("Failed to load shared request");
-        }
-      }).catch((e) => {
-        console.error("Invalid request share token:", e);
-      });
+        })
+        .catch((e) => {
+          console.error("Invalid request share token:", e);
+        });
       // Clean URL
       window.history.replaceState({}, "", window.location.pathname);
     }
@@ -99,7 +107,8 @@ export function useAutoSession() {
   // Auto-create session if none exists (runs independently of share URL handling)
   useEffect(() => {
     // Skip if we already have sessions, are creating one, or handling a share URL
-    if (sessions.length > 0 || isCreating.current || isHandlingShareUrl.current) return;
+    if (sessions.length > 0 || isCreating.current || isHandlingShareUrl.current)
+      return;
 
     isCreating.current = true;
 

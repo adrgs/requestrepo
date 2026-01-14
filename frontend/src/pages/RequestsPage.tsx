@@ -1,10 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Card,
-  CardBody,
-  Code,
-  Button,
-} from "@heroui/react";
+import { Card, CardBody, Code, Button } from "@heroui/react";
 import { Copy, Check, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
@@ -56,7 +51,8 @@ export function RequestsPage() {
   const [copied, setCopied] = useState(false);
 
   // Use shared request if available, otherwise find from session requests
-  const selectedRequest = sharedRequest || requests.find((r) => r._id === selectedRequestId);
+  const selectedRequest =
+    sharedRequest || requests.find((r) => r._id === selectedRequestId);
   const isSharedRequestView = Boolean(sharedRequest);
   const httpDomain = getBaseDomain();
   const dnsDomain = getDnsDomain();
@@ -69,11 +65,18 @@ export function RequestsPage() {
     if (selectedRequest && activeSubdomain && !isSharedRequestView) {
       markRequestVisited(activeSubdomain, selectedRequest._id);
     }
-  }, [selectedRequest, activeSubdomain, markRequestVisited, isSharedRequestView]);
+  }, [
+    selectedRequest,
+    activeSubdomain,
+    markRequestVisited,
+    isSharedRequestView,
+  ]);
 
   const handleCopyCode = () => {
-    const code = PYTHON_EXAMPLE.replace(/TOKEN_HERE/g, session?.token || "your_token")
-      .replace(/SUBDOMAIN_HERE/g, subdomain);
+    const code = PYTHON_EXAMPLE.replace(
+      /TOKEN_HERE/g,
+      session?.token || "your_token",
+    ).replace(/SUBDOMAIN_HERE/g, subdomain);
     copyToClipboard(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -83,7 +86,10 @@ export function RequestsPage() {
     if (!selectedRequest || !session?.token) return;
 
     try {
-      const shareToken = await apiClient.createShareToken(session.token, selectedRequest._id);
+      const shareToken = await apiClient.createShareToken(
+        session.token,
+        selectedRequest._id,
+      );
       const url = `${window.location.origin}/?request=${shareToken}`;
       copyToClipboard(url);
       toast.success("Request share link copied to clipboard");
@@ -103,7 +109,9 @@ export function RequestsPage() {
 
           <div className="space-y-2 font-mono text-sm">
             <Code className="block p-2">curl http://{fullHttpDomain}</Code>
-            <Code className="block p-2">curl http://{httpDomain}/r/{subdomain}/</Code>
+            <Code className="block p-2">
+              curl http://{httpDomain}/r/{subdomain}/
+            </Code>
             <Code className="block p-2">
               curl -X POST --data hello http://{fullHttpDomain}
             </Code>
@@ -120,8 +128,9 @@ export function RequestsPage() {
 
           <p className="mt-6 text-default-500">
             Check out the <span className="text-primary">Response</span> tab to
-            edit your HTTP Response or the <span className="text-primary">DNS</span>{" "}
-            tab to add DNS records for this subdomain.
+            edit your HTTP Response or the{" "}
+            <span className="text-primary">DNS</span> tab to add DNS records for
+            this subdomain.
           </p>
         </div>
 
@@ -149,8 +158,10 @@ export function RequestsPage() {
                 height="280px"
                 language="python"
                 theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
-                value={PYTHON_EXAMPLE.replace(/TOKEN_HERE/g, session?.token ? "********" : "your_token")
-                  .replace(/SUBDOMAIN_HERE/g, subdomain)}
+                value={PYTHON_EXAMPLE.replace(
+                  /TOKEN_HERE/g,
+                  session?.token ? "********" : "your_token",
+                ).replace(/SUBDOMAIN_HERE/g, subdomain)}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },
@@ -172,7 +183,9 @@ export function RequestsPage() {
   }
 
   if (isHttpRequest(selectedRequest)) {
-    const { text: bodyText, isPrintable } = decodeBase64Safe(selectedRequest.raw);
+    const { text: bodyText, isPrintable } = decodeBase64Safe(
+      selectedRequest.raw,
+    );
     const queryParams = selectedRequest.query
       ? new URLSearchParams(selectedRequest.query.replace(/^\?/, ""))
       : null;
@@ -214,37 +227,57 @@ export function RequestsPage() {
           <table className="w-full text-xs mb-4">
             <tbody>
               <tr className="border-b border-default-100">
-                <td className="py-1 pr-4 text-default-500 w-32">Request Type</td>
+                <td className="py-1 pr-4 text-default-500 w-32">
+                  Request Type
+                </td>
                 <td className="py-1">
                   <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-blue-500 rounded mr-1">
                     HTTP/1.1
                   </span>
-                  <span className={`inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${
-                    selectedRequest.method === "GET" ? "bg-[#20d077]" :
-                    selectedRequest.method === "POST" ? "bg-[#ffae00]" :
-                    selectedRequest.method === "PUT" ? "bg-[#ff9800]" :
-                    selectedRequest.method === "DELETE" ? "bg-[#f44336]" :
-                    "bg-[#9e9e9e]"
-                  }`}>
+                  <span
+                    className={`inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${
+                      selectedRequest.method === "GET"
+                        ? "bg-[#20d077]"
+                        : selectedRequest.method === "POST"
+                          ? "bg-[#ffae00]"
+                          : selectedRequest.method === "PUT"
+                            ? "bg-[#ff9800]"
+                            : selectedRequest.method === "DELETE"
+                              ? "bg-[#f44336]"
+                              : "bg-[#9e9e9e]"
+                    }`}
+                  >
                     {selectedRequest.method}
                   </span>
                 </td>
               </tr>
               <tr className="border-b border-default-100">
                 <td className="py-1 pr-4 text-default-500">URL</td>
-                <td className="py-1 font-mono text-primary">{selectedRequest.url}</td>
+                <td className="py-1 font-mono text-primary">
+                  {selectedRequest.url}
+                </td>
               </tr>
               <tr className="border-b border-default-100">
                 <td className="py-1 pr-4 text-default-500">Sender</td>
-                <td className="py-1 font-mono">{selectedRequest.ip}{selectedRequest.port ? `:${selectedRequest.port}` : ""}</td>
+                <td className="py-1 font-mono">
+                  {selectedRequest.ip}
+                  {selectedRequest.port ? `:${selectedRequest.port}` : ""}
+                </td>
               </tr>
               {selectedRequest.country && (
                 <tr className="border-b border-default-100">
                   <td className="py-1 pr-4 text-default-500">Country</td>
                   <td className="py-1">
-                    <span className={`${getFlagClass(selectedRequest.country)} mr-1`} />
+                    <span
+                      className={`${getFlagClass(selectedRequest.country)} mr-1`}
+                    />
                     {selectedRequest.country} (
-                    <a href="https://db-ip.com" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+                    <a
+                      href="https://db-ip.com"
+                      className="text-primary hover:underline"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       IP Geolocation by DB-IP
                     </a>
                     )
@@ -261,7 +294,9 @@ export function RequestsPage() {
               </tr>
               <tr className="border-b border-default-100">
                 <td className="py-1 pr-4 text-default-500">Query string</td>
-                <td className="py-1 font-mono">{selectedRequest.query || ""}</td>
+                <td className="py-1 font-mono">
+                  {selectedRequest.query || ""}
+                </td>
               </tr>
               <tr>
                 <td className="py-1 pr-4 text-default-500">Fragment</td>
@@ -276,7 +311,9 @@ export function RequestsPage() {
             <tbody>
               {Object.entries(selectedRequest.headers).map(([key, value]) => (
                 <tr key={key} className="border-b border-default-100">
-                  <td className="py-0.5 pr-4 text-default-500 w-44 font-mono">{key}</td>
+                  <td className="py-0.5 pr-4 text-default-500 w-44 font-mono">
+                    {key}
+                  </td>
                   <td className="py-0.5 font-mono break-all">{value}</td>
                 </tr>
               ))}
@@ -290,7 +327,9 @@ export function RequestsPage() {
               <tbody>
                 {Array.from(queryParams.entries()).map(([key, value]) => (
                   <tr key={key} className="border-b border-default-100">
-                    <td className="py-0.5 pr-4 text-default-500 w-44 font-mono">{key}</td>
+                    <td className="py-0.5 pr-4 text-default-500 w-44 font-mono">
+                      {key}
+                    </td>
                     <td className="py-0.5 font-mono">{value}</td>
                   </tr>
                 ))}
@@ -304,7 +343,9 @@ export function RequestsPage() {
           <h3 className="text-base font-semibold mb-2">Form Data</h3>
           {selectedRequest.raw ? (
             <Code className="block whitespace-pre-wrap p-2 text-xs mb-4">
-              {isPrintable ? bodyText : `[Binary data, ${selectedRequest.raw.length} bytes]`}
+              {isPrintable
+                ? bodyText
+                : `[Binary data, ${selectedRequest.raw.length} bytes]`}
             </Code>
           ) : (
             <p className="text-default-400 text-xs mb-4">(empty)</p>
@@ -355,7 +396,9 @@ export function RequestsPage() {
           <table className="w-full text-xs mb-4">
             <tbody>
               <tr className="border-b border-default-100">
-                <td className="py-1 pr-4 text-default-500 w-32">Request Type</td>
+                <td className="py-1 pr-4 text-default-500 w-32">
+                  Request Type
+                </td>
                 <td className="py-1">
                   <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-[#33daff] rounded">
                     DNS
@@ -368,15 +411,25 @@ export function RequestsPage() {
               </tr>
               <tr className="border-b border-default-100">
                 <td className="py-1 pr-4 text-default-500">Sender</td>
-                <td className="py-1 font-mono">{selectedRequest.ip}{selectedRequest.port ? `:${selectedRequest.port}` : ""}</td>
+                <td className="py-1 font-mono">
+                  {selectedRequest.ip}
+                  {selectedRequest.port ? `:${selectedRequest.port}` : ""}
+                </td>
               </tr>
               {selectedRequest.country && (
                 <tr className="border-b border-default-100">
                   <td className="py-1 pr-4 text-default-500">Country</td>
                   <td className="py-1">
-                    <span className={`${getFlagClass(selectedRequest.country)} mr-1`} />
+                    <span
+                      className={`${getFlagClass(selectedRequest.country)} mr-1`}
+                    />
                     {selectedRequest.country} (
-                    <a href="https://db-ip.com" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+                    <a
+                      href="https://db-ip.com"
+                      className="text-primary hover:underline"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       IP Geolocation by DB-IP
                     </a>
                     )
@@ -390,14 +443,21 @@ export function RequestsPage() {
               <tr>
                 <td className="py-1 pr-4 text-default-500">Type</td>
                 <td className="py-1">
-                  <span className={`inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${
-                    selectedRequest.query_type === "A" ? "bg-[#006fee]" :
-                    selectedRequest.query_type === "AAAA" ? "bg-[#9353d3]" :
-                    selectedRequest.query_type === "CNAME" ? "bg-[#f5a524]" :
-                    selectedRequest.query_type === "TXT" ? "bg-[#17c964]" :
-                    selectedRequest.query_type === "MX" ? "bg-[#f31260]" :
-                    "bg-[#71717a]"
-                  }`}>
+                  <span
+                    className={`inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${
+                      selectedRequest.query_type === "A"
+                        ? "bg-[#006fee]"
+                        : selectedRequest.query_type === "AAAA"
+                          ? "bg-[#9353d3]"
+                          : selectedRequest.query_type === "CNAME"
+                            ? "bg-[#f5a524]"
+                            : selectedRequest.query_type === "TXT"
+                              ? "bg-[#17c964]"
+                              : selectedRequest.query_type === "MX"
+                                ? "bg-[#f31260]"
+                                : "bg-[#71717a]"
+                    }`}
+                  >
                     {selectedRequest.query_type}
                   </span>
                 </td>

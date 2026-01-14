@@ -57,7 +57,8 @@ export function BackendOfflineOverlay() {
         </ModalHeader>
         <ModalBody className="pb-6">
           <p className="text-sm text-default-500 mb-4">
-            Unable to connect to the RequestRepo backend service. This could be a temporary network issue or the service may be unavailable.
+            Unable to connect to the RequestRepo backend service. This could be
+            a temporary network issue or the service may be unavailable.
           </p>
 
           <Button

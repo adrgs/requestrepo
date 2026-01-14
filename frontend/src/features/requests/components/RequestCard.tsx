@@ -26,19 +26,23 @@ export const RequestCard = memo(function RequestCard({
       className={cn(
         "w-full transition-all",
         isActive && "ring-2 ring-primary",
-        isVisited && "opacity-60"
+        isVisited && "opacity-60",
       )}
       shadow="sm"
     >
       <CardBody className="flex flex-row items-center gap-3 p-3">
-        {!isVisited && (
-          <span className="h-2 w-2 rounded-full bg-primary" />
-        )}
+        {!isVisited && <span className="h-2 w-2 rounded-full bg-primary" />}
 
         <Chip
           color={
             isHttp
-              ? (getMethodColor(request.method) as "success" | "primary" | "warning" | "danger" | "secondary" | "default")
+              ? (getMethodColor(request.method) as
+                  | "success"
+                  | "primary"
+                  | "warning"
+                  | "danger"
+                  | "secondary"
+                  | "default")
               : "secondary"
           }
           size="sm"

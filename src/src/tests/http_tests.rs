@@ -156,10 +156,7 @@ mod tests {
                 .await
                 .unwrap();
             cache
-                .set(
-                    &format!("request:{subdomain}:request-{i}"),
-                    &i.to_string(),
-                )
+                .set(&format!("request:{subdomain}:request-{i}"), &i.to_string())
                 .await
                 .unwrap();
         }

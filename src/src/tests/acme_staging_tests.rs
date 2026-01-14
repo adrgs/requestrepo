@@ -48,10 +48,10 @@ mod tests {
     #[ignore]
     async fn test_full_certificate_issuance_staging() {
         // Get test configuration from environment
-        let domain = env::var("ACME_TEST_DOMAIN")
-            .expect("ACME_TEST_DOMAIN must be set for staging tests");
-        let email = env::var("ACME_TEST_EMAIL")
-            .expect("ACME_TEST_EMAIL must be set for staging tests");
+        let domain =
+            env::var("ACME_TEST_DOMAIN").expect("ACME_TEST_DOMAIN must be set for staging tests");
+        let email =
+            env::var("ACME_TEST_EMAIL").expect("ACME_TEST_EMAIL must be set for staging tests");
 
         println!("Running ACME staging test for domain: {domain}");
         println!("Using staging directory: {ACME_DIRECTORY_STAGING}");
@@ -100,8 +100,8 @@ mod tests {
                 );
 
                 // Read and print certificate info
-                let cert_pem = std::fs::read_to_string(&fullchain_path)
-                    .expect("Failed to read certificate");
+                let cert_pem =
+                    std::fs::read_to_string(&fullchain_path).expect("Failed to read certificate");
                 println!("Certificate chain length: {} bytes", cert_pem.len());
             }
             Err(e) => {

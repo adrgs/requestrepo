@@ -84,10 +84,7 @@ impl DnsChallengeHandler {
         let max_delay = Duration::from_secs(30);
 
         // DNS resolvers to check (Google and Cloudflare)
-        let resolvers = vec![
-            ("8.8.8.8", "Google"),
-            ("1.1.1.1", "Cloudflare"),
-        ];
+        let resolvers = vec![("8.8.8.8", "Google"), ("1.1.1.1", "Cloudflare")];
 
         loop {
             if start.elapsed() >= timeout {
@@ -156,9 +153,7 @@ impl DnsChallengeHandler {
 
     /// Query TXT record from a specific DNS resolver
     async fn query_txt(&self, domain: &str, resolver_ip: &str) -> Result<Option<String>> {
-        let ip: Ipv4Addr = resolver_ip
-            .parse()
-            .context("Invalid resolver IP address")?;
+        let ip: Ipv4Addr = resolver_ip.parse().context("Invalid resolver IP address")?;
 
         let socket = SocketAddr::new(IpAddr::V4(ip), 53);
         let name_server = NameServerConfig::new(socket, Protocol::Udp);
@@ -235,8 +230,14 @@ mod tests {
             .unwrap();
 
         // Both should have trailing dots in the key
-        let v1 = cache.get("dns:TXT:_acme-challenge.example.com.").await.unwrap();
-        let v2 = cache.get("dns:TXT:_acme-challenge.example2.com.").await.unwrap();
+        let v1 = cache
+            .get("dns:TXT:_acme-challenge.example.com.")
+            .await
+            .unwrap();
+        let v2 = cache
+            .get("dns:TXT:_acme-challenge.example2.com.")
+            .await
+            .unwrap();
 
         assert_eq!(v1, Some("token1".to_string()));
         assert_eq!(v2, Some("token2".to_string()));

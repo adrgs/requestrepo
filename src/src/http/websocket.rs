@@ -141,7 +141,9 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                             let requests: Vec<Value> = requests
                                                 .into_iter()
                                                 .filter(|r| r != "{}")
-                                                .filter_map(|r| serde_json::from_str::<Value>(&r).ok())
+                                                .filter_map(|r| {
+                                                    serde_json::from_str::<Value>(&r).ok()
+                                                })
                                                 .collect();
 
                                             if !requests.is_empty() {

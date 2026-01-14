@@ -88,7 +88,8 @@ impl AcmeClient {
         info!("Processing {} authorizations", authorizations.len());
 
         for auth in &authorizations {
-            self.process_authorization(&mut order, auth, handler).await?;
+            self.process_authorization(&mut order, auth, handler)
+                .await?;
         }
 
         // Wait for order to be ready
@@ -186,10 +187,7 @@ impl AcmeClient {
         loop {
             attempts += 1;
             if attempts > max_attempts {
-                return Err(anyhow!(
-                    "Challenge validation timeout for {}",
-                    identifier
-                ));
+                return Err(anyhow!("Challenge validation timeout for {}", identifier));
             }
 
             // Fetch fresh authorization state
@@ -326,7 +324,9 @@ mod tests {
             rcgen::SanType::DnsName("*.example.com".try_into().unwrap()),
         ];
 
-        let csr = params.serialize_request(&key_pair).expect("Failed to serialize CSR");
+        let csr = params
+            .serialize_request(&key_pair)
+            .expect("Failed to serialize CSR");
         let csr_der = csr.der();
 
         // Verify CSR was generated successfully

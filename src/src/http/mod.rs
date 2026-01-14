@@ -82,13 +82,28 @@ fn create_router(state: AppState) -> Router {
     let api_routes = Router::new()
         .route("/health", get(routes::health))
         .route("/api/v2/sessions", post(routes_v2::create_session))
-        .route("/api/v2/dns", get(routes_v2::get_dns).put(routes_v2::update_dns))
-        .route("/api/v2/files", get(routes_v2::get_files).put(routes_v2::update_files))
+        .route(
+            "/api/v2/dns",
+            get(routes_v2::get_dns).put(routes_v2::update_dns),
+        )
+        .route(
+            "/api/v2/files",
+            get(routes_v2::get_files).put(routes_v2::update_files),
+        )
         .route("/api/v2/files/*path", get(routes_v2::get_file))
-        .route("/api/v2/requests", get(routes_v2::list_requests).delete(routes_v2::delete_all_requests))
-        .route("/api/v2/requests/shared/:token", get(routes_v2::get_shared_request))
+        .route(
+            "/api/v2/requests",
+            get(routes_v2::list_requests).delete(routes_v2::delete_all_requests),
+        )
+        .route(
+            "/api/v2/requests/shared/:token",
+            get(routes_v2::get_shared_request),
+        )
         .route("/api/v2/requests/:id/share", post(routes_v2::share_request))
-        .route("/api/v2/requests/:id", get(routes_v2::get_request).delete(routes_v2::delete_request))
+        .route(
+            "/api/v2/requests/:id",
+            get(routes_v2::get_request).delete(routes_v2::delete_request),
+        )
         .route("/api/v2/ws", get(websocket::websocket_handler_v2))
         .layer(cors);
 

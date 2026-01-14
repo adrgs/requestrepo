@@ -78,11 +78,8 @@ pub async fn run() -> Result<()> {
                 certs::CertManager::start_renewal_task(cert_manager.clone());
 
                 // Start HTTPS server
-                let https_server = http::HttpsServer::new(
-                    cache.clone(),
-                    tx.clone(),
-                    cert_manager.tls_manager(),
-                );
+                let https_server =
+                    http::HttpsServer::new(cache.clone(), tx.clone(), cert_manager.tls_manager());
 
                 Some(tokio::spawn(async move {
                     if let Err(e) = https_server.run().await {

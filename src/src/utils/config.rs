@@ -1,4 +1,3 @@
-
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::env;
@@ -41,10 +40,13 @@ pub struct Config {
 impl Config {
     pub fn new() -> Self {
         let server_ip = env::var("SERVER_IP").unwrap_or_else(|_| "127.0.0.1".to_string());
-        let server_domain = env::var("DOMAIN").unwrap_or_else(|_| "localhost".to_string()).to_lowercase();
+        let server_domain = env::var("DOMAIN")
+            .unwrap_or_else(|_| "localhost".to_string())
+            .to_lowercase();
         let include_server_domain = env::var("INCLUDE_SERVER_DOMAIN")
             .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase() == "true";
+            .to_lowercase()
+            == "true";
         let subdomain_length = env::var("SUBDOMAIN_LENGTH")
             .unwrap_or_else(|_| "8".to_string())
             .parse()
@@ -83,14 +85,16 @@ impl Config {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<usize>()
             .unwrap_or(10)
-            * 1024 * 1024;
+            * 1024
+            * 1024;
 
         // Max HTTP request body size: default 10MB
         let max_request_body_bytes = env::var("MAX_REQUEST_BODY_MB")
             .unwrap_or_else(|_| "10".to_string())
             .parse::<usize>()
             .unwrap_or(10)
-            * 1024 * 1024;
+            * 1024
+            * 1024;
 
         // Max cache memory as percentage of container limit: default 70%
         let cache_max_memory_pct = env::var("CACHE_MAX_MEMORY_PCT")
@@ -101,13 +105,13 @@ impl Config {
         // TLS/ACME configuration
         let tls_enabled = env::var("TLS_ENABLED")
             .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase() == "true";
+            .to_lowercase()
+            == "true";
         let https_port = env::var("HTTPS_PORT")
             .unwrap_or_else(|_| "443".to_string())
             .parse()
             .unwrap_or(443);
-        let cert_dir = env::var("CERT_DIR")
-            .unwrap_or_else(|_| "/app/certs".to_string());
+        let cert_dir = env::var("CERT_DIR").unwrap_or_else(|_| "/app/certs".to_string());
         let acme_email = env::var("ACME_EMAIL").ok().filter(|s| !s.is_empty());
         let acme_directory = env::var("ACME_DIRECTORY")
             .unwrap_or_else(|_| "https://acme-v02.api.letsencrypt.org/directory".to_string());

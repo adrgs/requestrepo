@@ -30,9 +30,9 @@ export interface HttpRequest extends BaseRequest {
 
 export interface DnsRequest extends BaseRequest {
   type: "dns";
-  domain: string;      // The queried domain name
-  query_type: string;  // DNS record type (A, AAAA, TXT, etc)
-  reply?: string;      // Response (optional, added for display)
+  domain: string; // The queried domain name
+  query_type: string; // DNS record type (A, AAAA, TXT, etc)
+  reply?: string; // Response (optional, added for display)
 }
 
 export type Request = HttpRequest | DnsRequest;

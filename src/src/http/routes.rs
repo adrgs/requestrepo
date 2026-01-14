@@ -20,8 +20,8 @@ use crate::http::AppState;
 use crate::ip2country::lookup_country;
 use crate::models::{Header, HttpRequestLog, Response as ResponseModel};
 use crate::utils::{
-    generate_request_id, get_current_timestamp, get_file_path_from_url, get_subdomain_from_hostname,
-    get_subdomain_from_path,
+    generate_request_id, get_current_timestamp, get_file_path_from_url,
+    get_subdomain_from_hostname, get_subdomain_from_path,
 };
 use serde_json::json;
 
@@ -67,15 +67,17 @@ pub async fn catch_all(
 
     let path = uri.path();
 
-    let subdomain =
-        get_subdomain_from_hostname(host).or_else(|| get_subdomain_from_path(path));
+    let subdomain = get_subdomain_from_hostname(host).or_else(|| get_subdomain_from_path(path));
 
     // Handle OPTIONS preflight requests for CORS
     if method == axum::http::Method::OPTIONS {
         return Response::builder()
             .status(StatusCode::NO_CONTENT)
             .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-            .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH")
+            .header(
+                header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
+            )
             .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
             .header(header::ACCESS_CONTROL_MAX_AGE, "86400")
             .body(Body::empty())
@@ -132,7 +134,8 @@ pub async fn catch_all(
                 .iter()
                 .map(|(k, v)| {
                     // Title-case header names for display (e.g., "accept" -> "Accept")
-                    let name = k.as_str()
+                    let name = k
+                        .as_str()
                         .split('-')
                         .map(|part| {
                             let mut chars = part.chars();
@@ -164,7 +167,10 @@ pub async fn catch_all(
         // Store the index for this request ID (used by delete endpoint)
         let _ = state
             .cache
-            .set(&format!("request:{subdomain}:{request_id}"), &index.to_string())
+            .set(
+                &format!("request:{subdomain}:{request_id}"),
+                &index.to_string(),
+            )
             .await;
 
         let message = crate::models::CacheMessage {
@@ -201,7 +207,9 @@ async fn serve_static_file(path: &str) -> Response {
     }
 
     // Build the file path within PUBLIC_DIR
-    let public_dir = Path::new(PUBLIC_DIR).canonicalize().unwrap_or_else(|_| Path::new(PUBLIC_DIR).to_path_buf());
+    let public_dir = Path::new(PUBLIC_DIR)
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(PUBLIC_DIR).to_path_buf());
 
     let file_path = if path.is_empty() {
         public_dir.join("index.html")
@@ -270,16 +278,17 @@ async fn serve_static_file(path: &str) -> Response {
             };
 
             // Cache static assets longer (hashed filenames from Vite)
-            let cache_control = if path.contains("-") && (path.ends_with(".js") || path.ends_with(".css")) {
-                // Hashed assets can be cached indefinitely
-                "public, max-age=31536000, immutable"
-            } else if path.ends_with(".html") {
-                // HTML should be revalidated
-                "no-cache"
-            } else {
-                // Other assets cached for 1 hour
-                "public, max-age=3600"
-            };
+            let cache_control =
+                if path.contains("-") && (path.ends_with(".js") || path.ends_with(".css")) {
+                    // Hashed assets can be cached indefinitely
+                    "public, max-age=31536000, immutable"
+                } else if path.ends_with(".html") {
+                    // HTML should be revalidated
+                    "no-cache"
+                } else {
+                    // Other assets cached for 1 hour
+                    "public, max-age=3600"
+                };
 
             Response::builder()
                 .status(StatusCode::OK)
@@ -352,7 +361,8 @@ async fn serve_file(state: AppState, subdomain: String, path: &str) -> Response 
         _ => "{}".to_string(),
     };
 
-    let mut files: HashMap<String, ResponseModel> = serde_json::from_str(&files_json).unwrap_or_default();
+    let mut files: HashMap<String, ResponseModel> =
+        serde_json::from_str(&files_json).unwrap_or_default();
 
     // If files are empty or missing index.html, create it automatically
     // This handles the case where backend restarted but JWT is still valid
@@ -375,7 +385,10 @@ async fn serve_file(state: AppState, subdomain: String, path: &str) -> Response 
 
         // Save the auto-created files back to cache
         if let Ok(files_str) = serde_json::to_string(&files) {
-            let _ = state.cache.set(&format!("files:{subdomain}"), &files_str).await;
+            let _ = state
+                .cache
+                .set(&format!("files:{subdomain}"), &files_str)
+                .await;
         }
     }
 

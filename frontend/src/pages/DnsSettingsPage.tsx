@@ -72,7 +72,7 @@ export function DnsSettingsPage() {
       const newRecords = records.filter((_, i) => i !== index);
       updateDnsMutation.mutate(newRecords);
     },
-    [records, updateDnsMutation]
+    [records, updateDnsMutation],
   );
 
   // Ref to always have latest handleAddRecord
@@ -109,7 +109,9 @@ export function DnsSettingsPage() {
           </div>
           <p className="text-sm text-default-500">
             Configure custom DNS responses for your subdomain. Requests to{" "}
-            <code className="text-primary">*.{session.subdomain}.{getDnsDomain()}</code>{" "}
+            <code className="text-primary">
+              *.{session.subdomain}.{getDnsDomain()}
+            </code>{" "}
             will return these records.
           </p>
         </CardBody>
@@ -135,7 +137,11 @@ export function DnsSettingsPage() {
               selectedKeys={newRecord.type ? [newRecord.type] : []}
               onSelectionChange={(keys) => {
                 const key = Array.from(keys)[0];
-                if (key) setNewRecord((r) => ({ ...r, type: String(key) as DnsRecordType }));
+                if (key)
+                  setNewRecord((r) => ({
+                    ...r,
+                    type: String(key) as DnsRecordType,
+                  }));
               }}
               className="w-32"
             >
@@ -149,10 +155,10 @@ export function DnsSettingsPage() {
                 newRecord.type === "A"
                   ? "1.2.3.4"
                   : newRecord.type === "AAAA"
-                  ? "2001:db8::1"
-                  : newRecord.type === "CNAME"
-                  ? "example.com"
-                  : "txt value"
+                    ? "2001:db8::1"
+                    : newRecord.type === "CNAME"
+                      ? "example.com"
+                      : "txt value"
               }
               value={newRecord.value}
               onValueChange={(v) => setNewRecord((r) => ({ ...r, value: v }))}
@@ -168,8 +174,12 @@ export function DnsSettingsPage() {
             </Button>
           </div>
           <p className="mt-2 text-xs text-default-400">
-            Will respond to: <code className="text-primary">{newRecord.domain || "*"}.{session.subdomain}.{getDnsDomain()}</code>
-            {newRecord.type === "A" && " • Use % to separate multiple IPs for random selection"}
+            Will respond to:{" "}
+            <code className="text-primary">
+              {newRecord.domain || "*"}.{session.subdomain}.{getDnsDomain()}
+            </code>
+            {newRecord.type === "A" &&
+              " • Use % to separate multiple IPs for random selection"}
           </p>
         </CardBody>
       </Card>
@@ -192,7 +202,15 @@ export function DnsSettingsPage() {
                 className="flex items-center gap-4 rounded-lg bg-default-100 p-3"
               >
                 <Chip
-                  color={getDnsTypeColor(record.type) as "success" | "primary" | "warning" | "danger" | "secondary" | "default"}
+                  color={
+                    getDnsTypeColor(record.type) as
+                      | "success"
+                      | "primary"
+                      | "warning"
+                      | "danger"
+                      | "secondary"
+                      | "default"
+                  }
                   variant="flat"
                   className="min-w-[60px]"
                 >

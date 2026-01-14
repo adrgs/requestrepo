@@ -40,7 +40,8 @@ export const useUiStore = create<UiState>()(
 
       setFilters: (http, dns) => set({ httpFilter: http, dnsFilter: dns }),
       setSearchQuery: (query) => set({ searchQuery: query }),
-      selectRequest: (requestId) => set({ selectedRequestId: requestId, sharedRequest: null }),
+      selectRequest: (requestId) =>
+        set({ selectedRequestId: requestId, sharedRequest: null }),
       setSharedRequest: (request) => set({ sharedRequest: request }),
 
       markRequestVisited: (subdomain, requestId) =>
@@ -85,8 +86,8 @@ export const useUiStore = create<UiState>()(
         visitedRequests: state.visitedRequests,
         selectedRequestId: state.selectedRequestId,
       }),
-    }
-  )
+    },
+  ),
 );
 
 // Cross-tab sync: listen for storage events from other tabs

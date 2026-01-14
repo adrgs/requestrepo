@@ -1,5 +1,12 @@
 import { useState, useCallback, useMemo } from "react";
-import { FilePlus, FolderPlus, Pencil, Trash2, File, Folder } from "lucide-react";
+import {
+  FilePlus,
+  FolderPlus,
+  Pencil,
+  Trash2,
+  File,
+  Folder,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/ContextMenu";
 import { FileTreeItem } from "./FileTreeItem";
@@ -32,7 +39,7 @@ export function FileTree({
 }: FileTreeProps) {
   // State for expanded folders
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // State for context menu
@@ -48,7 +55,9 @@ export function FileTree({
 
   // State for creating new items
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
-  const [creatingType, setCreatingType] = useState<"file" | "folder" | null>(null);
+  const [creatingType, setCreatingType] = useState<"file" | "folder" | null>(
+    null,
+  );
   const [newItemName, setNewItemName] = useState("");
 
   // Build tree structure from flat files
@@ -74,7 +83,7 @@ export function FileTree({
         onSelectFile(path);
       }
     },
-    [onSelectFile]
+    [onSelectFile],
   );
 
   // Handle context menu open
@@ -86,7 +95,7 @@ export function FileTree({
         target: node,
       });
     },
-    []
+    [],
   );
 
   // Handle root context menu (empty area)
@@ -161,7 +170,11 @@ export function FileTree({
       if (isFolder) {
         const filesInFolder = getFilesInFolder(files, path);
         if (filesInFolder.length > 0) {
-          if (!window.confirm(`Delete folder "${path}" and ${filesInFolder.length} file(s) inside?`)) {
+          if (
+            !window.confirm(
+              `Delete folder "${path}" and ${filesInFolder.length} file(s) inside?`,
+            )
+          ) {
             return;
           }
         }
@@ -171,13 +184,16 @@ export function FileTree({
       onFilesChange(newFiles);
 
       // If deleted file was selected, select index.html
-      if (selectedFile === path || (isFolder && selectedFile.startsWith(path + "/"))) {
+      if (
+        selectedFile === path ||
+        (isFolder && selectedFile.startsWith(path + "/"))
+      ) {
         onSelectFile("index.html");
       }
 
       toast.success(isFolder ? "Folder deleted" : "File deleted");
     },
-    [files, onFilesChange, selectedFile, onSelectFile]
+    [files, onFilesChange, selectedFile, onSelectFile],
   );
 
   // Handle context menu action
@@ -189,7 +205,7 @@ export function FileTree({
 
       switch (key) {
         case "new-file":
-          setCreatingIn(isFolder ? target?.name ?? "" : "");
+          setCreatingIn(isFolder ? (target?.name ?? "") : "");
           setCreatingType("file");
           setNewItemName("");
           // Expand the folder if creating inside it
@@ -199,7 +215,7 @@ export function FileTree({
           break;
 
         case "new-folder":
-          setCreatingIn(isFolder ? target?.name ?? "" : "");
+          setCreatingIn(isFolder ? (target?.name ?? "") : "");
           setCreatingType("folder");
           setNewItemName("");
           if (isFolder && target?.name) {
@@ -210,7 +226,9 @@ export function FileTree({
         case "rename":
           if (targetPath) {
             setRenamingPath(targetPath);
-            setRenameValue(isFolder ? target?.name ?? "" : getFileName(targetPath));
+            setRenameValue(
+              isFolder ? (target?.name ?? "") : getFileName(targetPath),
+            );
           }
           break;
 
@@ -221,7 +239,7 @@ export function FileTree({
           break;
       }
     },
-    [contextMenu.target, handleDelete]
+    [contextMenu.target, handleDelete],
   );
 
   // Handle rename submit
@@ -269,13 +287,21 @@ export function FileTree({
     if (selectedFile === renamingPath) {
       onSelectFile(newPath);
     } else if (selectedFile.startsWith(renamingPath + "/")) {
-      const newSelectedPath = newPath + selectedFile.substring(renamingPath.length);
+      const newSelectedPath =
+        newPath + selectedFile.substring(renamingPath.length);
       onSelectFile(newSelectedPath);
     }
 
     setRenamingPath(null);
     toast.success("Renamed successfully");
-  }, [renamingPath, renameValue, files, onFilesChange, selectedFile, onSelectFile]);
+  }, [
+    renamingPath,
+    renameValue,
+    files,
+    onFilesChange,
+    selectedFile,
+    onSelectFile,
+  ]);
 
   // Handle rename cancel
   const handleRenameCancel = useCallback(() => {
@@ -309,8 +335,8 @@ export function FileTree({
       // Check if creating file would conflict with existing folder
       // e.g., creating "yo" when "yo/index.html" exists
       const existingPaths = Object.keys(files);
-      const conflictsWithFolder = existingPaths.some(
-        (p) => p.startsWith(fullPath + "/")
+      const conflictsWithFolder = existingPaths.some((p) =>
+        p.startsWith(fullPath + "/"),
       );
       if (conflictsWithFolder) {
         toast.error("A folder with this name already exists");
@@ -346,8 +372,8 @@ export function FileTree({
 
       // Check if folder already exists (has files inside)
       const existingPaths = Object.keys(files);
-      const folderExists = existingPaths.some(
-        (p) => p.startsWith(fullPath + "/")
+      const folderExists = existingPaths.some((p) =>
+        p.startsWith(fullPath + "/"),
       );
       if (folderExists) {
         toast.error("A folder with this name already exists");
@@ -376,7 +402,14 @@ export function FileTree({
     setCreatingIn(null);
     setCreatingType(null);
     setNewItemName("");
-  }, [newItemName, creatingType, creatingIn, files, onFilesChange, onSelectFile]);
+  }, [
+    newItemName,
+    creatingType,
+    creatingIn,
+    files,
+    onFilesChange,
+    onSelectFile,
+  ]);
 
   return (
     <div
@@ -414,7 +447,10 @@ export function FileTree({
 
       {/* New item input (shown at root level) */}
       {creatingType && creatingIn === "" && (
-        <div className="flex items-center gap-1 px-1 py-0.5" style={{ paddingLeft: "4px" }}>
+        <div
+          className="flex items-center gap-1 px-1 py-0.5"
+          style={{ paddingLeft: "4px" }}
+        >
           <span className="w-4 h-4" />
           {creatingType === "folder" ? (
             <Folder className="h-4 w-4 text-warning" />
@@ -434,7 +470,9 @@ export function FileTree({
               }
             }}
             onBlur={handleCreateItem}
-            placeholder={creatingType === "folder" ? "folder name" : "file name"}
+            placeholder={
+              creatingType === "folder" ? "folder name" : "file name"
+            }
             className="flex-1 bg-default-100 px-1 py-0 text-sm rounded outline-none focus:ring-1 focus:ring-primary"
           />
         </div>

@@ -29,7 +29,7 @@ export const useSessionStore = create<SessionState>()(
       removeSession: (subdomain) =>
         set((state) => {
           const filtered = state.sessions.filter(
-            (s) => s.subdomain !== subdomain
+            (s) => s.subdomain !== subdomain,
           );
           const newActive =
             state.activeSubdomain === subdomain
@@ -41,7 +41,7 @@ export const useSessionStore = create<SessionState>()(
       replaceSession: (oldSubdomain, newSession) =>
         set((state) => {
           const sessions = state.sessions.map((s) =>
-            s.subdomain === oldSubdomain ? newSession : s
+            s.subdomain === oldSubdomain ? newSession : s,
           );
           const newActive =
             state.activeSubdomain === oldSubdomain
@@ -60,6 +60,6 @@ export const useSessionStore = create<SessionState>()(
     {
       name: "requestrepo-sessions",
       storage: createJSONStorage(() => localStorage),
-    }
-  )
+    },
+  ),
 );

@@ -1,5 +1,11 @@
 import { useRef, useEffect } from "react";
-import { ChevronRight, ChevronDown, File, Folder, FolderOpen } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronDown,
+  File,
+  Folder,
+  FolderOpen,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TreeNode } from "@/lib/fileTree";
 
@@ -47,7 +53,8 @@ export function FileTreeItem({
   const inputRef = useRef<HTMLInputElement>(null);
   const isFolder = node.type === "folder";
   const isExpanded = isFolder && expandedFolders.has(node.name);
-  const isSelected = node.path === selectedPath || (isFolder && node.name === selectedPath);
+  const isSelected =
+    node.path === selectedPath || (isFolder && node.name === selectedPath);
   const isRenaming = renamingPath === (isFolder ? node.name : node.path);
 
   // Focus input when renaming starts
@@ -100,7 +107,7 @@ export function FileTreeItem({
         className={cn(
           "group flex items-center gap-1 px-1 py-0.5 cursor-pointer rounded-md text-sm",
           "hover:bg-default-100",
-          isSelected && "bg-primary/10"
+          isSelected && "bg-primary/10",
         )}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
         onClick={handleClick}
@@ -146,60 +153,64 @@ export function FileTreeItem({
       </div>
 
       {/* Children (for folders) */}
-      {isFolder && isExpanded && (node.children.length > 0 || creatingIn === node.name) && (
-        <div>
-          {node.children.map((child) => (
-            <FileTreeItem
-              key={child.path || child.name}
-              node={child}
-              depth={depth + 1}
-              selectedPath={selectedPath}
-              expandedFolders={expandedFolders}
-              renamingPath={renamingPath}
-              renameValue={renameValue}
-              creatingIn={creatingIn}
-              creatingType={creatingType}
-              newItemName={newItemName}
-              onSelect={onSelect}
-              onToggleFolder={onToggleFolder}
-              onContextMenu={onContextMenu}
-              onRenameChange={onRenameChange}
-              onRenameSubmit={onRenameSubmit}
-              onRenameCancel={onRenameCancel}
-              onNewItemNameChange={onNewItemNameChange}
-              onCreateItem={onCreateItem}
-              onCancelCreate={onCancelCreate}
-            />
-          ))}
-          {/* New item input inside this folder */}
-          {creatingType && creatingIn === node.name && (
-            <div
-              className="flex items-center gap-1 px-1 py-0.5"
-              style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
-            >
-              <span className="w-4 h-4" />
-              {creatingType === "folder" ? (
-                <Folder className="h-4 w-4 text-warning" />
-              ) : (
-                <File className="h-4 w-4 text-default-500" />
-              )}
-              <input
-                autoFocus
-                type="text"
-                value={newItemName}
-                onChange={(e) => onNewItemNameChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onCreateItem();
-                  if (e.key === "Escape") onCancelCreate();
-                }}
-                onBlur={onCreateItem}
-                placeholder={creatingType === "folder" ? "folder name" : "file name"}
-                className="flex-1 bg-default-100 px-1 py-0 text-sm rounded outline-none focus:ring-1 focus:ring-primary"
+      {isFolder &&
+        isExpanded &&
+        (node.children.length > 0 || creatingIn === node.name) && (
+          <div>
+            {node.children.map((child) => (
+              <FileTreeItem
+                key={child.path || child.name}
+                node={child}
+                depth={depth + 1}
+                selectedPath={selectedPath}
+                expandedFolders={expandedFolders}
+                renamingPath={renamingPath}
+                renameValue={renameValue}
+                creatingIn={creatingIn}
+                creatingType={creatingType}
+                newItemName={newItemName}
+                onSelect={onSelect}
+                onToggleFolder={onToggleFolder}
+                onContextMenu={onContextMenu}
+                onRenameChange={onRenameChange}
+                onRenameSubmit={onRenameSubmit}
+                onRenameCancel={onRenameCancel}
+                onNewItemNameChange={onNewItemNameChange}
+                onCreateItem={onCreateItem}
+                onCancelCreate={onCancelCreate}
               />
-            </div>
-          )}
-        </div>
-      )}
+            ))}
+            {/* New item input inside this folder */}
+            {creatingType && creatingIn === node.name && (
+              <div
+                className="flex items-center gap-1 px-1 py-0.5"
+                style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
+              >
+                <span className="w-4 h-4" />
+                {creatingType === "folder" ? (
+                  <Folder className="h-4 w-4 text-warning" />
+                ) : (
+                  <File className="h-4 w-4 text-default-500" />
+                )}
+                <input
+                  autoFocus
+                  type="text"
+                  value={newItemName}
+                  onChange={(e) => onNewItemNameChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") onCreateItem();
+                    if (e.key === "Escape") onCancelCreate();
+                  }}
+                  onBlur={onCreateItem}
+                  placeholder={
+                    creatingType === "folder" ? "folder name" : "file name"
+                  }
+                  className="flex-1 bg-default-100 px-1 py-0 text-sm rounded outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            )}
+          </div>
+        )}
     </div>
   );
 }
