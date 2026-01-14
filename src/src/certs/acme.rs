@@ -1,27 +1,19 @@
 use anyhow::{anyhow, Context, Result};
 use instant_acme::{
-    Account, AccountCredentials, AuthorizationStatus, ChallengeType, Identifier, NewAccount,
-    NewOrder, Order, OrderStatus,
+    Account, AuthorizationStatus, ChallengeType, Identifier, NewAccount, NewOrder, Order,
+    OrderStatus,
 };
 use rcgen::{CertificateParams, DistinguishedName, KeyPair};
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::challenge::DnsChallengeHandler;
 use super::storage::CertStorage;
 
-/// Let's Encrypt production ACME directory URL
-pub const ACME_DIRECTORY_PRODUCTION: &str = "https://acme-v02.api.letsencrypt.org/directory";
-
-/// Let's Encrypt staging ACME directory URL (use for testing!)
-/// Staging has much higher rate limits and issues test certificates
-pub const ACME_DIRECTORY_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
-
 /// ACME client for Let's Encrypt certificate issuance
 pub struct AcmeClient {
     account: Account,
-    directory_url: String,
 }
 
 impl AcmeClient {
@@ -61,10 +53,7 @@ impl AcmeClient {
             }
         };
 
-        Ok(Self {
-            account,
-            directory_url: directory_url.to_string(),
-        })
+        Ok(Self { account })
     }
 
     /// Obtain a certificate for the given domain and wildcard
@@ -79,7 +68,7 @@ impl AcmeClient {
         // Create order for both the base domain and wildcard
         let identifiers = vec![
             Identifier::Dns(domain.to_string()),
-            Identifier::Dns(format!("*.{}", domain)),
+            Identifier::Dns(format!("*.{domain}")),
         ];
 
         let mut order = self
@@ -310,7 +299,7 @@ impl AcmeClient {
         // Add both the base domain and wildcard as SANs
         params.subject_alt_names = vec![
             rcgen::SanType::DnsName(domain.try_into().unwrap()),
-            rcgen::SanType::DnsName(format!("*.{}", domain).try_into().unwrap()),
+            rcgen::SanType::DnsName(format!("*.{domain}").try_into().unwrap()),
         ];
 
         let csr = params
@@ -323,7 +312,6 @@ impl AcmeClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rcgen::{CertificateParams, DistinguishedName, KeyPair};
 
     #[test]

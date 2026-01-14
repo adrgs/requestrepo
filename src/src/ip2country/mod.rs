@@ -8,7 +8,7 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 /// IP range entry storing start IP and country code
 /// Uses DB-IP format: we only store the start IP and country
@@ -84,7 +84,7 @@ pub fn init() -> Result<()> {
 }
 
 fn ip_to_u32(ip: &str) -> Option<u32> {
-    Ipv4Addr::from_str(ip).ok().map(|ip| u32::from(ip))
+    Ipv4Addr::from_str(ip).ok().map(u32::from)
 }
 
 /// Check if an IP string is a valid IPv4 address

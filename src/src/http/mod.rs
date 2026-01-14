@@ -4,13 +4,12 @@ mod websocket;
 
 use anyhow::{anyhow, Result};
 use axum::{
-    extract::ConnectInfo,
+    extract::{ConnectInfo, DefaultBodyLimit},
     http::Method,
-    routing::{get, post, put},
+    routing::{get, post},
     Router,
 };
 use hyper_util::rt::TokioIo;
-use hyper_util::server::conn::auto::Builder as ConnectionBuilder;
 use hyper_util::service::TowerToHyperService;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -79,19 +78,27 @@ fn create_router(state: AppState) -> Router {
         ])
         .allow_headers(Any);
 
-    Router::new()
+    // API routes - these need CORS for browser requests
+    let api_routes = Router::new()
         .route("/health", get(routes::health))
-        // V2 REST API routes
         .route("/api/v2/sessions", post(routes_v2::create_session))
         .route("/api/v2/dns", get(routes_v2::get_dns).put(routes_v2::update_dns))
         .route("/api/v2/files", get(routes_v2::get_files).put(routes_v2::update_files))
         .route("/api/v2/files/*path", get(routes_v2::get_file))
         .route("/api/v2/requests", get(routes_v2::list_requests).delete(routes_v2::delete_all_requests))
+        .route("/api/v2/requests/shared/:token", get(routes_v2::get_shared_request))
+        .route("/api/v2/requests/:id/share", post(routes_v2::share_request))
         .route("/api/v2/requests/:id", get(routes_v2::get_request).delete(routes_v2::delete_request))
         .route("/api/v2/ws", get(websocket::websocket_handler_v2))
+        .layer(cors);
+
+    // Main router: API routes with CORS, catch_all WITHOUT CORS
+    // This gives users full control over response headers for their files
+    Router::new()
+        .merge(api_routes)
         .fallback(routes::catch_all)
+        .layer(DefaultBodyLimit::max(CONFIG.max_request_body_bytes))
         .with_state(state)
-        .layer(cors)
 }
 
 /// HTTPS server that runs alongside the HTTP server
@@ -156,8 +163,10 @@ impl HttpsServer {
 
                 let io = TokioIo::new(tls_stream);
 
-                if let Err(e) = ConnectionBuilder::new(hyper_util::rt::TokioExecutor::new())
+                // Use http1 builder with upgrades enabled for WebSocket support
+                if let Err(e) = hyper::server::conn::http1::Builder::new()
                     .serve_connection(io, service)
+                    .with_upgrades()
                     .await
                 {
                     // Don't log connection reset errors as they're common

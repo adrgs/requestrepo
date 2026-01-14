@@ -105,7 +105,7 @@ t57I39/asDr7i7haub9Q1cb0
         let token = "test-token-abc123";
 
         // Manually set and check TXT record (simulating what DnsChallengeHandler does)
-        let key = format!("dns:TXT:{}.", domain);
+        let key = format!("dns:TXT:{domain}.");
         cache.set(&key, token).await.expect("Failed to set TXT");
 
         // Verify it was set

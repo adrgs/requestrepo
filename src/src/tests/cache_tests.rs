@@ -26,19 +26,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_exists() {
-        let cache = Cache::new();
-
-        let exists = cache.exists("test_key").await.unwrap();
-        assert!(!exists);
-
-        cache.set("test_key", "test_value").await.unwrap();
-
-        let exists = cache.exists("test_key").await.unwrap();
-        assert!(exists);
-    }
-
-    #[tokio::test]
     async fn test_rpush_lrange() {
         let cache = Cache::new();
 
@@ -79,21 +66,6 @@ mod tests {
         assert_eq!(keys.len(), 2);
         assert!(keys.contains(&"test:key1".to_string()));
         assert!(keys.contains(&"test:key2".to_string()));
-    }
-
-    #[tokio::test]
-    async fn test_publish_subscribe() {
-        let cache = Cache::new();
-
-        let mut rx = cache.subscribe();
-
-        let receivers = cache.publish("test_channel", "test_message").await.unwrap();
-        assert_eq!(receivers, 1);
-
-        let message = rx.try_recv().unwrap();
-        assert_eq!(message.cmd, "message");
-        assert_eq!(message.subdomain, "test_channel");
-        assert_eq!(message.data, "test_message");
     }
 
     #[tokio::test]

@@ -15,7 +15,6 @@ pub struct ValidationResult {
     pub needs_renewal: bool,
     pub reason: Option<String>,
     pub days_until_expiry: Option<i64>,
-    pub domains: Vec<String>,
 }
 
 impl CertValidator {
@@ -50,7 +49,6 @@ impl CertValidator {
                     self.expected_domain, self.expected_domain, domains
                 )),
                 days_until_expiry: None,
-                domains,
             });
         }
 
@@ -69,7 +67,6 @@ impl CertValidator {
                     days_until_expiry, self.renewal_days
                 )),
                 days_until_expiry: Some(days_until_expiry),
-                domains,
             });
         }
 
@@ -78,7 +75,6 @@ impl CertValidator {
             needs_renewal: false,
             reason: None,
             days_until_expiry: Some(days_until_expiry),
-            domains,
         })
     }
 
@@ -100,11 +96,8 @@ impl CertValidator {
         // Extract SANs (Subject Alternative Names)
         if let Ok(Some(san_ext)) = cert.subject_alternative_name() {
             for name in &san_ext.value.general_names {
-                match name {
-                    GeneralName::DNSName(dns) => {
-                        domains.push(dns.to_string());
-                    }
-                    _ => {}
+                if let GeneralName::DNSName(dns) = name {
+                    domains.push(dns.to_string());
                 }
             }
         }
@@ -153,26 +146,6 @@ impl CertValidator {
 
         Ok(days_until_expiry)
     }
-
-    /// Check if certificate is currently valid (not expired, not before validity period)
-    pub fn is_currently_valid(&self, cert_pem: &[u8]) -> Result<bool> {
-        let pem_data = ::pem::parse(cert_pem).context("Failed to parse certificate PEM")?;
-        let cert_der = pem_data.contents();
-
-        let (_, cert) = X509Certificate::from_der(cert_der)
-            .map_err(|e| anyhow!("Failed to parse X.509 certificate: {:?}", e))?;
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("System time before Unix epoch")?;
-
-        let now_secs = now.as_secs() as i64;
-
-        let not_before = cert.validity().not_before.timestamp();
-        let not_after = cert.validity().not_after.timestamp();
-
-        Ok(now_secs >= not_before && now_secs <= not_after)
-    }
 }
 
 #[cfg(test)]
@@ -181,6 +154,7 @@ mod tests {
 
     // Self-signed test certificate for testing (expires in 365 days from generation)
     // In real tests, we'd generate fresh certs or use a fixture
+    #[allow(dead_code)]
     const TEST_CERT_PEM: &str = r#"-----BEGIN CERTIFICATE-----
 MIIBkTCB+wIJAKHBfpegPjMCMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
 c3RjYTAeFw0yNDAxMDEwMDAwMDBaFw0yNTAxMDEwMDAwMDBaMBExDzANBgNVBAMM

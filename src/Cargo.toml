@@ -11,6 +11,7 @@ tokio = { version = "1.36.0", features = ["full"] }
 
 # Web framework
 axum = { version = "0.7.4", features = ["ws", "macros"] }
+axum-extra = { version = "0.9", features = ["cookie"] }
 tower = { version = "0.4.13", features = ["util"] }
 tower-http = { version = "0.5.1", features = ["cors", "trace"] }
 tower-service = "0.3"

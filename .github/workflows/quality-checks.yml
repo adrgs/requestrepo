@@ -2,101 +2,62 @@ name: Quality Checks
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  format:
-    name: Code Formatting
+  rust:
+    name: Rust Checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: '3.10'
-          
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
         with:
-          node-version: '18'
-          
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: '1.5.1'
-          
-      - name: Install dependencies
-        run: |
-          poetry install
-          cd frontend && npm install --legacy-peer-deps
-          
-      - name: Check Python formatting
-        run: poetry run ruff format --check backend
-        
-      - name: Check JavaScript formatting
-        run: cd frontend && npx prettier --check .
-  
-  lint:
-    name: Code Linting
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Clippy lints
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+  frontend:
+    name: Frontend Checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: '1.5.1'
-          
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Install dependencies
-        run: |
-          poetry install
-          cd frontend && npm install --legacy-peer-deps
-          
-      - name: Lint Python code
-        run: poetry run ruff check backend
-        
-      - name: Lint JavaScript code
-        run: cd frontend && npm run lint
-  
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis
-        ports:
-          - 6379:6379
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: '1.5.1'
-          
-      - name: Install dependencies
-        run: poetry install
-          
-      - name: Run backend tests
-        run: poetry run pytest backend/tests
-        
-      - name: Run DNS tests
-        run: poetry run pytest dns/tests 
+        run: bun install
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Type check
+        run: bun run tsc --noEmit

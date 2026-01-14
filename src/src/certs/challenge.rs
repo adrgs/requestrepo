@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts};
 use trust_dns_resolver::TokioAsyncResolver;
 
@@ -22,14 +22,14 @@ impl DnsChallengeHandler {
     /// Set a TXT record for ACME challenge
     /// The domain should be the full _acme-challenge.{domain} hostname
     pub async fn set_txt(&self, challenge_domain: &str, token: &str) -> Result<()> {
-        // Ensure domain ends with a dot for DNS consistency
+        // Ensure domain ends with a dot for DNS consistency and lowercase for case-insensitive lookup
         let domain = if challenge_domain.ends_with('.') {
-            challenge_domain.to_string()
+            challenge_domain.to_lowercase()
         } else {
-            format!("{}.", challenge_domain)
+            format!("{challenge_domain}.").to_lowercase()
         };
 
-        let key = format!("dns:TXT:{}", domain);
+        let key = format!("dns:TXT:{domain}");
         info!("Setting ACME challenge TXT record: {} = {}", domain, token);
 
         self.cache
@@ -43,12 +43,12 @@ impl DnsChallengeHandler {
     /// Clear the TXT record after challenge is complete
     pub async fn clear_txt(&self, challenge_domain: &str) -> Result<()> {
         let domain = if challenge_domain.ends_with('.') {
-            challenge_domain.to_string()
+            challenge_domain.to_lowercase()
         } else {
-            format!("{}.", challenge_domain)
+            format!("{challenge_domain}.").to_lowercase()
         };
 
-        let key = format!("dns:TXT:{}", domain);
+        let key = format!("dns:TXT:{domain}");
         info!("Clearing ACME challenge TXT record: {}", domain);
 
         self.cache
@@ -68,9 +68,9 @@ impl DnsChallengeHandler {
         timeout_secs: u64,
     ) -> Result<()> {
         let domain = if challenge_domain.ends_with('.') {
-            challenge_domain.to_string()
+            challenge_domain.to_lowercase()
         } else {
-            format!("{}.", challenge_domain)
+            format!("{challenge_domain}.").to_lowercase()
         };
 
         info!(
@@ -98,36 +98,57 @@ impl DnsChallengeHandler {
                 ));
             }
 
-            // Try each resolver
+            // Check ALL resolvers - all must confirm for propagation to be complete
+            let mut all_confirmed = true;
+            let mut confirmed_resolvers = Vec::new();
+
             for (resolver_ip, resolver_name) in &resolvers {
                 match self.query_txt(&domain, resolver_ip).await {
                     Ok(Some(value)) if value == expected_token => {
-                        info!(
+                        debug!(
                             "DNS propagation confirmed via {} for {}",
                             resolver_name, domain
                         );
-                        return Ok(());
+                        confirmed_resolvers.push(*resolver_name);
                     }
                     Ok(Some(value)) => {
                         debug!(
                             "TXT record found but value mismatch on {}: expected '{}', got '{}'",
                             resolver_name, expected_token, value
                         );
+                        all_confirmed = false;
                     }
                     Ok(None) => {
                         debug!("TXT record not found on {} for {}", resolver_name, domain);
+                        all_confirmed = false;
                     }
                     Err(e) => {
                         debug!(
                             "DNS query failed on {} for {}: {}",
                             resolver_name, domain, e
                         );
+                        all_confirmed = false;
                     }
                 }
             }
 
+            // All resolvers must confirm
+            if all_confirmed && confirmed_resolvers.len() == resolvers.len() {
+                info!(
+                    "DNS propagation confirmed on all resolvers ({}) for {}",
+                    confirmed_resolvers.join(", "),
+                    domain
+                );
+                return Ok(());
+            }
+
             // Exponential backoff
-            debug!("Waiting {:?} before next DNS check", delay);
+            debug!(
+                "Waiting {:?} before next DNS check (confirmed: {}/{})",
+                delay,
+                confirmed_resolvers.len(),
+                resolvers.len()
+            );
             sleep(delay).await;
             delay = std::cmp::min(delay * 2, max_delay);
         }

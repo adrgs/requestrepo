@@ -6,8 +6,8 @@ RUST_DIR := src
 HOOKS_DIR := .git/hooks
 
 # Commands
-FRONTEND_START_CMD := npm run dev
-FORMAT_JS_CMD := cd $(FRONTEND_DIR) && npx prettier --write --log-level silent
+FRONTEND_START_CMD := bun run dev
+FORMAT_JS_CMD := cd $(FRONTEND_DIR) && bunx prettier --write --log-level silent
 
 # Install dependencies and git hooks
 .PHONY: install
@@ -17,7 +17,7 @@ install: install-deps install-hooks
 .PHONY: install-deps
 install-deps:
 	cd $(RUST_DIR) && cargo build --release
-	cd $(FRONTEND_DIR) && npm install --legacy-peer-deps
+	cd $(FRONTEND_DIR) && bun install
 
 # Install git hooks
 .PHONY: install-hooks
@@ -44,6 +44,12 @@ start-backend:
 	if [ ! -f .env ]; then cp .env.example .env; fi
 	cd $(RUST_DIR) && cargo run --release
 
+# Start the backend with hot reload (like bun dev)
+.PHONY: dev-backend
+dev-backend:
+	if [ ! -f .env ]; then cp .env.example .env; fi
+	cd $(RUST_DIR) && cargo watch -x run
+
 # Start the frontend application
 .PHONY: start-frontend
 start-frontend:
@@ -64,7 +70,7 @@ test-backend:
 
 .PHONY: test-frontend
 test-frontend:
-	cd $(FRONTEND_DIR) && npm test
+	cd $(FRONTEND_DIR) && bun run test
 
 # Lint the codebase
 .PHONY: lint
@@ -72,7 +78,7 @@ lint: lint-js lint-rust
 
 .PHONY: lint-js
 lint-js:
-	cd $(FRONTEND_DIR) && npm run lint
+	cd $(FRONTEND_DIR) && bun run lint
 
 .PHONY: lint-rust
 lint-rust:

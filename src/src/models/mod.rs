@@ -1,8 +1,6 @@
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRequestLog {
@@ -33,7 +31,9 @@ pub struct DnsRequestLog {
     pub domain: String,
     pub date: i64,
     pub ip: Option<String>,
+    pub port: Option<u16>,
     pub country: Option<String>,
+    pub reply: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +96,14 @@ pub struct FileTree {
 pub struct Claims {
     pub iat: i64,
     pub exp: i64,
+    pub subdomain: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ShareClaims {
+    pub iat: i64,
+    pub exp: i64,
+    pub request_id: String,
     pub subdomain: String,
 }
 

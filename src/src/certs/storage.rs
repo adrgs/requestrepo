@@ -17,7 +17,7 @@ impl CertStorage {
         // Create directory if it doesn't exist
         if !cert_dir.exists() {
             fs::create_dir_all(&cert_dir)
-                .with_context(|| format!("Failed to create cert directory: {:?}", cert_dir))?;
+                .with_context(|| format!("Failed to create cert directory: {cert_dir:?}"))?;
             info!("Created certificate directory: {:?}", cert_dir);
         }
 
@@ -51,9 +51,9 @@ impl CertStorage {
         }
 
         let chain = fs::read(&chain_path)
-            .with_context(|| format!("Failed to read certificate chain: {:?}", chain_path))?;
+            .with_context(|| format!("Failed to read certificate chain: {chain_path:?}"))?;
         let key = fs::read(&key_path)
-            .with_context(|| format!("Failed to read private key: {:?}", key_path))?;
+            .with_context(|| format!("Failed to read private key: {key_path:?}"))?;
 
         info!("Loaded existing certificate from {:?}", chain_path);
         Ok(Some((chain, key)))
@@ -89,7 +89,7 @@ impl CertStorage {
         }
 
         let data = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read account file: {:?}", path))?;
+            .with_context(|| format!("Failed to read account file: {path:?}"))?;
         let creds: AccountCredentials = serde_json::from_str(&data)
             .with_context(|| "Failed to parse account credentials")?;
 
@@ -123,14 +123,14 @@ impl CertStorage {
         let temp_path = path.with_extension("tmp");
 
         let mut file = File::create(&temp_path)
-            .with_context(|| format!("Failed to create temp file: {:?}", temp_path))?;
+            .with_context(|| format!("Failed to create temp file: {temp_path:?}"))?;
         file.write_all(data)
-            .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
+            .with_context(|| format!("Failed to write temp file: {temp_path:?}"))?;
         file.sync_all()
-            .with_context(|| format!("Failed to sync temp file: {:?}", temp_path))?;
+            .with_context(|| format!("Failed to sync temp file: {temp_path:?}"))?;
 
         fs::rename(&temp_path, path)
-            .with_context(|| format!("Failed to rename {:?} to {:?}", temp_path, path))?;
+            .with_context(|| format!("Failed to rename {temp_path:?} to {path:?}"))?;
 
         Ok(())
     }

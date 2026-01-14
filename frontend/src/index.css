@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-default-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-default-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-default-400;
+}
+
+/* Monaco editor dark mode fix */
+.dark .monaco-editor {
+  --vscode-editor-background: #18181b;
+}
+
+/* Clean up focus styles - remove ugly focus rings */
+*:focus-visible {
+  outline: none !important;
+}
+
+/* Subtle focus for inputs */
+[data-focus-visible="true"] [data-slot="input-wrapper"],
+[data-focus="true"] [data-slot="input-wrapper"] {
+  @apply ring-1 ring-primary/30 !important;
+}
+
+/* Remove default HeroUI focus ring */
+[data-focus-visible="true"],
+[data-focused="true"] {
+  @apply outline-none !important;
+}
+
+/* Checkbox and other interactive elements */
+input:focus-visible,
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+

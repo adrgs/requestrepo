@@ -21,18 +21,6 @@ impl TlsManager {
         }
     }
 
-    /// Create a TLS manager with an initial certificate
-    pub fn with_certificate(chain_pem: &[u8], key_pem: &[u8]) -> Result<Self> {
-        let manager = Self::new();
-        manager.reload(chain_pem, key_pem)?;
-        Ok(manager)
-    }
-
-    /// Check if a valid TLS configuration is loaded
-    pub fn is_configured(&self) -> bool {
-        self.config.load().is_some()
-    }
-
     /// Get a TLS acceptor for accepting new connections
     /// Returns None if no certificate is configured
     pub fn acceptor(&self) -> Option<TlsAcceptor> {
@@ -47,12 +35,6 @@ impl TlsManager {
         self.config.store(Arc::new(Some(Arc::new(new_config))));
         info!("TLS configuration reloaded successfully");
         Ok(())
-    }
-
-    /// Clear the TLS configuration (disables HTTPS)
-    pub fn clear(&self) {
-        self.config.store(Arc::new(None));
-        info!("TLS configuration cleared");
     }
 }
 
@@ -201,7 +183,6 @@ t57I39/asDr7i7haub9Q1cb0
     #[test]
     fn test_tls_manager_new() {
         let manager = TlsManager::new();
-        assert!(!manager.is_configured());
         assert!(manager.acceptor().is_none());
     }
 
@@ -232,16 +213,12 @@ t57I39/asDr7i7haub9Q1cb0
     fn test_tls_manager_reload() {
         setup_crypto_provider();
         let manager = TlsManager::new();
-        assert!(!manager.is_configured());
+        assert!(manager.acceptor().is_none());
 
         manager
             .reload(TEST_CERT.as_bytes(), TEST_KEY.as_bytes())
             .unwrap();
-        assert!(manager.is_configured());
         assert!(manager.acceptor().is_some());
-
-        manager.clear();
-        assert!(!manager.is_configured());
     }
 
     #[test]
@@ -254,12 +231,8 @@ t57I39/asDr7i7haub9Q1cb0
 
         let cloned = manager.clone();
 
-        // Both should see the same config
-        assert!(manager.is_configured());
-        assert!(cloned.is_configured());
-
-        // Changes to one affect the other (shared Arc)
-        manager.clear();
-        assert!(!cloned.is_configured());
+        // Both should see the same config (shared Arc)
+        assert!(manager.acceptor().is_some());
+        assert!(cloned.acceptor().is_some());
     }
 }

@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for RequestRepo Rust backend
 # Stage 1: Build Rust backend
-FROM rust:1.77-alpine AS rust-builder
+FROM rust:1.85-alpine AS rust-builder
 
 RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
 
@@ -22,21 +22,22 @@ COPY src/src ./src
 RUN touch src/main.rs && cargo build --release
 
 # Stage 2: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM oven/bun:1-alpine AS frontend-builder
 
 WORKDIR /app
 
 # Copy package files
-COPY frontend/package*.json ./
+COPY frontend/package.json frontend/bun.lockb* ./
 
 # Install dependencies
-RUN npm ci
+RUN bun install
 
-# Copy frontend source
+# Copy frontend source and shared .env
 COPY frontend/ ./
+COPY .env .env
 
-# Build frontend
-RUN npm run build
+# Build frontend (reads .env from current dir via vite envDir config)
+RUN bun run build
 
 # Stage 3: Final runtime image
 FROM alpine:3.19
@@ -55,8 +56,8 @@ RUN mkdir -p /app/certs && chown requestrepo:requestrepo /app/certs
 # Copy Rust binary
 COPY --from=rust-builder /app/target/release/requestrepo /app/requestrepo
 
-# Copy frontend build
-COPY --from=frontend-builder /app/build /app/public
+# Copy frontend build (Vite outputs to dist/)
+COPY --from=frontend-builder /app/dist /app/public
 
 # Copy IP2Country database if it exists
 COPY --chown=requestrepo:requestrepo ip2country/ /app/ip2country/

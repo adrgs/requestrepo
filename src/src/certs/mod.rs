@@ -4,7 +4,6 @@ mod storage;
 mod tls;
 mod validation;
 
-pub use acme::{ACME_DIRECTORY_PRODUCTION, ACME_DIRECTORY_STAGING};
 pub use tls::TlsManager;
 
 use anyhow::{Context, Result};
@@ -75,11 +74,6 @@ impl CertManager {
     /// Get the TLS manager for use by the HTTPS server
     pub fn tls_manager(&self) -> TlsManager {
         self.tls.clone()
-    }
-
-    /// Check if HTTPS is ready (certificate loaded)
-    pub fn is_ready(&self) -> bool {
-        self.tls.is_configured()
     }
 
     /// Load existing certificate from storage

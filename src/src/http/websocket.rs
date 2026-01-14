@@ -135,7 +135,7 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                         // Send historical requests
                                         if let Ok(requests) = state
                                             .cache
-                                            .lrange(&format!("requests:{}", subdomain), 0, -1)
+                                            .lrange(&format!("requests:{subdomain}"), 0, -1)
                                             .await
                                         {
                                             let requests: Vec<Value> = requests

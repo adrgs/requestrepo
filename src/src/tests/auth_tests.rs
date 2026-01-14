@@ -15,7 +15,7 @@ mod tests {
         let subdomain = "testsubdomain";
         let token = generate_jwt(subdomain).expect("Failed to generate JWT");
 
-        let verified_subdomain = verify_jwt(&token);
+        let _verified_subdomain = verify_jwt(&token);
         // If verification fails, it might be due to lazy_static initialization
         // Just verify the token was generated
         assert!(!token.is_empty());

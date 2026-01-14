@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -163,11 +163,7 @@ async fn handle_smtp_connection(
                 }
 
                 // Handle dot-stuffing (lines starting with . have the . removed)
-                let content = if line_trimmed.starts_with('.') {
-                    &line_trimmed[1..]
-                } else {
-                    line_trimmed
-                };
+                let content = line_trimmed.strip_prefix('.').unwrap_or(line_trimmed);
                 email_data.push_str(content);
                 email_data.push('\n');
             }
@@ -281,6 +277,7 @@ async fn handle_smtp_connection(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn log_smtp_request(
     subdomain: &str,
     command: &str,
@@ -303,7 +300,7 @@ async fn log_smtp_request(
             email_data
         )
     } else {
-        format!("Command: {}", command)
+        format!("Command: {command}")
     };
 
     let request_log = SmtpRequestLog {
@@ -320,11 +317,13 @@ async fn log_smtp_request(
 
     let request_json = serde_json::to_string(&request_log)?;
 
+    // Push request to list and get the new length to calculate the correct index
+    let list_key = format!("requests:{subdomain}");
+    let index = cache.rpush(&list_key, &request_json).await?.saturating_sub(1);
+
+    // Store the index for this request ID (used by delete endpoint)
     cache
-        .rpush(&format!("requests:{}", subdomain), &request_json)
-        .await?;
-    cache
-        .set(&format!("request:{}:{}", subdomain, request_id), "0")
+        .set(&format!("request:{subdomain}:{request_id}"), &index.to_string())
         .await?;
 
     let message = CacheMessage {

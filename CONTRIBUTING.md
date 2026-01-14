@@ -1,20 +1,18 @@
-# 🤝 Contributing to requestrepo
+# Contributing to RequestRepo
 
-Thank you for considering contributing to requestrepo! We appreciate any help that you can provide.
+Thank you for considering contributing to RequestRepo! We appreciate any help that you can provide.
 
-## 🚀 Getting Started
+## Getting Started
 
 1. Fork the repository and clone it to your local machine.
 
 2. Make sure you have the required dependencies installed:
-   - 🐍 [Python 3.11+](https://www.python.org/)
-   - 📜 [Poetry](https://python-poetry.org/) for Python dependency management
-   - 📦 [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) for the frontend
-   - 💾 [Redis](https://redis.io/) for data storage
+   - [Rust](https://rustup.rs/) 1.75+ with cargo
+   - [Bun](https://bun.sh/) 1.0+ for the frontend
+   - Docker (optional, for deployment testing)
 
 3. Install dependencies using our Makefile:
    ```bash
-   # Install all dependencies and git hooks
    make install
    ```
 
@@ -23,33 +21,24 @@ Thank you for considering contributing to requestrepo! We appreciate any help th
    git checkout -b my-feature-branch
    ```
 
-## 💻 Development Workflow
+## Development Workflow
 
-We provide a Makefile to help with common development tasks:
+We provide a Makefile to help with common development tasks.
 
-### 🚀 Starting the Services
+### Starting the Services
 
 ```bash
-# Start Redis for development
-make start-redis
-
-# Start the backend server (will also start Redis if not running)
+# Start the Rust backend (HTTP, DNS, SMTP servers)
 make start-backend
+
+# Or with hot reload (requires cargo-watch)
+make dev-backend
 
 # Start the frontend development server
 make start-frontend
 ```
 
-### 🔌 Starting the DNS Server
-
-The DNS server needs to be started manually:
-
-```bash
-# Start the DNS server
-cd dns; python ns.py
-```
-
-### 🧪 Testing
+### Testing
 
 Run the tests using our Makefile:
 
@@ -60,33 +49,33 @@ make test
 # Run only backend tests
 make test-backend
 
-# Run only DNS tests
-make test-dns
+# Run only frontend tests
+make test-frontend
 ```
 
-### ✨ Code Quality
+### Code Quality
 
 ```bash
-# Run all linters
+# Run all linters (clippy + eslint)
 make lint
+
+# Run only Rust linting
+make lint-rust
 
 # Run only JavaScript/TypeScript linting
 make lint-js
 
-# Run only Python linting
-make lint-python
-
-# Format all code
+# Format all code (cargo fmt + prettier)
 make format
+
+# Format only Rust code
+make format-rust
 
 # Format only JavaScript/TypeScript code
 make format-js
-
-# Format only Python code
-make format-python
 ```
 
-## 🔗 Git Hooks
+## Git Hooks
 
 When you run `make install`, git hooks are automatically set up to ensure code quality:
 
@@ -95,7 +84,7 @@ When you run `make install`, git hooks are automatically set up to ensure code q
 
 These hooks help maintain code quality standards across the project.
 
-## 📝 Pull Request Process
+## Pull Request Process
 
 1. Make your changes in your feature branch
 2. Ensure all git hooks pass (format, lint, tests)
@@ -103,7 +92,7 @@ These hooks help maintain code quality standards across the project.
 4. Create a Pull Request against the main repository's `main` branch
 5. Wait for the GitHub Actions to complete and for a maintainer to review your PR
 
-## ⚙️ Environment Setup
+## Environment Setup
 
 The project uses environment variables for configuration. Copy `.env.example` to `.env` and modify as needed:
 
@@ -112,14 +101,37 @@ cp .env.example .env
 ```
 
 Key environment variables:
-- 🔑 `JWT_SECRET`: Secret key for JWT tokens
-- 🌐 `DOMAIN`: Your domain name
-- 🖥️ `SERVER_IP`: Your server's IP address
-- ⏱️ `REDIS_TTL_DAYS`: How long to keep data in Redis (default: 7 days)
+- `JWT_SECRET`: Secret key for JWT tokens (required)
+- `DOMAIN`: Your domain name (required)
+- `SERVER_IP`: Your server's public IP address (required)
+- `TLS_ENABLED`: Enable HTTPS with auto-TLS (optional)
+- `ADMIN_TOKEN`: Require password for session creation (optional)
 
-## 📱 Contact
+See `.env.example` for all available options.
+
+## Project Structure
+
+```
+requestrepo/
+├── src/              # Rust backend
+│   └── src/
+│       ├── cache/    # In-memory LRU cache
+│       ├── certs/    # TLS/ACME management
+│       ├── dns/      # DNS server
+│       ├── http/     # HTTP server + API
+│       ├── smtp/     # SMTP server
+│       └── tests/    # Backend tests
+├── frontend/         # React frontend
+│   └── src/
+│       ├── components/
+│       ├── pages/
+│       ├── stores/   # Zustand state
+│       └── hooks/
+└── Makefile          # Development commands
+```
+
+## Contact
 
 If you have any questions or doubts, feel free to:
-- 🐛 Open an issue on GitHub
-- 💬 Join our [Discord](https://discord.gg/requestrepo)
-- 📧 Email us at [contact@requestrepo.com](mailto:contact@requestrepo.com)
+- Open an issue on GitHub
+- Email us at [contact@requestrepo.com](mailto:contact@requestrepo.com)

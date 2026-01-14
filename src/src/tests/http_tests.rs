@@ -22,11 +22,11 @@ mod tests {
         // Verify cache can store files for this subdomain
         let files = json!({"index.html": {"raw": "PGh0bWw+PC9odG1sPg==", "status_code": 200, "headers": []}});
         cache
-            .set(&format!("files:{}", subdomain), &files.to_string())
+            .set(&format!("files:{subdomain}"), &files.to_string())
             .await
             .unwrap();
 
-        let result = cache.get(&format!("files:{}", subdomain)).await.unwrap();
+        let result = cache.get(&format!("files:{subdomain}")).await.unwrap();
         assert!(result.is_some());
     }
 
@@ -38,17 +38,17 @@ mod tests {
 
         // Simulate what update_dns would do
         let record_type = "A";
-        let domain = format!("test.{}.requestrepo.com.", subdomain);
+        let domain = format!("test.{subdomain}.requestrepo.com.");
         let value = "1.2.3.4";
 
         cache
-            .set(&format!("dns:{}:{}", record_type, domain), value)
+            .set(&format!("dns:{record_type}:{domain}"), value)
             .await
             .unwrap();
 
         // Verify retrieval
         let result = cache
-            .get(&format!("dns:{}:{}", record_type, domain))
+            .get(&format!("dns:{record_type}:{domain}"))
             .await
             .unwrap();
         assert_eq!(result, Some(value.to_string()));
@@ -75,17 +75,17 @@ mod tests {
         .to_string();
 
         cache
-            .rpush(&format!("requests:{}", subdomain), &request_json)
+            .rpush(&format!("requests:{subdomain}"), &request_json)
             .await
             .unwrap();
         cache
-            .set(&format!("request:{}:{}", subdomain, request_id), "0")
+            .set(&format!("request:{subdomain}:{request_id}"), "0")
             .await
             .unwrap();
 
         // Verify requests can be retrieved
         let requests = cache
-            .lrange(&format!("requests:{}", subdomain), 0, -1)
+            .lrange(&format!("requests:{subdomain}"), 0, -1)
             .await
             .unwrap();
         assert_eq!(requests.len(), 1);
@@ -93,7 +93,7 @@ mod tests {
 
         // Verify request index exists
         let index = cache
-            .get(&format!("request:{}:{}", subdomain, request_id))
+            .get(&format!("request:{subdomain}:{request_id}"))
             .await
             .unwrap();
         assert_eq!(index, Some("0".to_string()));
@@ -124,12 +124,12 @@ mod tests {
         });
 
         cache
-            .set(&format!("files:{}", subdomain), &files.to_string())
+            .set(&format!("files:{subdomain}"), &files.to_string())
             .await
             .unwrap();
 
         // Retrieve and verify
-        let result = cache.get(&format!("files:{}", subdomain)).await.unwrap();
+        let result = cache.get(&format!("files:{subdomain}")).await.unwrap();
         assert!(result.is_some());
 
         let parsed: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
@@ -152,12 +152,12 @@ mod tests {
             })
             .to_string();
             cache
-                .rpush(&format!("requests:{}", subdomain), &request_json)
+                .rpush(&format!("requests:{subdomain}"), &request_json)
                 .await
                 .unwrap();
             cache
                 .set(
-                    &format!("request:{}:request-{}", subdomain, i),
+                    &format!("request:{subdomain}:request-{i}"),
                     &i.to_string(),
                 )
                 .await
@@ -166,24 +166,24 @@ mod tests {
 
         // Verify we have 3 requests
         let requests = cache
-            .lrange(&format!("requests:{}", subdomain), 0, -1)
+            .lrange(&format!("requests:{subdomain}"), 0, -1)
             .await
             .unwrap();
         assert_eq!(requests.len(), 3);
 
         // Delete a request (set to empty object like the actual implementation)
         cache
-            .lset(&format!("requests:{}", subdomain), 1, "{}")
+            .lset(&format!("requests:{subdomain}"), 1, "{}")
             .await
             .unwrap();
         cache
-            .delete(&format!("request:{}:request-1", subdomain))
+            .delete(&format!("request:{subdomain}:request-1"))
             .await
             .unwrap();
 
         // Verify index key was deleted
         let index = cache
-            .get(&format!("request:{}:request-1", subdomain))
+            .get(&format!("request:{subdomain}:request-1"))
             .await
             .unwrap();
         assert!(index.is_none());

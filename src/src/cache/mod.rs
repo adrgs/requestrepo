@@ -177,25 +177,30 @@ impl Cache {
 
     /// Delete a key
     pub async fn delete(&self, key: &str) -> Result<bool> {
-        let mut store = self.kv_store.write().map_err(|_| anyhow!("Lock error"))?;
-
-        if let Some(entry) = store.remove(key) {
-            self.current_memory.fetch_sub(entry.data.len(), Ordering::Relaxed);
-            if let Some(subdomain) = extract_subdomain_from_key(key) {
-                self.update_subdomain_size(&subdomain, -(entry.uncompressed_size as isize));
+        // Try kv_store first
+        {
+            let mut store = self.kv_store.write().map_err(|_| anyhow!("Lock error"))?;
+            if let Some(entry) = store.remove(key) {
+                self.current_memory.fetch_sub(entry.data.len(), Ordering::Relaxed);
+                if let Some(subdomain) = extract_subdomain_from_key(key) {
+                    self.update_subdomain_size(&subdomain, -(entry.uncompressed_size as isize));
+                }
+                return Ok(true);
             }
-            return Ok(true);
+        }
+
+        // Try request_store (for requests:{subdomain} keys)
+        {
+            let mut store = self.request_store.write().map_err(|_| anyhow!("Lock error"))?;
+            if let Some(entry) = store.remove(key) {
+                self.current_memory.fetch_sub(entry.total_size, Ordering::Relaxed);
+                return Ok(true);
+            }
         }
 
         // Also check request index
         let mut index = self.request_index.write().map_err(|_| anyhow!("Lock error"))?;
         Ok(index.remove(key).is_some())
-    }
-
-    /// Check if key exists
-    pub async fn exists(&self, key: &str) -> Result<bool> {
-        let store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
-        Ok(store.contains_key(key))
     }
 
     /// Push to a request list (right push)
@@ -282,7 +287,8 @@ impl Cache {
         Err(anyhow!("List or index not found"))
     }
 
-    /// Get keys matching pattern
+    /// Get keys matching pattern (used in tests)
+    #[allow(dead_code)]
     pub async fn keys(&self, pattern: &str) -> Result<Vec<String>> {
         let kv_store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
         let request_store = self.request_store.read().map_err(|_| anyhow!("Lock error"))?;
@@ -290,7 +296,7 @@ impl Cache {
         let mut result = Vec::new();
 
         let pattern = pattern.replace("*", ".*");
-        let re = regex::Regex::new(&format!("^{}$", pattern))?;
+        let re = regex::Regex::new(&format!("^{pattern}$"))?;
 
         for key in kv_store.keys() {
             if re.is_match(key) {
@@ -305,28 +311,6 @@ impl Cache {
         }
 
         Ok(result)
-    }
-
-    /// Publish a message to subscribers
-    pub async fn publish(&self, channel: &str, message: &str) -> Result<usize> {
-        let cache_message = CacheMessage {
-            cmd: "message".to_string(),
-            subdomain: channel.to_string(),
-            data: message.to_string(),
-        };
-
-        let receivers = self.tx.send(cache_message)?;
-        Ok(receivers)
-    }
-
-    /// Subscribe to cache messages
-    pub fn subscribe(&self) -> broadcast::Receiver<CacheMessage> {
-        self.tx.subscribe()
-    }
-
-    /// Get the broadcast sender
-    pub fn sender(&self) -> broadcast::Sender<CacheMessage> {
-        self.tx.clone()
     }
 
     // --- Private helper methods ---

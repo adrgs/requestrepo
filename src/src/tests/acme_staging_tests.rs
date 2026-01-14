@@ -23,9 +23,12 @@
 #[cfg(test)]
 mod tests {
     use crate::cache::Cache;
-    use crate::certs::{CertManager, ACME_DIRECTORY_STAGING};
+    use crate::certs::CertManager;
     use std::env;
     use std::sync::Arc;
+
+    /// Let's Encrypt staging directory URL for testing
+    const ACME_DIRECTORY_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
 
     /// Full integration test against Let's Encrypt STAGING
     ///
@@ -50,8 +53,8 @@ mod tests {
         let email = env::var("ACME_TEST_EMAIL")
             .expect("ACME_TEST_EMAIL must be set for staging tests");
 
-        println!("Running ACME staging test for domain: {}", domain);
-        println!("Using staging directory: {}", ACME_DIRECTORY_STAGING);
+        println!("Running ACME staging test for domain: {domain}");
+        println!("Using staging directory: {ACME_DIRECTORY_STAGING}");
 
         // Create test cache
         let cache = Arc::new(Cache::new());
@@ -60,7 +63,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
         let cert_dir = temp_dir.path().to_str().unwrap().to_string();
 
-        println!("Using temp cert directory: {}", cert_dir);
+        println!("Using temp cert directory: {cert_dir}");
 
         // Set required environment variables for the test
         env::set_var("TLS_ENABLED", "true");
@@ -84,8 +87,8 @@ mod tests {
                 println!("Certificate obtained successfully!");
 
                 // Verify certificate files were created
-                let fullchain_path = format!("{}/fullchain.pem", cert_dir);
-                let privkey_path = format!("{}/privkey.pem", cert_dir);
+                let fullchain_path = format!("{cert_dir}/fullchain.pem");
+                let privkey_path = format!("{cert_dir}/privkey.pem");
 
                 assert!(
                     std::path::Path::new(&fullchain_path).exists(),
@@ -103,7 +106,7 @@ mod tests {
             }
             Err(e) => {
                 // Print detailed error for debugging
-                println!("Certificate issuance failed: {:?}", e);
+                println!("Certificate issuance failed: {e:?}");
                 panic!("Expected certificate issuance to succeed");
             }
         }

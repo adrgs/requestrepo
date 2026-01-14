@@ -4,10 +4,11 @@
 
 use axum::{
     extract::{ConnectInfo, Path, Query, State},
-    http::StatusCode,
-    response::IntoResponse,
+    http::{header::SET_COOKIE, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
+use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -16,8 +17,9 @@ use std::net::SocketAddr;
 use crate::http::AppState;
 use crate::models::{DnsRecord, DnsRecords, FileTree};
 use crate::utils::{
-    auth::can_create_session, generate_jwt, get_current_timestamp, get_random_subdomain,
-    verify_jwt, write_basic_file,
+    auth::{can_create_session, is_admin_token_required},
+    generate_jwt, generate_share_jwt, get_current_timestamp,
+    get_random_subdomain, verify_jwt, verify_share_jwt, write_basic_file,
 };
 use crate::utils::config::CONFIG;
 
@@ -28,6 +30,7 @@ use crate::utils::config::CONFIG;
 #[derive(Debug, Deserialize)]
 pub struct AuthHeader {
     #[serde(default)]
+    #[allow(dead_code)]
     pub authorization: Option<String>,
 }
 
@@ -67,6 +70,25 @@ pub struct CreateSessionRequest {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/// Extract admin token from request body or cookie (body takes precedence)
+fn extract_admin_token(body_token: Option<&str>, cookies: &CookieJar) -> Option<String> {
+    // Body takes precedence
+    if let Some(token) = body_token {
+        return Some(token.to_string());
+    }
+    // Fallback to cookie
+    cookies.get("admin_token").map(|c| c.value().to_string())
+}
+
+/// Build the admin token cookie string with security settings
+fn build_admin_cookie(token: &str) -> String {
+    let secure = if CONFIG.tls_enabled { "; Secure" } else { "" };
+    format!(
+        "admin_token={}; Path=/api/; Domain={}; HttpOnly; SameSite=Strict; Max-Age=2592000{}",
+        token, CONFIG.server_domain, secure
+    )
+}
 
 /// Extract token from query param or Authorization header
 fn extract_token(query: &TokenQuery, headers: &axum::http::HeaderMap) -> Option<String> {
@@ -121,8 +143,9 @@ fn verify_token_or_error(
 pub async fn create_session(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    cookies: CookieJar,
     Json(body): Json<CreateSessionRequest>,
-) -> impl IntoResponse {
+) -> Response {
     let client_ip = addr.ip().to_string();
 
     // Check rate limit
@@ -130,8 +153,11 @@ pub async fn create_session(
         return response.into_response();
     }
 
+    // Extract admin token from body or cookie
+    let admin_token = extract_admin_token(body.admin_token.as_deref(), &cookies);
+
     // Check admin token if required
-    if !can_create_session(body.admin_token.as_deref()) {
+    if !can_create_session(admin_token.as_deref()) {
         return (
             StatusCode::FORBIDDEN,
             Json(json!({
@@ -169,11 +195,22 @@ pub async fn create_session(
             .into_response();
     }
 
-    (
+    // Build response
+    let mut response = (
         StatusCode::CREATED,
         Json(SessionResponse { token, subdomain }),
     )
-        .into_response()
+        .into_response();
+
+    // Set cookie if admin token was provided in body (first-time auth)
+    // This persists the admin token for future session creations
+    if body.admin_token.is_some() && is_admin_token_required() {
+        if let Ok(cookie_value) = HeaderValue::from_str(&build_admin_cookie(body.admin_token.as_ref().unwrap())) {
+            response.headers_mut().insert(SET_COOKIE, cookie_value);
+        }
+    }
+
+    response
 }
 
 /// Check rate limit for session creation
@@ -191,7 +228,7 @@ async fn check_rate_limit(
 
     let now = get_current_timestamp();
     let window_start = now - (window_secs as i64);
-    let rate_key = format!("ratelimit:session:{}", client_ip);
+    let rate_key = format!("ratelimit:session:{client_ip}");
 
     // Get current count and timestamp
     let (count, last_reset) = match state.cache.get(&rate_key).await {
@@ -232,7 +269,7 @@ async fn check_rate_limit(
     // Update counter
     let _ = state
         .cache
-        .set(&rate_key, &format!("{}:{}", new_count, new_reset))
+        .set(&rate_key, &format!("{new_count}:{new_reset}"))
         .await;
 
     Ok(())
@@ -253,7 +290,7 @@ pub async fn get_dns(
         Err(e) => return e.into_response(),
     };
 
-    let dns_key = format!("dns:{}", subdomain);
+    let dns_key = format!("dns:{subdomain}");
     let records = match state.cache.get(&dns_key).await {
         Ok(Some(json_str)) => {
             serde_json::from_str::<Vec<DnsRecord>>(&json_str).unwrap_or_default()
@@ -305,7 +342,7 @@ pub async fn update_dns(
     }
 
     // Clear old records
-    if let Ok(Some(old_records_json)) = state.cache.get(&format!("dns:{}", subdomain)).await {
+    if let Ok(Some(old_records_json)) = state.cache.get(&format!("dns:{subdomain}")).await {
         if let Ok(old_records) = serde_json::from_str::<Vec<HashMap<String, String>>>(&old_records_json)
         {
             for old_record in old_records {
@@ -314,7 +351,7 @@ pub async fn update_dns(
                 {
                     let _ = state
                         .cache
-                        .delete(&format!("dns:{}:{}", record_type, domain))
+                        .delete(&format!("dns:{record_type}:{domain}"))
                         .await;
                 }
             }
@@ -324,9 +361,13 @@ pub async fn update_dns(
     // Store new records
     let mut final_records = Vec::new();
     for record in records.records {
-        let new_domain = format!(
+        // Store the user's input as-is for display
+        let short_domain = record.domain.to_lowercase();
+
+        // Compute full FQDN for DNS cache key
+        let fqdn = format!(
             "{}.{}.{}.",
-            record.domain.to_lowercase(),
+            short_domain,
             subdomain,
             CONFIG.server_domain
         );
@@ -334,13 +375,14 @@ pub async fn update_dns(
         let _ = state
             .cache
             .set(
-                &format!("dns:{}:{}", record.r#type, new_domain),
+                &format!("dns:{}:{}", record.r#type, fqdn),
                 &record.value,
             )
             .await;
 
+        // Store the short domain for display, not the full FQDN
         final_records.push(json!({
-            "domain": new_domain,
+            "domain": short_domain,
             "type": record.r#type,
             "value": record.value,
         }));
@@ -349,7 +391,7 @@ pub async fn update_dns(
     let _ = state
         .cache
         .set(
-            &format!("dns:{}", subdomain),
+            &format!("dns:{subdomain}"),
             &serde_json::to_string(&final_records).unwrap_or_default(),
         )
         .await;
@@ -372,7 +414,7 @@ pub async fn get_files(
         Err(e) => return e.into_response(),
     };
 
-    let files_key = format!("files:{}", subdomain);
+    let files_key = format!("files:{subdomain}");
     let files = match state.cache.get(&files_key).await {
         Ok(Some(json_str)) => serde_json::from_str::<FileTree>(&json_str).unwrap_or(FileTree {
             files: HashMap::new(),
@@ -381,6 +423,22 @@ pub async fn get_files(
             files: HashMap::new(),
         },
     };
+
+    // If files are empty or missing index.html, create default
+    // This handles the case where backend restarted but JWT is still valid
+    if files.files.is_empty() || !files.files.contains_key("index.html") {
+        let _ = write_basic_file(&subdomain, &state.cache).await;
+        // Re-fetch the files after creating default
+        let files = match state.cache.get(&files_key).await {
+            Ok(Some(json_str)) => serde_json::from_str::<FileTree>(&json_str).unwrap_or(FileTree {
+                files: HashMap::new(),
+            }),
+            _ => FileTree {
+                files: HashMap::new(),
+            },
+        };
+        return (StatusCode::OK, Json(files)).into_response();
+    }
 
     (StatusCode::OK, Json(files)).into_response()
 }
@@ -400,7 +458,7 @@ pub async fn update_files(
     let _ = state
         .cache
         .set(
-            &format!("files:{}", subdomain),
+            &format!("files:{subdomain}"),
             &serde_json::to_string(&files).unwrap_or_default(),
         )
         .await;
@@ -420,7 +478,7 @@ pub async fn get_file(
         Err(e) => return e.into_response(),
     };
 
-    let files_key = format!("files:{}", subdomain);
+    let files_key = format!("files:{subdomain}");
     let files = match state.cache.get(&files_key).await {
         Ok(Some(json_str)) => serde_json::from_str::<FileTree>(&json_str).unwrap_or(FileTree {
             files: HashMap::new(),
@@ -499,7 +557,7 @@ pub async fn list_requests(
         }
     };
 
-    let key = format!("requests:{}", subdomain);
+    let key = format!("requests:{subdomain}");
 
     // Get total count (before filtering empty objects)
     let total_raw = state.cache.llen(&key).await.unwrap_or(0);
@@ -554,7 +612,7 @@ pub async fn get_request(
     // Find request by ID
     let requests = match state
         .cache
-        .lrange(&format!("requests:{}", subdomain), 0, -1)
+        .lrange(&format!("requests:{subdomain}"), 0, -1)
         .await
     {
         Ok(list) => list,
@@ -601,7 +659,7 @@ pub async fn delete_request(
     };
 
     // Find and delete request by ID
-    let index_key = format!("request:{}:{}", subdomain, id);
+    let index_key = format!("request:{subdomain}:{id}");
     let index = match state.cache.get(&index_key).await {
         Ok(Some(idx)) => idx.parse::<isize>().unwrap_or(-1),
         _ => -1,
@@ -621,7 +679,7 @@ pub async fn delete_request(
     // Set to empty object to mark as deleted
     let _ = state
         .cache
-        .lset(&format!("requests:{}", subdomain), index, "{}")
+        .lset(&format!("requests:{subdomain}"), index, "{}")
         .await;
     let _ = state.cache.delete(&index_key).await;
 
@@ -654,7 +712,7 @@ pub async fn delete_all_requests(
     // Get all request IDs first
     let requests = state
         .cache
-        .lrange(&format!("requests:{}", subdomain), 0, -1)
+        .lrange(&format!("requests:{subdomain}"), 0, -1)
         .await
         .unwrap_or_default();
 
@@ -664,7 +722,7 @@ pub async fn delete_all_requests(
             if let Some(id) = request.get("_id").and_then(|v| v.as_str()) {
                 let _ = state
                     .cache
-                    .delete(&format!("request:{}:{}", subdomain, id))
+                    .delete(&format!("request:{subdomain}:{id}"))
                     .await;
             }
         }
@@ -673,7 +731,7 @@ pub async fn delete_all_requests(
     // Delete the requests list
     let _ = state
         .cache
-        .delete(&format!("requests:{}", subdomain))
+        .delete(&format!("requests:{subdomain}"))
         .await;
 
     // Broadcast deletion
@@ -687,6 +745,144 @@ pub async fn delete_all_requests(
     (
         StatusCode::OK,
         Json(json!({ "message": "All requests deleted" })),
+    )
+        .into_response()
+}
+
+// ============================================================================
+// Request Sharing Routes
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct ShareResponse {
+    pub share_token: String,
+}
+
+/// POST /api/v2/requests/:id/share - Create a share token for a request
+pub async fn share_request(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<TokenQuery>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let subdomain = match verify_token_or_error(&query, &headers) {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
+
+    // Verify the request exists
+    let requests = match state
+        .cache
+        .lrange(&format!("requests:{subdomain}"), 0, -1)
+        .await
+    {
+        Ok(list) => list,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "Request not found",
+                    "code": "not_found"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let mut found = false;
+    for request_json in &requests {
+        if let Ok(request) = serde_json::from_str::<serde_json::Value>(request_json) {
+            if let Some(req_id) = request.get("_id").and_then(|v| v.as_str()) {
+                if req_id == id.as_str() {
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if !found {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "Request not found",
+                "code": "not_found"
+            })),
+        )
+            .into_response();
+    }
+
+    // Generate share token
+    let share_token = match generate_share_jwt(&id, &subdomain) {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": format!("Failed to generate share token: {}", e),
+                    "code": "token_error"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    (StatusCode::CREATED, Json(ShareResponse { share_token })).into_response()
+}
+
+/// GET /api/v2/requests/shared/:token - Get a shared request (no auth required)
+pub async fn get_shared_request(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> impl IntoResponse {
+    // Verify share token
+    let claims = match verify_share_jwt(&token) {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": "Invalid or expired share token",
+                    "code": "invalid_share_token"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // Find the request
+    let requests = match state
+        .cache
+        .lrange(&format!("requests:{}", claims.subdomain), 0, -1)
+        .await
+    {
+        Ok(list) => list,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "Request not found",
+                    "code": "not_found"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    for request_json in requests {
+        if let Ok(request) = serde_json::from_str::<serde_json::Value>(&request_json) {
+            if request.get("_id").and_then(|v| v.as_str()) == Some(&claims.request_id) {
+                return (StatusCode::OK, Json(request)).into_response();
+            }
+        }
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "error": "Request not found",
+            "code": "not_found"
+        })),
     )
         .into_response()
 }

@@ -8,18 +8,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tracing::{error, info};
-use uuid::Uuid;
 
 use crate::cache::Cache;
 use crate::models::{CacheMessage, TcpRequestLog};
 use crate::utils::config::CONFIG;
 use crate::utils::{generate_request_id, get_current_timestamp};
 use crate::ip2country::lookup_country;
-
-struct PortAllocation {
-    subdomain: String,
-    port: u16,
-}
 
 pub struct Server {
     cache: Arc<Cache>,
@@ -91,9 +85,9 @@ impl Server {
         let end = CONFIG.tcp_port_range_end;
         
         for port in start..=end {
-            if !allocated.contains_key(&port) {
+            if let std::collections::hash_map::Entry::Vacant(e) = allocated.entry(port) {
                 allocations.insert(subdomain.to_string(), port);
-                allocated.insert(port, subdomain.to_string());
+                e.insert(subdomain.to_string());
                 
                 info!("Allocated port {} for subdomain {}", port, subdomain);
                 
@@ -116,7 +110,7 @@ impl Server {
     }
 
     async fn start_port_listener(&self, port: u16, subdomain: String) -> Result<()> {
-        let listener = match TcpListener::bind(format!("0.0.0.0:{}", port)).await {
+        let listener = match TcpListener::bind(format!("0.0.0.0:{port}")).await {
             Ok(listener) => listener,
             Err(e) => {
                 error!("Failed to bind to port {}: {}", port, e);
@@ -189,9 +183,13 @@ async fn handle_tcp_connection(
         };
         
         let request_json = serde_json::to_string(&request_log)?;
-        
-        cache.rpush(&format!("requests:{}", subdomain), &request_json).await?;
-        cache.set(&format!("request:{}:{}", subdomain, request_id), "0").await?;
+
+        // Push request to list and get the new length to calculate the correct index
+        let list_key = format!("requests:{subdomain}");
+        let index = cache.rpush(&list_key, &request_json).await?.saturating_sub(1);
+
+        // Store the index for this request ID (used by delete endpoint)
+        cache.set(&format!("request:{subdomain}:{request_id}"), &index.to_string()).await?;
         
         let message = CacheMessage {
             cmd: "new_request".to_string(),

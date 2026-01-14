@@ -73,12 +73,12 @@ mod tests {
         let records_json = r#"[{"domain":"test.testsubdomain.example.com.","type":"A","value":"1.2.3.4"}]"#;
 
         cache
-            .set(&format!("dns:{}", subdomain), records_json)
+            .set(&format!("dns:{subdomain}"), records_json)
             .await
             .unwrap();
 
         // Verify retrieval
-        let result = cache.get(&format!("dns:{}", subdomain)).await.unwrap();
+        let result = cache.get(&format!("dns:{subdomain}")).await.unwrap();
         assert_eq!(result, Some(records_json.to_string()));
     }
 

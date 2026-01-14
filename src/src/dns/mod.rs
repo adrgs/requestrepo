@@ -74,20 +74,22 @@ async fn handle_dns_request(
     };
 
     let name = query.name().to_string();
-    let query_type = query.query_type();
 
     // Extract subdomain from hostname
     let subdomain = get_subdomain_from_hostname(&name);
 
+    // Build response first so we can include it in the log
+    let response = build_dns_response(&request, query, &subdomain, &cache).await?;
+
+    // Format the response for logging
+    let reply = format_dns_response(&response);
+
     // Log the DNS request if we have a valid subdomain
     if let Some(ref subdomain) = subdomain {
-        if let Err(e) = log_dns_request(&request, data, addr, subdomain, &cache, &tx).await {
+        if let Err(e) = log_dns_request(&request, data, addr, subdomain, &reply, &cache, &tx).await {
             error!("Failed to log DNS request: {}", e);
         }
     }
-
-    // Build response
-    let response = build_dns_response(&request, query, &subdomain, &cache).await?;
 
     // Serialize and send response
     let response_bytes = response.to_bytes().map_err(|e| anyhow!("Failed to serialize DNS response: {}", e))?;
@@ -96,11 +98,67 @@ async fn handle_dns_request(
     Ok(())
 }
 
+/// Format a DNS response message for human-readable display
+fn format_dns_response(response: &Message) -> String {
+    let mut output = Vec::new();
+
+    // Header section
+    output.push(format!(
+        ";; ->>HEADER<<- opcode: {:?}, status: {:?}, id: {}",
+        response.op_code(),
+        response.response_code(),
+        response.id()
+    ));
+
+    let answers: Vec<_> = response.answers().iter().collect();
+    let queries: Vec<_> = response.queries().iter().collect();
+
+    let flags = format!(
+        ";; flags: {}{}{}{}; QUERY: {}, ANSWER: {}, AUTHORITY: {}, ADDITIONAL: {}",
+        if response.recursion_desired() { "qr " } else { "" },
+        if response.authoritative() { "aa " } else { "" },
+        if response.truncated() { "tc " } else { "" },
+        if response.recursion_available() { "rd " } else { "" },
+        queries.len(),
+        answers.len(),
+        response.name_server_count(),
+        response.additional_count()
+    );
+    output.push(flags);
+
+    // Question section
+    output.push(";; QUESTION SECTION:".to_string());
+    for query in &queries {
+        output.push(format!(";{} IN {:?}", query.name(), query.query_type()));
+    }
+
+    // Answer section
+    if !answers.is_empty() {
+        output.push(";; ANSWER SECTION:".to_string());
+        for answer in &answers {
+            let rdata = match answer.data() {
+                Some(data) => format!("{data}"),
+                None => "".to_string(),
+            };
+            output.push(format!(
+                "{} {} IN {:?} {}",
+                answer.name(),
+                answer.ttl(),
+                answer.record_type(),
+                rdata
+            ));
+        }
+    }
+
+    output.join("\n")
+}
+
 async fn log_dns_request(
     request: &Message,
     raw_data: &[u8],
     addr: SocketAddr,
     subdomain: &str,
+    reply: &str,
     cache: &Arc<Cache>,
     tx: &Arc<broadcast::Sender<CacheMessage>>,
 ) -> Result<()> {
@@ -117,20 +175,24 @@ async fn log_dns_request(
         r#type: "dns".to_string(),
         raw: BASE64.encode(raw_data),
         uid: subdomain.to_string(),
-        query_type: format!("{:?}", query_type),
+        query_type: format!("{query_type:?}"),
         domain: name,
         date: get_current_timestamp(),
         ip: Some(source_ip),
+        port: Some(addr.port()),
         country,
+        reply: Some(reply.to_string()),
     };
 
     let request_json = serde_json::to_string(&request_log)?;
 
+    // Push request to list and get the new length to calculate the correct index
+    let list_key = format!("requests:{subdomain}");
+    let index = cache.rpush(&list_key, &request_json).await?.saturating_sub(1);
+
+    // Store the index for this request ID (used by delete endpoint)
     cache
-        .rpush(&format!("requests:{}", subdomain), &request_json)
-        .await?;
-    cache
-        .set(&format!("request:{}:{}", subdomain, request_id), "0")
+        .set(&format!("request:{subdomain}:{request_id}"), &index.to_string())
         .await?;
 
     let message = CacheMessage {
@@ -144,10 +206,23 @@ async fn log_dns_request(
     Ok(())
 }
 
+/// Check if the query is for our domain (including base domain and subdomains)
+fn is_our_domain(name_str: &str) -> bool {
+    let name_lower = name_str.to_lowercase();
+    let domain = CONFIG.server_domain.to_lowercase();
+    let domain_with_dot = format!("{domain}.");
+
+    // Check if it's exactly our domain or a subdomain of it
+    name_lower == domain
+        || name_lower == domain_with_dot
+        || name_lower.ends_with(&format!(".{domain}"))
+        || name_lower.ends_with(&format!(".{domain_with_dot}"))
+}
+
 async fn build_dns_response(
     request: &Message,
     query: &Query,
-    subdomain: &Option<String>,
+    _subdomain: &Option<String>,
     cache: &Arc<Cache>,
 ) -> Result<Message> {
     let name = query.name().clone();
@@ -163,15 +238,21 @@ async fn build_dns_response(
     response.set_authoritative(true);
     response.add_query(query.clone());
 
-    // If no valid subdomain, return NXDOMAIN
-    if subdomain.is_none() {
+    // If query is not for our domain at all, return NXDOMAIN
+    if !is_our_domain(&name_str) {
         response.set_response_code(ResponseCode::NXDomain);
         return Ok(response);
     }
 
+    // Note: We handle queries even without a valid session subdomain
+    // This allows ACME challenges and base domain queries to work
+
+    // DNS is case-insensitive per RFC 1035 - normalize to lowercase for all lookups
+    let name_lower = name_str.to_lowercase();
+
     match query_type {
         RecordType::A => {
-            let dns_key = format!("dns:A:{}", name_str);
+            let dns_key = format!("dns:A:{name_lower}");
             let custom_record = cache.get(&dns_key).await.unwrap_or(None);
 
             if let Some(value) = custom_record {
@@ -180,20 +261,20 @@ async fn build_dns_response(
                 let selected_ip = ips.choose(&mut rand::thread_rng()).unwrap_or(&ips[0]);
 
                 if let Ok(ip) = selected_ip.parse::<Ipv4Addr>() {
-                    let record = Record::from_rdata(name.clone(), 300, RData::A(ip.into()));
+                    let record = Record::from_rdata(name.clone(), 1, RData::A(ip.into()));
                     response.add_answer(record);
                 }
             } else {
                 // Default to server IP
                 let ip = Ipv4Addr::from_str(&CONFIG.server_ip)
                     .unwrap_or_else(|_| Ipv4Addr::new(127, 0, 0, 1));
-                let record = Record::from_rdata(name.clone(), 300, RData::A(ip.into()));
+                let record = Record::from_rdata(name.clone(), 1, RData::A(ip.into()));
                 response.add_answer(record);
             }
             response.set_response_code(ResponseCode::NoError);
         }
         RecordType::AAAA => {
-            let dns_key = format!("dns:AAAA:{}", name_str);
+            let dns_key = format!("dns:AAAA:{name_lower}");
             let custom_record = cache.get(&dns_key).await.unwrap_or(None);
 
             if let Some(value) = custom_record {
@@ -202,7 +283,7 @@ async fn build_dns_response(
                 let selected_ip = ips.choose(&mut rand::thread_rng()).unwrap_or(&ips[0]);
 
                 if let Ok(ip) = selected_ip.parse::<Ipv6Addr>() {
-                    let record = Record::from_rdata(name.clone(), 300, RData::AAAA(ip.into()));
+                    let record = Record::from_rdata(name.clone(), 1, RData::AAAA(ip.into()));
                     response.add_answer(record);
                     response.set_response_code(ResponseCode::NoError);
                 } else {
@@ -211,7 +292,7 @@ async fn build_dns_response(
             } else {
                 // Default: try to parse server_ip as IPv6, otherwise return NXDomain
                 if let Ok(ip) = CONFIG.server_ip.parse::<Ipv6Addr>() {
-                    let record = Record::from_rdata(name.clone(), 300, RData::AAAA(ip.into()));
+                    let record = Record::from_rdata(name.clone(), 1, RData::AAAA(ip.into()));
                     response.add_answer(record);
                     response.set_response_code(ResponseCode::NoError);
                 } else {
@@ -221,7 +302,7 @@ async fn build_dns_response(
             }
         }
         RecordType::CNAME => {
-            let dns_key = format!("dns:CNAME:{}", name_str);
+            let dns_key = format!("dns:CNAME:{name_lower}");
             let custom_record = cache.get(&dns_key).await.unwrap_or(None);
 
             let cname_value = custom_record.unwrap_or_else(|| {
@@ -230,12 +311,12 @@ async fn build_dns_response(
                 if domain.ends_with('.') {
                     domain.clone()
                 } else {
-                    format!("{}.", domain)
+                    format!("{domain}.")
                 }
             });
 
             if let Ok(target) = Name::from_str(&cname_value) {
-                let record = Record::from_rdata(name.clone(), 300, RData::CNAME(CNAME(target)));
+                let record = Record::from_rdata(name.clone(), 1, RData::CNAME(CNAME(target)));
                 response.add_answer(record);
                 response.set_response_code(ResponseCode::NoError);
             } else {
@@ -243,12 +324,12 @@ async fn build_dns_response(
             }
         }
         RecordType::TXT => {
-            let dns_key = format!("dns:TXT:{}", name_str);
+            let dns_key = format!("dns:TXT:{name_lower}");
             let custom_record = cache.get(&dns_key).await.unwrap_or(None);
 
             let txt_value = custom_record.unwrap_or_else(|| CONFIG.txt_record.clone());
             let txt_data = TXT::new(vec![txt_value]);
-            let record = Record::from_rdata(name.clone(), 300, RData::TXT(txt_data));
+            let record = Record::from_rdata(name.clone(), 1, RData::TXT(txt_data));
             response.add_answer(record);
             response.set_response_code(ResponseCode::NoError);
         }
