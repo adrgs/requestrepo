@@ -295,7 +295,7 @@ export function Sidebar() {
             // Determine display text
             const getDisplayText = () => {
               if (isHttp) {
-                return `${request.path}${request.query ? `?${request.query}` : ""}${request.fragment ? `#${request.fragment}` : ""}`;
+                return `${request.path}${request.query ?? ""}${request.fragment ? `#${request.fragment}` : ""}`;
               }
               if (isSmtp) {
                 return request.command;
