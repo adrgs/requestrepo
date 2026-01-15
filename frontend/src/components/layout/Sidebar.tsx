@@ -288,7 +288,9 @@ export function Sidebar() {
                       !isVisited && "font-medium",
                     )}
                   >
-                    {isHttp ? request.path : request.domain}
+                    {isHttp
+                      ? `${request.path}${request.query ? `?${request.query}` : ""}`
+                      : request.domain}
                   </span>
                   <span
                     className="ml-auto shrink-0 px-1 py-px text-[8px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
