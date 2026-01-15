@@ -13,7 +13,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { apiClient } from "@/api/client";
 import { cn, formatRelativeTime, getFlagClass } from "@/lib/utils";
 import type { Request } from "@/types";
-import { isHttpRequest } from "@/types";
+import { isHttpRequest, isSmtpRequest } from "@/types";
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -26,12 +26,13 @@ export function Sidebar() {
   const allRequests = useRequestStore((s) => s.requests);
   const requests = useMemo(
     () => (activeSubdomain ? (allRequests[activeSubdomain] ?? []) : []),
-    [activeSubdomain, allRequests]
+    [activeSubdomain, allRequests],
   );
   const clearRequests = useRequestStore((s) => s.clearRequests);
 
   const httpFilter = useUiStore((s) => s.httpFilter);
   const dnsFilter = useUiStore((s) => s.dnsFilter);
+  const smtpFilter = useUiStore((s) => s.smtpFilter);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setFilters = useUiStore((s) => s.setFilters);
   const selectedRequestId = useUiStore((s) => s.selectedRequestId);
@@ -55,6 +56,7 @@ export function Sidebar() {
         // Type filter
         if (r.type === "http" && !httpFilter) return false;
         if (r.type === "dns" && !dnsFilter) return false;
+        if (r.type === "smtp" && !smtpFilter) return false;
 
         // Search filter
         if (searchQuery) {
@@ -65,6 +67,12 @@ export function Sidebar() {
               r.ip?.toLowerCase().includes(query) ||
               r.method?.toLowerCase().includes(query) ||
               r.url?.toLowerCase().includes(query)
+            );
+          } else if (isSmtpRequest(r)) {
+            return (
+              r.command?.toLowerCase().includes(query) ||
+              r.data?.toLowerCase().includes(query) ||
+              r.ip?.toLowerCase().includes(query)
             );
           } else {
             // DNS request
@@ -78,7 +86,7 @@ export function Sidebar() {
         return true;
       })
       .sort((a, b) => a.date - b.date); // oldest first, newest at bottom
-  }, [requests, httpFilter, dnsFilter, searchQuery]);
+  }, [requests, httpFilter, dnsFilter, smtpFilter, searchQuery]);
 
   // Scroll to bottom helper
   const scrollToBottom = () => {
@@ -211,7 +219,7 @@ export function Sidebar() {
         <div className="flex items-center gap-3">
           <Checkbox
             isSelected={httpFilter}
-            onValueChange={(checked) => setFilters(checked, dnsFilter)}
+            onValueChange={(checked) => setFilters(checked, dnsFilter, smtpFilter)}
             size="sm"
             radius="full"
           >
@@ -219,11 +227,19 @@ export function Sidebar() {
           </Checkbox>
           <Checkbox
             isSelected={dnsFilter}
-            onValueChange={(checked) => setFilters(httpFilter, checked)}
+            onValueChange={(checked) => setFilters(httpFilter, checked, smtpFilter)}
             size="sm"
             radius="full"
           >
             <span className="text-sm">DNS</span>
+          </Checkbox>
+          <Checkbox
+            isSelected={smtpFilter}
+            onValueChange={(checked) => setFilters(httpFilter, dnsFilter, checked)}
+            size="sm"
+            radius="full"
+          >
+            <span className="text-sm">SMTP</span>
           </Checkbox>
         </div>
       </div>
@@ -240,8 +256,46 @@ export function Sidebar() {
               ? (visitedRequests[activeSubdomain]?.[request._id] ?? false)
               : false;
             const isHttp = isHttpRequest(request);
+            const isSmtp = isSmtpRequest(request);
             const isFirst = index === 0;
             const isLast = index === filteredRequests.length - 1;
+
+            // Determine badge color
+            const getBadgeColor = () => {
+              if (isSmtp) return "bg-[#e91e63]"; // Pink for SMTP
+              if (!isHttp) return "bg-[#33daff]"; // Cyan for DNS
+              // HTTP methods
+              switch (request.method) {
+                case "GET":
+                  return "bg-[#20d077]";
+                case "POST":
+                  return "bg-[#ffae00]";
+                case "PUT":
+                  return "bg-[#ff9800]";
+                case "DELETE":
+                  return "bg-[#f44336]";
+                default:
+                  return "bg-[#9e9e9e]";
+              }
+            };
+
+            // Determine badge text
+            const getBadgeText = () => {
+              if (isHttp) return request.method;
+              if (isSmtp) return "SMTP";
+              return "DNS";
+            };
+
+            // Determine display text
+            const getDisplayText = () => {
+              if (isHttp) {
+                return `${request.path}${request.query ? `?${request.query}` : ""}${request.fragment ? `#${request.fragment}` : ""}`;
+              }
+              if (isSmtp) {
+                return request.command;
+              }
+              return request.domain;
+            };
 
             return (
               <div
@@ -266,21 +320,9 @@ export function Sidebar() {
                     </span>
                   )}
                   <span
-                    className={`shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${
-                      !isHttp
-                        ? "bg-[#33daff]"
-                        : request.method === "GET"
-                          ? "bg-[#20d077]"
-                          : request.method === "POST"
-                            ? "bg-[#ffae00]"
-                            : request.method === "PUT"
-                              ? "bg-[#ff9800]"
-                              : request.method === "DELETE"
-                                ? "bg-[#f44336]"
-                                : "bg-[#9e9e9e]"
-                    }`}
+                    className={`shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${getBadgeColor()}`}
                   >
-                    {isHttp ? request.method : "DNS"}
+                    {getBadgeText()}
                   </span>
                   <span
                     className={cn(
@@ -288,9 +330,7 @@ export function Sidebar() {
                       !isVisited && "font-medium",
                     )}
                   >
-                    {isHttp
-                      ? `${request.path}${request.query ? `?${request.query}` : ""}`
-                      : request.domain}
+                    {getDisplayText()}
                   </span>
                   <span
                     className="ml-auto shrink-0 px-1 py-px text-[8px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"

@@ -8,7 +8,7 @@ use tokio::net::UdpSocket;
 use tokio::sync::broadcast;
 use tracing::{error, info};
 use trust_dns_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
-use trust_dns_proto::rr::rdata::{CNAME, TXT};
+use trust_dns_proto::rr::rdata::{CNAME, MX, TXT};
 use trust_dns_proto::rr::{Name, RData, Record, RecordType};
 use trust_dns_proto::serialize::binary::{BinDecodable, BinEncodable};
 
@@ -353,6 +353,24 @@ async fn build_dns_response(
             let record = Record::from_rdata(name.clone(), 1, RData::TXT(txt_data));
             response.add_answer(record);
             response.set_response_code(ResponseCode::NoError);
+        }
+        RecordType::MX => {
+            // Return the server domain as the mail exchange
+            let mx_target = if CONFIG.server_domain.ends_with('.') {
+                CONFIG.server_domain.clone()
+            } else {
+                format!("{}.", CONFIG.server_domain)
+            };
+
+            if let Ok(exchange) = Name::from_str(&mx_target) {
+                // Priority 10, pointing to our server
+                let mx_data = MX::new(10, exchange);
+                let record = Record::from_rdata(name.clone(), 300, RData::MX(mx_data));
+                response.add_answer(record);
+                response.set_response_code(ResponseCode::NoError);
+            } else {
+                response.set_response_code(ResponseCode::ServFail);
+            }
         }
         _ => {
             response.set_response_code(ResponseCode::NXDomain);

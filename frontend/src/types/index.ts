@@ -35,7 +35,13 @@ export interface DnsRequest extends BaseRequest {
   reply?: string; // Response (optional, added for display)
 }
 
-export type Request = HttpRequest | DnsRequest;
+export interface SmtpRequest extends BaseRequest {
+  type: "smtp";
+  command: string; // SMTP command (DATA, MAIL, RCPT, etc.)
+  data: string | null; // Email body for DATA commands
+}
+
+export type Request = HttpRequest | DnsRequest | SmtpRequest;
 
 // Type guard functions
 export function isHttpRequest(request: Request): request is HttpRequest {
@@ -44,6 +50,10 @@ export function isHttpRequest(request: Request): request is HttpRequest {
 
 export function isDnsRequest(request: Request): request is DnsRequest {
   return request.type === "dns";
+}
+
+export function isSmtpRequest(request: Request): request is SmtpRequest {
+  return request.type === "smtp";
 }
 
 // DNS Records

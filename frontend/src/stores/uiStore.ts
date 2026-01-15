@@ -6,6 +6,7 @@ interface UiState {
   // Request filters
   httpFilter: boolean;
   dnsFilter: boolean;
+  smtpFilter: boolean;
   searchQuery: string;
 
   // Request selection
@@ -18,7 +19,7 @@ interface UiState {
   visitedRequests: Record<string, Record<string, boolean>>;
 
   // Actions
-  setFilters: (http: boolean, dns: boolean) => void;
+  setFilters: (http: boolean, dns: boolean, smtp: boolean) => void;
   setSearchQuery: (query: string) => void;
   selectRequest: (requestId: string | null) => void;
   setSharedRequest: (request: Request | null) => void;
@@ -33,12 +34,14 @@ export const useUiStore = create<UiState>()(
     (set, get) => ({
       httpFilter: true,
       dnsFilter: true,
+      smtpFilter: true,
       searchQuery: "",
       selectedRequestId: null,
       sharedRequest: null,
       visitedRequests: {},
 
-      setFilters: (http, dns) => set({ httpFilter: http, dnsFilter: dns }),
+      setFilters: (http, dns, smtp) =>
+        set({ httpFilter: http, dnsFilter: dns, smtpFilter: smtp }),
       setSearchQuery: (query) => set({ searchQuery: query }),
       selectRequest: (requestId) =>
         set({ selectedRequestId: requestId, sharedRequest: null }),
