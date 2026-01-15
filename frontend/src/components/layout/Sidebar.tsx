@@ -219,7 +219,9 @@ export function Sidebar() {
         <div className="flex items-center gap-3">
           <Checkbox
             isSelected={httpFilter}
-            onValueChange={(checked) => setFilters(checked, dnsFilter, smtpFilter)}
+            onValueChange={(checked) =>
+              setFilters(checked, dnsFilter, smtpFilter)
+            }
             size="sm"
             radius="full"
           >
@@ -227,7 +229,9 @@ export function Sidebar() {
           </Checkbox>
           <Checkbox
             isSelected={dnsFilter}
-            onValueChange={(checked) => setFilters(httpFilter, checked, smtpFilter)}
+            onValueChange={(checked) =>
+              setFilters(httpFilter, checked, smtpFilter)
+            }
             size="sm"
             radius="full"
           >
@@ -235,7 +239,9 @@ export function Sidebar() {
           </Checkbox>
           <Checkbox
             isSelected={smtpFilter}
-            onValueChange={(checked) => setFilters(httpFilter, dnsFilter, checked)}
+            onValueChange={(checked) =>
+              setFilters(httpFilter, dnsFilter, checked)
+            }
             size="sm"
             radius="full"
           >

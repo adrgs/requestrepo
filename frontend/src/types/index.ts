@@ -8,7 +8,7 @@ export interface Session {
 // Request types (discriminated union)
 export interface BaseRequest {
   _id: string;
-  type: "http" | "dns";
+  type: "http" | "dns" | "smtp";
   date: number;
   ip: string;
   port?: number;
