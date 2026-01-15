@@ -2,7 +2,7 @@ import { memo } from "react";
 import { Card, CardBody, Chip } from "@heroui/react";
 import { cn, formatRelativeTime, getMethodColor } from "@/lib/utils";
 import type { Request } from "@/types";
-import { isHttpRequest } from "@/types";
+import { isHttpRequest, isDnsRequest, isSmtpRequest } from "@/types";
 
 interface RequestCardProps {
   request: Request;
@@ -43,18 +43,24 @@ export const RequestCard = memo(function RequestCard({
                   | "danger"
                   | "secondary"
                   | "default")
-              : "secondary"
+              : isSmtpRequest(request)
+                ? "danger"
+                : "secondary"
           }
           size="sm"
           variant="flat"
           className="min-w-[60px] text-center"
         >
-          {isHttp ? request.method : "DNS"}
+          {isHttp ? request.method : isSmtpRequest(request) ? "SMTP" : "DNS"}
         </Chip>
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">
-            {isHttp ? `${request.path}${request.query ?? ""}` : request.domain}
+            {isHttp
+              ? `${request.path}${request.query ?? ""}`
+              : isDnsRequest(request)
+                ? request.domain
+                : request.command}
           </p>
           <div className="flex items-center gap-2 text-xs text-default-400">
             <span>{request.ip}</span>
