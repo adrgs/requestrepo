@@ -448,6 +448,27 @@ pub async fn update_files(
         Err(e) => return e.into_response(),
     };
 
+    // Calculate total size of all files (raw content is base64 encoded)
+    let total_size: usize = files
+        .files
+        .values()
+        .map(|response| response.raw.len())
+        .sum();
+
+    let max_size = CONFIG.max_subdomain_size_bytes;
+    if total_size > max_size {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(json!({
+                "error": format!("Total file size exceeds limit of {} MB", max_size / 1024 / 1024),
+                "code": "file_tree_too_large",
+                "current_size": total_size,
+                "max_size": max_size
+            })),
+        )
+            .into_response();
+    }
+
     let _ = state
         .cache
         .set(
