@@ -116,7 +116,10 @@ async fn handle_smtp_connection(
     let mut transaction_log = String::new();
 
     // Log the greeting we sent
-    transaction_log.push_str(&format!("S: 220 {} ESMTP RequestRepo\n", CONFIG.server_domain));
+    transaction_log.push_str(&format!(
+        "S: 220 {} ESMTP RequestRepo\n",
+        CONFIG.server_domain
+    ));
 
     loop {
         line.clear();
@@ -153,6 +156,7 @@ async fn handle_smtp_connection(
             if line_trimmed == "." {
                 data_mode = false;
                 transaction_log.push_str("C: .\n");
+                transaction_log.push_str("S: 250 OK: Message received\n");
 
                 // If we don't have a subdomain yet, try to extract from email headers (To, CC, BCC)
                 if subdomain.is_none() {
@@ -186,9 +190,6 @@ async fn handle_smtp_connection(
                 }
 
                 email_data.clear();
-
-                let response = "250 OK: Message received";
-                transaction_log.push_str(&format!("S: {response}\n"));
                 writer.write_all(b"250 OK: Message received\r\n").await?;
             } else {
                 // Check message size
@@ -222,7 +223,9 @@ async fn handle_smtp_connection(
                 "HELO" => {
                     let response = format!("250 {} Hello", CONFIG.server_domain);
                     transaction_log.push_str(&format!("S: {response}\n"));
-                    writer.write_all(format!("{response}\r\n").as_bytes()).await?;
+                    writer
+                        .write_all(format!("{response}\r\n").as_bytes())
+                        .await?;
                 }
                 "EHLO" => {
                     let response = format!(
@@ -291,7 +294,8 @@ async fn handle_smtp_connection(
                         transaction_log.push_str("S: 503 Need RCPT command first\n");
                         writer.write_all(b"503 Need RCPT command first\r\n").await?;
                     } else {
-                        transaction_log.push_str("S: 354 Start mail input; end with <CRLF>.<CRLF>\n");
+                        transaction_log
+                            .push_str("S: 354 Start mail input; end with <CRLF>.<CRLF>\n");
                         transaction_log.push_str("[EMAIL DATA]\n");
                         writer
                             .write_all(b"354 Start mail input; end with <CRLF>.<CRLF>\r\n")
@@ -316,13 +320,15 @@ async fn handle_smtp_connection(
                     break;
                 }
                 "VRFY" | "EXPN" => {
-                    transaction_log.push_str("S: 252 Cannot verify user, but will accept message\n");
+                    transaction_log
+                        .push_str("S: 252 Cannot verify user, but will accept message\n");
                     writer
                         .write_all(b"252 Cannot verify user, but will accept message\r\n")
                         .await?;
                 }
                 "HELP" => {
-                    transaction_log.push_str("S: 214 RequestRepo SMTP server - https://requestrepo.com\n");
+                    transaction_log
+                        .push_str("S: 214 RequestRepo SMTP server - https://requestrepo.com\n");
                     writer
                         .write_all(b"214 RequestRepo SMTP server - https://requestrepo.com\r\n")
                         .await?;
