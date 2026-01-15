@@ -46,6 +46,12 @@ pub struct SmtpRequestLog {
     pub date: i64,
     pub ip: Option<String>,
     pub country: Option<String>,
+    // Parsed email headers
+    pub subject: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub cc: Option<String>,
+    pub bcc: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

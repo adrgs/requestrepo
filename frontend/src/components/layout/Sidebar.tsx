@@ -298,17 +298,19 @@ export function Sidebar() {
                 return `${request.path}${request.query ?? ""}${request.fragment ? `#${request.fragment}` : ""}`;
               }
               if (isSmtp) {
-                // Try to extract subject from email data
-                if (request.data) {
-                  const subjectMatch = request.data.match(/^Subject:\s*(.+)$/im);
-                  if (subjectMatch) {
-                    return subjectMatch[1].trim();
+                // Use structured data from backend
+                const subject = request.subject;
+                const from = request.from;
+                if (subject) {
+                  if (from) {
+                    // Extract just the name/email without angle brackets
+                    const fromDisplay = from
+                      .replace(/<[^>]+>/g, "")
+                      .trim()
+                      .replace(/^"([^"]+)"$/, "$1");
+                    return `${subject} - ${fromDisplay}`;
                   }
-                  // Fallback: try to get recipient
-                  const toMatch = request.data.match(/^To:\s*(.+)$/im);
-                  if (toMatch) {
-                    return `To: ${toMatch[1].trim()}`;
-                  }
+                  return subject;
                 }
                 return "Email";
               }

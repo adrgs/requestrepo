@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use mail_parser::MessageParser;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -148,6 +149,21 @@ async fn handle_smtp_connection(
             if line_trimmed == "." {
                 data_mode = false;
 
+                // If we don't have a subdomain yet, try to extract from email headers (To, CC, BCC)
+                if subdomain.is_none() {
+                    let all_recipients = extract_all_recipients(&email_data);
+                    for recipient in all_recipients {
+                        if let Some(extracted) = extract_subdomain_from_email(&recipient) {
+                            info!(
+                                "SMTP connection from {} matched subdomain from email headers: {}",
+                                addr, extracted
+                            );
+                            subdomain = Some(extracted);
+                            break;
+                        }
+                    }
+                }
+
                 // Log the complete email if we have a valid subdomain
                 if let Some(ref sub) = subdomain {
                     log_smtp_request(
@@ -292,6 +308,121 @@ async fn handle_smtp_connection(
     Ok(())
 }
 
+/// Parsed email headers for structured response
+struct ParsedEmail {
+    subject: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    cc: Option<String>,
+    bcc: Option<String>,
+}
+
+/// Parse email data using mail-parser to extract headers
+fn parse_email_headers(email_data: &str) -> ParsedEmail {
+    let parser = MessageParser::default();
+
+    if let Some(message) = parser.parse(email_data.as_bytes()) {
+        // Extract Subject
+        let subject = message.subject().map(|s| s.to_string());
+
+        // Extract From (format as string)
+        let from = message.from().and_then(|addrs| {
+            addrs.first().map(|addr| {
+                if let Some(name) = addr.name() {
+                    if let Some(email) = addr.address() {
+                        format!("{name} <{email}>")
+                    } else {
+                        name.to_string()
+                    }
+                } else {
+                    addr.address().unwrap_or("").to_string()
+                }
+            })
+        });
+
+        // Extract To (format all recipients)
+        let to = message.to().map(|addrs| {
+            addrs
+                .iter()
+                .filter_map(|addr| addr.address())
+                .collect::<Vec<_>>()
+                .join(", ")
+        });
+
+        // Extract CC
+        let cc = message.cc().map(|addrs| {
+            addrs
+                .iter()
+                .filter_map(|addr| addr.address())
+                .collect::<Vec<_>>()
+                .join(", ")
+        });
+
+        // Extract BCC
+        let bcc = message.bcc().map(|addrs| {
+            addrs
+                .iter()
+                .filter_map(|addr| addr.address())
+                .collect::<Vec<_>>()
+                .join(", ")
+        });
+
+        ParsedEmail {
+            subject,
+            from,
+            to,
+            cc,
+            bcc,
+        }
+    } else {
+        // Fallback if parsing fails
+        ParsedEmail {
+            subject: None,
+            from: None,
+            to: None,
+            cc: None,
+            bcc: None,
+        }
+    }
+}
+
+/// Extract all email addresses from To, CC, and BCC headers
+fn extract_all_recipients(email_data: &str) -> Vec<String> {
+    let parser = MessageParser::default();
+    let mut recipients = Vec::new();
+
+    if let Some(message) = parser.parse(email_data.as_bytes()) {
+        // Get To addresses
+        if let Some(addrs) = message.to() {
+            for addr in addrs.iter() {
+                if let Some(email) = addr.address() {
+                    recipients.push(email.to_string());
+                }
+            }
+        }
+
+        // Get CC addresses
+        if let Some(addrs) = message.cc() {
+            for addr in addrs.iter() {
+                if let Some(email) = addr.address() {
+                    recipients.push(email.to_string());
+                }
+            }
+        }
+
+        // Get BCC addresses
+        if let Some(addrs) = message.bcc() {
+            for addr in addrs.iter() {
+                if let Some(email) = addr.address() {
+                    recipients.push(email.to_string());
+                }
+            }
+        }
+    }
+
+    recipients
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn log_smtp_request(
     subdomain: &str,
@@ -305,6 +436,15 @@ async fn log_smtp_request(
 ) -> Result<()> {
     let request_id = generate_request_id();
     let country = lookup_country(client_ip);
+
+    // Parse email headers if we have data
+    let parsed = data.map(parse_email_headers).unwrap_or(ParsedEmail {
+        subject: None,
+        from: None,
+        to: None,
+        cc: None,
+        bcc: None,
+    });
 
     // Build raw content for logging
     let raw_content = if let Some(email_data) = data {
@@ -328,6 +468,12 @@ async fn log_smtp_request(
         date: get_current_timestamp(),
         ip: Some(client_ip.to_string()),
         country,
+        // Include parsed email headers
+        subject: parsed.subject,
+        from: parsed.from,
+        to: parsed.to,
+        cc: parsed.cc,
+        bcc: parsed.bcc,
     };
 
     let request_json = serde_json::to_string(&request_log)?;

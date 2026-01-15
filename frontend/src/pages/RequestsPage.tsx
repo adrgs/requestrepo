@@ -530,11 +530,7 @@ export function RequestsPage() {
                 </td>
               </tr>
               <tr className="border-b border-default-100">
-                <td className="py-1 pr-4 text-default-500">Command</td>
-                <td className="py-1 font-mono">{selectedRequest.command}</td>
-              </tr>
-              <tr className="border-b border-default-100">
-                <td className="py-1 pr-4 text-default-500">Sender</td>
+                <td className="py-1 pr-4 text-default-500">Sender IP</td>
                 <td className="py-1 font-mono">{selectedRequest.ip}</td>
               </tr>
               {selectedRequest.country && (
@@ -564,10 +560,59 @@ export function RequestsPage() {
             </tbody>
           </table>
 
-          {/* Email Data */}
+          {/* Email Headers */}
+          {(selectedRequest.subject ||
+            selectedRequest.from ||
+            selectedRequest.to ||
+            selectedRequest.cc ||
+            selectedRequest.bcc) && (
+            <>
+              <h3 className="text-base font-semibold mb-2">Email Headers</h3>
+              <table className="w-full text-xs mb-4">
+                <tbody>
+                  {selectedRequest.subject && (
+                    <tr className="border-b border-default-100">
+                      <td className="py-1 pr-4 text-default-500 w-32">
+                        Subject
+                      </td>
+                      <td className="py-1 font-medium">
+                        {selectedRequest.subject}
+                      </td>
+                    </tr>
+                  )}
+                  {selectedRequest.from && (
+                    <tr className="border-b border-default-100">
+                      <td className="py-1 pr-4 text-default-500">From</td>
+                      <td className="py-1 font-mono">{selectedRequest.from}</td>
+                    </tr>
+                  )}
+                  {selectedRequest.to && (
+                    <tr className="border-b border-default-100">
+                      <td className="py-1 pr-4 text-default-500">To</td>
+                      <td className="py-1 font-mono">{selectedRequest.to}</td>
+                    </tr>
+                  )}
+                  {selectedRequest.cc && (
+                    <tr className="border-b border-default-100">
+                      <td className="py-1 pr-4 text-default-500">CC</td>
+                      <td className="py-1 font-mono">{selectedRequest.cc}</td>
+                    </tr>
+                  )}
+                  {selectedRequest.bcc && (
+                    <tr>
+                      <td className="py-1 pr-4 text-default-500">BCC</td>
+                      <td className="py-1 font-mono">{selectedRequest.bcc}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {/* Email Body */}
           {selectedRequest.data && (
             <>
-              <h3 className="text-base font-semibold mb-2">Email Data</h3>
+              <h3 className="text-base font-semibold mb-2">Email Body</h3>
               <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
                 {selectedRequest.data}
               </Code>

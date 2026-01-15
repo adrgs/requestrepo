@@ -39,6 +39,12 @@ export interface SmtpRequest extends BaseRequest {
   type: "smtp";
   command: string; // SMTP command (DATA, MAIL, RCPT, etc.)
   data: string | null; // Email body for DATA commands
+  // Parsed email headers (from backend using mail-parser)
+  subject: string | null;
+  from: string | null;
+  to: string | null;
+  cc: string | null;
+  bcc: string | null;
 }
 
 export type Request = HttpRequest | DnsRequest | SmtpRequest;

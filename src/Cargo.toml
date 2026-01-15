@@ -63,6 +63,9 @@ futures = "0.3"
 # LRU cache
 linked-hash-map = "0.5"
 
+# Email parsing
+mail-parser = "0.9"
+
 # Utilities
 rand = "0.8.5"
 chrono = { version = "0.4.35", features = ["serde"] }
