@@ -113,6 +113,10 @@ async fn handle_smtp_connection(
     let mut mail_from: Option<String> = None;
     let mut rcpt_to: Vec<String> = Vec::new();
     let mut subdomain: Option<String> = None;
+    let mut transaction_log = String::new();
+
+    // Log the greeting we sent
+    transaction_log.push_str(&format!("S: 220 {} ESMTP RequestRepo\n", CONFIG.server_domain));
 
     loop {
         line.clear();
@@ -148,6 +152,7 @@ async fn handle_smtp_connection(
         if data_mode {
             if line_trimmed == "." {
                 data_mode = false;
+                transaction_log.push_str("C: .\n");
 
                 // If we don't have a subdomain yet, try to extract from email headers (To, CC, BCC)
                 if subdomain.is_none() {
@@ -173,6 +178,7 @@ async fn handle_smtp_connection(
                         &client_ip,
                         mail_from.as_deref(),
                         &rcpt_to,
+                        &transaction_log,
                         &cache,
                         &tx,
                     )
@@ -181,12 +187,14 @@ async fn handle_smtp_connection(
 
                 email_data.clear();
 
+                let response = "250 OK: Message received";
+                transaction_log.push_str(&format!("S: {response}\n"));
                 writer.write_all(b"250 OK: Message received\r\n").await?;
             } else {
                 // Check message size
                 if email_data.len() + line.len() > MAX_MESSAGE_SIZE {
                     data_mode = false;
-                    email_data.clear();
+                    transaction_log.push_str("S: 552 Message size exceeds maximum\n");
                     writer
                         .write_all(b"552 Message size exceeds maximum\r\n")
                         .await?;
@@ -203,23 +211,30 @@ async fn handle_smtp_connection(
                 continue;
             }
 
+            // Log client command
+            transaction_log.push_str(&format!("C: {line_trimmed}\n"));
+
             let parts: Vec<&str> = line_trimmed.splitn(2, ' ').collect();
             let command = parts[0].to_uppercase();
             let args = parts.get(1).map(|s| s.to_string());
 
-            // We only log DATA commands (actual emails), not protocol commands like QUIT, EHLO, etc.
-
             match command.as_str() {
                 "HELO" => {
-                    let response = format!("250 {} Hello\r\n", CONFIG.server_domain);
-                    writer.write_all(response.as_bytes()).await?;
+                    let response = format!("250 {} Hello", CONFIG.server_domain);
+                    transaction_log.push_str(&format!("S: {response}\n"));
+                    writer.write_all(format!("{response}\r\n").as_bytes()).await?;
                 }
                 "EHLO" => {
-                    let responses = format!(
+                    let response = format!(
+                        "250-{} Hello\n250-SIZE {}\n250-8BITMIME\n250 HELP",
+                        CONFIG.server_domain, MAX_MESSAGE_SIZE
+                    );
+                    transaction_log.push_str(&format!("S: {response}\n"));
+                    let wire_response = format!(
                         "250-{} Hello\r\n250-SIZE {}\r\n250-8BITMIME\r\n250 HELP\r\n",
                         CONFIG.server_domain, MAX_MESSAGE_SIZE
                     );
-                    writer.write_all(responses.as_bytes()).await?;
+                    writer.write_all(wire_response.as_bytes()).await?;
                 }
                 "MAIL" => {
                     // Parse MAIL FROM:<address>
@@ -227,11 +242,14 @@ async fn handle_smtp_connection(
                         let arg_upper = arg.to_uppercase();
                         if arg_upper.starts_with("FROM:") {
                             mail_from = Some(arg[5..].trim().to_string());
+                            transaction_log.push_str("S: 250 OK\n");
                             writer.write_all(b"250 OK\r\n").await?;
                         } else {
+                            transaction_log.push_str("S: 501 Syntax error\n");
                             writer.write_all(b"501 Syntax error\r\n").await?;
                         }
                     } else {
+                        transaction_log.push_str("S: 501 Syntax error\n");
                         writer.write_all(b"501 Syntax error\r\n").await?;
                     }
                 }
@@ -254,20 +272,27 @@ async fn handle_smtp_connection(
                             }
 
                             rcpt_to.push(recipient);
+                            transaction_log.push_str("S: 250 OK\n");
                             writer.write_all(b"250 OK\r\n").await?;
                         } else {
+                            transaction_log.push_str("S: 501 Syntax error\n");
                             writer.write_all(b"501 Syntax error\r\n").await?;
                         }
                     } else {
+                        transaction_log.push_str("S: 501 Syntax error\n");
                         writer.write_all(b"501 Syntax error\r\n").await?;
                     }
                 }
                 "DATA" => {
                     if mail_from.is_none() {
+                        transaction_log.push_str("S: 503 Need MAIL command first\n");
                         writer.write_all(b"503 Need MAIL command first\r\n").await?;
                     } else if rcpt_to.is_empty() {
+                        transaction_log.push_str("S: 503 Need RCPT command first\n");
                         writer.write_all(b"503 Need RCPT command first\r\n").await?;
                     } else {
+                        transaction_log.push_str("S: 354 Start mail input; end with <CRLF>.<CRLF>\n");
+                        transaction_log.push_str("[EMAIL DATA]\n");
                         writer
                             .write_all(b"354 Start mail input; end with <CRLF>.<CRLF>\r\n")
                             .await?;
@@ -278,26 +303,32 @@ async fn handle_smtp_connection(
                     mail_from = None;
                     rcpt_to.clear();
                     email_data.clear();
+                    transaction_log.push_str("S: 250 OK\n");
                     writer.write_all(b"250 OK\r\n").await?;
                 }
                 "NOOP" => {
+                    transaction_log.push_str("S: 250 OK\n");
                     writer.write_all(b"250 OK\r\n").await?;
                 }
                 "QUIT" => {
+                    transaction_log.push_str("S: 221 Bye\n");
                     writer.write_all(b"221 Bye\r\n").await?;
                     break;
                 }
                 "VRFY" | "EXPN" => {
+                    transaction_log.push_str("S: 252 Cannot verify user, but will accept message\n");
                     writer
                         .write_all(b"252 Cannot verify user, but will accept message\r\n")
                         .await?;
                 }
                 "HELP" => {
+                    transaction_log.push_str("S: 214 RequestRepo SMTP server - https://requestrepo.com\n");
                     writer
                         .write_all(b"214 RequestRepo SMTP server - https://requestrepo.com\r\n")
                         .await?;
                 }
                 _ => {
+                    transaction_log.push_str("S: 500 Command not recognized\n");
                     writer.write_all(b"500 Command not recognized\r\n").await?;
                 }
             }
@@ -429,8 +460,9 @@ async fn log_smtp_request(
     command: &str,
     data: Option<&str>,
     client_ip: &str,
-    mail_from: Option<&str>,
-    rcpt_to: &[String],
+    _mail_from: Option<&str>,
+    _rcpt_to: &[String],
+    transaction_log: &str,
     cache: &Cache,
     tx: &broadcast::Sender<CacheMessage>,
 ) -> Result<()> {
@@ -446,17 +478,8 @@ async fn log_smtp_request(
         bcc: None,
     });
 
-    // Build raw content for logging
-    let raw_content = if let Some(email_data) = data {
-        format!(
-            "From: {}\nTo: {}\n\n{}",
-            mail_from.unwrap_or("<unknown>"),
-            rcpt_to.join(", "),
-            email_data
-        )
-    } else {
-        format!("Command: {command}")
-    };
+    // Use the full transaction log as raw content
+    let raw_content = transaction_log.to_string();
 
     let request_log = SmtpRequestLog {
         _id: request_id.clone(),
