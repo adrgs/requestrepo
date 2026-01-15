@@ -191,22 +191,7 @@ async fn handle_smtp_connection(
             let command = parts[0].to_uppercase();
             let args = parts.get(1).map(|s| s.to_string());
 
-            // Log non-DATA commands only if we have a valid subdomain
-            if command != "DATA" {
-                if let Some(ref sub) = subdomain {
-                    log_smtp_request(
-                        sub,
-                        &format!("{} {}", command, args.as_deref().unwrap_or("")),
-                        None,
-                        &client_ip,
-                        mail_from.as_deref(),
-                        &rcpt_to,
-                        &cache,
-                        &tx,
-                    )
-                    .await?;
-                }
-            }
+            // We only log DATA commands (actual emails), not protocol commands like QUIT, EHLO, etc.
 
             match command.as_str() {
                 "HELO" => {

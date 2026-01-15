@@ -298,7 +298,19 @@ export function Sidebar() {
                 return `${request.path}${request.query ?? ""}${request.fragment ? `#${request.fragment}` : ""}`;
               }
               if (isSmtp) {
-                return request.command;
+                // Try to extract subject from email data
+                if (request.data) {
+                  const subjectMatch = request.data.match(/^Subject:\s*(.+)$/im);
+                  if (subjectMatch) {
+                    return subjectMatch[1].trim();
+                  }
+                  // Fallback: try to get recipient
+                  const toMatch = request.data.match(/^To:\s*(.+)$/im);
+                  if (toMatch) {
+                    return `To: ${toMatch[1].trim()}`;
+                  }
+                }
+                return "Email";
               }
               return request.domain;
             };
