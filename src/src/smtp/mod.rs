@@ -13,7 +13,7 @@ use crate::cache::Cache;
 use crate::ip2country::lookup_country;
 use crate::models::{CacheMessage, SmtpRequestLog};
 use crate::utils::config::CONFIG;
-use crate::utils::{generate_request_id, get_current_timestamp};
+use crate::utils::{generate_request_id, get_current_timestamp, get_subdomain_from_hostname};
 
 /// Maximum size for email data (10 MB)
 const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
@@ -74,18 +74,30 @@ impl Server {
     }
 }
 
+/// Extract subdomain from an email address like "user@subdomain.domain.com"
+fn extract_subdomain_from_email(email: &str) -> Option<String> {
+    // Remove angle brackets if present: <user@domain> -> user@domain
+    let email = email.trim_matches(|c| c == '<' || c == '>');
+
+    // Split by @ to get domain part
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let domain = parts[1];
+    get_subdomain_from_hostname(domain)
+}
+
 async fn handle_smtp_connection(
     mut socket: TcpStream,
     addr: SocketAddr,
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
 ) -> Result<()> {
-    // Extract subdomain from connection - in practice this would come from
-    // the RCPT TO domain, but for logging purposes we generate one
-    let subdomain = crate::utils::get_random_subdomain();
     let client_ip = addr.ip().to_string();
 
-    info!("SMTP connection from {} (subdomain: {})", addr, subdomain);
+    info!("SMTP connection from {}", addr);
 
     // Send greeting
     let greeting = format!("220 {} ESMTP RequestRepo\r\n", CONFIG.server_domain);
@@ -99,6 +111,7 @@ async fn handle_smtp_connection(
     let mut email_data = String::new();
     let mut mail_from: Option<String> = None;
     let mut rcpt_to: Vec<String> = Vec::new();
+    let mut subdomain: Option<String> = None;
 
     loop {
         line.clear();
@@ -135,18 +148,20 @@ async fn handle_smtp_connection(
             if line_trimmed == "." {
                 data_mode = false;
 
-                // Log the complete email
-                log_smtp_request(
-                    &subdomain,
-                    "DATA",
-                    Some(&email_data),
-                    &client_ip,
-                    mail_from.as_deref(),
-                    &rcpt_to,
-                    &cache,
-                    &tx,
-                )
-                .await?;
+                // Log the complete email if we have a valid subdomain
+                if let Some(ref sub) = subdomain {
+                    log_smtp_request(
+                        sub,
+                        "DATA",
+                        Some(&email_data),
+                        &client_ip,
+                        mail_from.as_deref(),
+                        &rcpt_to,
+                        &cache,
+                        &tx,
+                    )
+                    .await?;
+                }
 
                 email_data.clear();
 
@@ -176,19 +191,21 @@ async fn handle_smtp_connection(
             let command = parts[0].to_uppercase();
             let args = parts.get(1).map(|s| s.to_string());
 
-            // Log non-DATA commands
+            // Log non-DATA commands only if we have a valid subdomain
             if command != "DATA" {
-                log_smtp_request(
-                    &subdomain,
-                    &format!("{} {}", command, args.as_deref().unwrap_or("")),
-                    None,
-                    &client_ip,
-                    mail_from.as_deref(),
-                    &rcpt_to,
-                    &cache,
-                    &tx,
-                )
-                .await?;
+                if let Some(ref sub) = subdomain {
+                    log_smtp_request(
+                        sub,
+                        &format!("{} {}", command, args.as_deref().unwrap_or("")),
+                        None,
+                        &client_ip,
+                        mail_from.as_deref(),
+                        &rcpt_to,
+                        &cache,
+                        &tx,
+                    )
+                    .await?;
+                }
             }
 
             match command.as_str() {
@@ -222,7 +239,20 @@ async fn handle_smtp_connection(
                     if let Some(ref arg) = args {
                         let arg_upper = arg.to_uppercase();
                         if arg_upper.starts_with("TO:") {
-                            rcpt_to.push(arg[3..].trim().to_string());
+                            let recipient = arg[3..].trim().to_string();
+
+                            // Extract subdomain from the first valid recipient
+                            if subdomain.is_none() {
+                                if let Some(extracted) = extract_subdomain_from_email(&recipient) {
+                                    info!(
+                                        "SMTP connection from {} matched subdomain: {}",
+                                        addr, extracted
+                                    );
+                                    subdomain = Some(extracted);
+                                }
+                            }
+
+                            rcpt_to.push(recipient);
                             writer.write_all(b"250 OK\r\n").await?;
                         } else {
                             writer.write_all(b"501 Syntax error\r\n").await?;
