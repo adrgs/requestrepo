@@ -1,6 +1,6 @@
 # requestrepo.com
 
-<img src="https://rasp.go.ro/reqlogo.svg" width="420">
+<img src="https://i.imgur.com/RIl2c1C.png" width="420">
 
 [![CI/CD](https://github.com/adrgs/requestrepo/actions/workflows/quality-checks.yml/badge.svg)](https://github.com/adrgs/requestrepo/actions/workflows/quality-checks.yml)
 
