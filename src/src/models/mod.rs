@@ -1,8 +1,5 @@
-
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRequestLog {
@@ -12,9 +9,14 @@ pub struct HttpRequestLog {
     pub uid: String,
     pub method: String,
     pub path: String,
+    pub query: Option<String>,
+    pub fragment: Option<String>,
+    pub url: String,
+    pub protocol: String,
     pub headers: HashMap<String, String>,
     pub date: i64,
     pub ip: Option<String>,
+    pub port: Option<u16>,
     pub country: Option<String>,
 }
 
@@ -28,7 +30,9 @@ pub struct DnsRequestLog {
     pub domain: String,
     pub date: i64,
     pub ip: Option<String>,
+    pub port: Option<u16>,
     pub country: Option<String>,
+    pub reply: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +46,12 @@ pub struct SmtpRequestLog {
     pub date: i64,
     pub ip: Option<String>,
     pub country: Option<String>,
+    // Parsed email headers
+    pub subject: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub cc: Option<String>,
+    pub bcc: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +101,14 @@ pub struct FileTree {
 pub struct Claims {
     pub iat: i64,
     pub exp: i64,
+    pub subdomain: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ShareClaims {
+    pub iat: i64,
+    pub exp: i64,
+    pub request_id: String,
     pub subdomain: String,
 }
 

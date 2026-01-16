@@ -1,6 +1,0 @@
-# Ignore test files
-**/__tests__/**
-**/__mocks__/**
-jest.config.js
-.eslintrc.js
-setupTests.js

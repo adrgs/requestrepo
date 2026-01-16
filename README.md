@@ -4,128 +4,174 @@
 
 [![CI/CD](https://github.com/adrgs/requestrepo/actions/workflows/quality-checks.yml/badge.svg)](https://github.com/adrgs/requestrepo/actions/workflows/quality-checks.yml)
 
-A tool for analyzing HTTP and DNS requests and creating custom DNS records for your subdomain.
+A tool for analyzing HTTP, DNS, and SMTP requests with custom DNS records and response files.
 
-## Getting Started
+## Features
 
-Quick-start using Git and Docker Compose:
+- **Multi-protocol logging**: Capture HTTP, DNS, and SMTP requests in real-time
+- **Custom DNS records**: Create A, AAAA, CNAME, and TXT records for your subdomain
+- **Custom response files**: Define custom HTTP responses with headers and body
+- **Real-time updates**: WebSocket-based live request streaming
+- **Auto-TLS**: Automatic HTTPS certificates via Let's Encrypt (DNS-01 challenge)
+- **IP Geolocation**: Country detection for incoming requests (via DB-IP)
+- **Request sharing**: Share individual requests via secure tokens
+- **Admin authentication**: Optional password protection for session creation
+- **No external dependencies**: In-memory cache with LRU eviction (no Redis required)
+
+## Quick Start
+
+Run RequestRepo with Docker:
+
+```bash
+docker run -d \
+  --name requestrepo \
+  -p 80:80 -p 443:443 -p 53:53/udp -p 53:53/tcp -p 25:25 \
+  -e JWT_SECRET=your-secret-key-min-32-chars \
+  -e DOMAIN=yourdomain.com \
+  -e SERVER_IP=your.server.ip \
+  -e TLS_ENABLED=true \
+  -e ACME_EMAIL=admin@yourdomain.com \
+  -v requestrepo-certs:/app/certs \
+  ghcr.io/adrgs/requestrepo:latest
+```
+
+This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25).
+
+## Using Docker Compose
+
+For more control, use Docker Compose:
 
 ```sh
 git clone https://github.com/adrgs/requestrepo.git
 cd requestrepo
-cp .env.example .env # modify .env as needed
+cp .env.example .env  # Edit .env with your settings
 docker compose up --build
 ```
 
-> **Note:** Remember to edit `.env` before starting the services.
-
-This will set up a production-ready environment with the following services:
-
-- HTTP/S server on ports 80 and 443
+This starts all services:
+- HTTP server on port 80
+- HTTPS server on port 443 (with auto-TLS)
 - DNS server on port 53
+- SMTP server on port 25
 
-For DNS logging to work, the public IP of the DNS service must be configured as the authoritative nameserver for the domain. Create an `A` record pointing to your server, then add an `NS` record pointing to that `A` record.
+## DNS Configuration
 
-Both configurations (root domain and subdomain) are explained below.
+For DNS logging to work, configure your domain's nameserver to point to your server.
 
 ### Root Domain Setup
 
-This configuration dedicates the entire domain to requestrepo (as used by https://requestrepo.com). Generated subdomains will be under `*.example.com`.
+Dedicate the entire domain to requestrepo (e.g., `requestrepo.com`):
 
 | Record Type | Name  | Value             |
 | ----------- | ----- | ----------------: |
 | NS          | `@`   | `ns1.example.com` |
-| A           | `ns1` | `<PUBLIC_IP>`     |
-
-An HTTPS certificate will be automatically generated if the `.env` file is configured correctly.
+| A           | `ns1` | `<SERVER_IP>`     |
 
 ### Subdomain Setup
 
-If you have other applications running on your domain and want to serve requestrepo on a subdomain (e.g., `rr.example.com`), use the following configuration:
+Run requestrepo on a subdomain (e.g., `rr.example.com`):
 
 | Record Type | Name  | Value             |
 | ----------- | ----- | ----------------: |
 | NS          | `rr`  | `ns1.example.com` |
-| A           | `ns1` | `<PUBLIC_IP>`     |
+| A           | `ns1` | `<SERVER_IP>`     |
 
-You can use a reverse proxy such as [Nginx](https://nginx.org/) to route requests based on hostname. Update the port mapping in [docker-compose.yml](docker-compose.yml) to use an internal port:
+For subdomain setups behind a reverse proxy, ensure:
+1. The `Host` header is preserved
+2. WebSocket support is enabled for `/api/v2/ws`
 
-```yml
-    ports:
-      - 127.0.0.1:8000:80
+## IP Geolocation
+
+To enable country detection, download the free [DB-IP](https://db-ip.com/db/download/ip-to-country-lite) database:
+
+```sh
+mkdir -p ip2country/vendor
+curl -o ip2country/vendor/dbip-country-lite.csv.gz \
+  https://download.db-ip.com/free/dbip-country-lite-2024-01.csv.gz
 ```
-
-Then configure your reverse proxy to forward requests to the chosen port. Ensure the following requirements are met:
-
-1. The `Host` header must be preserved for subdomain extraction.
-2. WebSocket support must be enabled for `/api/ws` and `/api/ws2` via the `Upgrade` and `Connection` headers.
-
-Example Nginx configuration:
-
-```conf
-server {
-        listen 80;
-        listen [::]:80;
-        server_name rr.example.com *.rr.example.com;
-
-        location / {
-                proxy_pass http://127.0.0.1:8000;
-                proxy_set_header Host $host;
-        }
-
-        location ~ ^/api/ws2?$ {
-                proxy_pass http://127.0.0.1:8000;
-                proxy_http_version 1.1;
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection "Upgrade";
-                proxy_set_header Host $host;
-        }
-}
-```
-
-For HTTPS, generate a certificate at the reverse proxy level rather than through requestrepo. Use [Certbot](https://certbot.eff.org/) to obtain a free wildcard certificate:
-
-```bash
-certbot certonly --manual --preferred-challenges dns \
-  -d rr.example.com \
-  -d "*.rr.example.com"
-```
-
-Then configure your reverse proxy to use the certificate:
-
-```conf
-listen 443 ssl;
-ssl_certificate /etc/letsencrypt/live/rr.example.com/fullchain.pem;
-ssl_certificate_key /etc/letsencrypt/live/rr.example.com/privkey.pem;
-```
-
-### Enabling IP-to-Country Feature
-
-To enable IP geolocation, download the free IP to Country Lite database from [DB-IP](https://db-ip.com/db/download/ip-to-country-lite).
-
-Place the CSV file at `ip2country/vendor/dbip-country-lite.csv.gz`.
 
 ## Development
 
-For development, use the Makefile to manage services.
+### Prerequisites
+
+- [Rust](https://rustup.rs/) 1.75+
+- [Bun](https://bun.sh/) 1.0+
+- Docker (optional, for deployment)
+
+### Installation
+
+```sh
+make install
+```
 
 ### Starting Services
 
 ```sh
-# Start the backend service
+# Start backend (Rust)
 make start-backend
 
-# Start the frontend service
+# Start frontend (React/Vite)
 make start-frontend
 ```
 
-### Starting the DNS Server
+### Available Commands
 
-The DNS server must be started manually:
+| Command | Description |
+|---------|-------------|
+| `make install` | Install all dependencies and git hooks |
+| `make start-backend` | Start Rust backend server |
+| `make start-frontend` | Start React development server |
+| `make build` | Build Rust backend (release mode) |
+| `make test` | Run all tests |
+| `make lint` | Run linters (clippy + eslint) |
+| `make format` | Format code (rustfmt + prettier) |
+| `make docker-build` | Build Docker image |
+| `make docker-up` | Start Docker containers |
+| `make docker-down` | Stop Docker containers |
 
-```sh
-cd dns; python ns.py
+## Architecture
+
 ```
+requestrepo/
+├── src/                 # Rust backend
+│   ├── cache/          # In-memory LRU cache
+│   ├── certs/          # TLS/ACME certificate management
+│   ├── dns/            # DNS server
+│   ├── http/           # HTTP/HTTPS server + REST API
+│   ├── smtp/           # SMTP server
+│   └── utils/          # JWT, config, helpers
+├── frontend/           # React frontend
+│   ├── src/
+│   │   ├── components/ # UI components
+│   │   ├── pages/      # Page components
+│   │   ├── stores/     # Zustand state stores
+│   │   └── hooks/      # Custom React hooks
+│   └── ...
+└── ip2country/         # IP geolocation database
+```
+
+## Environment Variables
+
+See [.env.example](.env.example) for all available options.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `JWT_SECRET` | Yes | - | Secret key for JWT signing (min 32 chars) |
+| `DOMAIN` | Yes | - | Base domain (e.g., `requestrepo.com`) |
+| `SERVER_IP` | Yes | - | Public IP for DNS responses |
+| `ADMIN_TOKEN` | No | - | Password for session creation |
+| `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
+| `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |
+| `HTTP_PORT` | No | `80` | HTTP server port |
+| `HTTPS_PORT` | No | `443` | HTTPS server port |
+| `DNS_PORT` | No | `53` | DNS server port |
+| `SMTP_PORT` | No | `25` | SMTP server port |
+| `SENTRY_DSN_BACKEND` | No | - | Sentry DSN for backend error tracking |
+| `SENTRY_DSN_FRONTEND` | No | - | Sentry DSN for frontend error tracking |
+| `CACHE_MAX_MEMORY_PCT` | No | `0.7` | Max cache memory as % of container limit |
+| `MAX_SUBDOMAIN_SIZE_MB` | No | `10` | Max storage per subdomain |
+| `SESSION_RATE_LIMIT` | No | `10` | Max sessions per IP per window |
+| `SESSION_RATE_WINDOW_SECS` | No | `60` | Rate limit window in seconds |
 
 ## Interface
 
@@ -135,73 +181,14 @@ cd dns; python ns.py
 
 Thank you to the following researchers for responsibly disclosing security issues:
 
-- [debsec](https://x.com/deb_security) — LFI via improper path handling
-- [JaGoTu](https://infosec.exchange/@jagotu) — DoS via unrestricted file upload
-- [m0z](https://x.com/LooseSecurity) — LFI via session subdomain
-- [Jorian](https://x.com/J0R1AN) — Session hijacking via Service-Worker-Allowed header
+- [debsec](https://x.com/deb_security) - LFI via improper path handling
+- [JaGoTu](https://infosec.exchange/@jagotu) - DoS via unrestricted file upload
+- [m0z](https://x.com/LooseSecurity) - LFI via session subdomain
+- [Jorian](https://x.com/J0R1AN) - Session hijacking via Service-Worker-Allowed header
 
 ## Contributing
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
-
-## Development Setup
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- Poetry
-- Docker (for Redis)
-
-### Installation
-
-To set up the development environment:
-
-```bash
-make install
-```
-
-This will:
-
-1. Install backend dependencies using Poetry
-2. Install frontend dependencies using npm
-3. Set up Git hooks for code quality checks
-
-### Git Hooks
-
-The following hooks are installed automatically:
-
-- **pre-commit**: Runs formatting and linting checks before each commit
-- **pre-push**: Runs formatting, linting, and tests before pushing
-
-### Available Commands
-
-| Command | Description |
-| ------- | ----------- |
-| `make install` | Install dependencies and Git hooks |
-| `make install-deps` | Install dependencies only |
-| `make install-hooks` | Install Git hooks only |
-| `make start-backend` | Start the backend server |
-| `make start-frontend` | Start the frontend application |
-| `make start-redis` | Start the Redis container |
-| `make stop-redis` | Stop the Redis container |
-| `make test` | Run all tests |
-| `make lint` | Run all linters |
-| `make format` | Format all code |
-
-### GitHub Actions
-
-This repository uses GitHub Actions for continuous integration:
-
-1. **Quality Checks** — Runs on push to `main` and on pull requests:
-   - Code formatting checks
-   - Code linting
-   - Tests
-
-2. **Pull Request Checks** — Runs on pull requests to `main`:
-   - Combined job for formatting, linting, and testing
-
-These workflows ensure all merged code meets quality standards.
 
 ## License
 

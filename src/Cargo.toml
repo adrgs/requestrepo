@@ -11,17 +11,37 @@ tokio = { version = "1.36.0", features = ["full"] }
 
 # Web framework
 axum = { version = "0.7.4", features = ["ws", "macros"] }
-tower = "0.4.13"
+axum-extra = { version = "0.9", features = ["cookie"] }
+tower = { version = "0.4.13", features = ["util"] }
 tower-http = { version = "0.5.1", features = ["cors", "trace"] }
+tower-service = "0.3"
 hyper = { version = "1.1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "service"] }
 http = "1.0.0"
 
-# DNS server
-trust-dns-server = "0.23.2"
+# DNS protocol parsing
 trust-dns-proto = "0.23.2"
+trust-dns-resolver = "0.23.2"
 
 # SMTP server
 async-smtp = "0.9.0"
+
+# TLS
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws-lc-rs"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2.2"
+
+# ACME (Let's Encrypt)
+instant-acme = "0.7"
+rcgen = "0.13"
+
+# Certificate parsing
+x509-parser = "0.16"
+webpki-roots = "0.26"
+pem = "3.0"
+
+# Hot-reload
+arc-swap = "1.7"
 
 # Serialization
 serde = { version = "1.0.197", features = ["derive"] }
@@ -36,6 +56,18 @@ flate2 = "1.0.28"
 # Logging
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+# Async utilities
+futures = "0.3"
+
+# LRU cache
+linked-hash-map = "0.5"
+
+# Email parsing
+mail-parser = "0.9"
+
+# Error tracking
+sentry = "0.46"
 
 # Utilities
 rand = "0.8.5"
