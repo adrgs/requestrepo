@@ -150,7 +150,10 @@ export function useWebSocket() {
         // Calculate delay with exponential backoff
         const baseDelay = Math.min(
           INITIAL_RECONNECT_DELAY *
-            Math.pow(RECONNECT_BACKOFF_MULTIPLIER, reconnectAttemptsRef.current),
+            Math.pow(
+              RECONNECT_BACKOFF_MULTIPLIER,
+              reconnectAttemptsRef.current,
+            ),
           MAX_RECONNECT_DELAY,
         );
         const delay = addJitter(baseDelay);

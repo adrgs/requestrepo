@@ -272,7 +272,12 @@ const BLOCKED_HEADERS_ON_MAIN_DOMAIN: &[&str] = &["service-worker-allowed"];
 
 /// Serve a file from the subdomain's file tree
 /// `on_main_domain`: true when using path-based routing (/r/subdomain/), false for subdomain routing
-async fn serve_file(state: AppState, subdomain: String, path: &str, on_main_domain: bool) -> Response {
+async fn serve_file(
+    state: AppState,
+    subdomain: String,
+    path: &str,
+    on_main_domain: bool,
+) -> Response {
     let files_json = match state.cache.get(&format!("files:{subdomain}")).await {
         Ok(Some(files)) => files,
         _ => "{}".to_string(),
