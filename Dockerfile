@@ -39,7 +39,23 @@ COPY .env .env
 # Build frontend (reads .env from current dir via vite envDir config)
 RUN bun run build
 
-# Stage 3: Final runtime image
+# Stage 3: Download IP geolocation database
+FROM alpine:3.19 AS ip2country-downloader
+
+RUN apk add --no-cache curl
+
+WORKDIR /data
+
+# Download DB-IP country database (free, updated monthly)
+# Using current year-month to get the latest version
+# Falls back gracefully if download fails
+RUN mkdir -p vendor && \
+    YEAR_MONTH=$(date +%Y-%m) && \
+    curl -fsSL "https://download.db-ip.com/free/dbip-country-lite-${YEAR_MONTH}.csv.gz" \
+      -o vendor/dbip-country-lite.csv.gz || \
+    echo "Warning: Could not download DB-IP database, IP geolocation will be disabled"
+
+# Stage 4: Final runtime image
 FROM alpine:3.19
 
 RUN apk add --no-cache ca-certificates tzdata
@@ -59,8 +75,8 @@ COPY --from=rust-builder /app/target/release/requestrepo /app/requestrepo
 # Copy frontend build (Vite outputs to dist/)
 COPY --from=frontend-builder /app/dist /app/public
 
-# Copy IP2Country database if it exists
-COPY --chown=requestrepo:requestrepo ip2country/ /app/ip2country/
+# Copy IP2Country database (downloaded in previous stage)
+COPY --from=ip2country-downloader --chown=requestrepo:requestrepo /data/ /app/ip2country/
 
 # Set ownership
 RUN chown -R requestrepo:requestrepo /app

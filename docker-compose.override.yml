@@ -1,0 +1,21 @@
+# Docker Compose Override for Development
+# This file is automatically merged with docker-compose.yml
+#
+# Builds the image locally instead of pulling from ghcr.io
+#
+# Usage:
+#   docker compose up -d --build
+#
+# To use production image instead (skip this override):
+#   docker compose -f docker-compose.yml up -d
+
+services:
+  requestrepo:
+    # Override: build locally instead of pulling image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: requestrepo:local
+    # Enable debug logging for development
+    environment:
+      - RUST_LOG=${RUST_LOG:-debug}

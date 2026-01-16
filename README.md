@@ -39,13 +39,26 @@ This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25).
 
 ## Using Docker Compose
 
-For more control, use Docker Compose:
+### Production (Pull from Registry)
+
+```sh
+git clone --depth 1 https://github.com/adrgs/requestrepo.git
+cd requestrepo
+cp .env.example .env  # Edit .env with your settings
+
+# Use production image from ghcr.io
+docker compose -f docker-compose.yml up -d
+```
+
+### Development (Build Locally)
 
 ```sh
 git clone https://github.com/adrgs/requestrepo.git
 cd requestrepo
-cp .env.example .env  # Edit .env with your settings
-docker compose up --build
+cp .env.example .env
+
+# Build and run locally (uses docker-compose.override.yml automatically)
+docker compose up -d --build
 ```
 
 This starts all services:
@@ -82,12 +95,12 @@ For subdomain setups behind a reverse proxy, ensure:
 
 ## IP Geolocation
 
-To enable country detection, download the free [DB-IP](https://db-ip.com/db/download/ip-to-country-lite) database:
+The Docker image includes the [DB-IP](https://db-ip.com/db/download/ip-to-country-lite) country database by default. For local development without Docker, download manually:
 
 ```sh
 mkdir -p ip2country/vendor
 curl -o ip2country/vendor/dbip-country-lite.csv.gz \
-  https://download.db-ip.com/free/dbip-country-lite-2024-01.csv.gz
+  "https://download.db-ip.com/free/dbip-country-lite-$(date +%Y-%m).csv.gz"
 ```
 
 ## Development
@@ -170,8 +183,11 @@ See [.env.example](.env.example) for all available options.
 | `SENTRY_DSN_FRONTEND` | No | - | Sentry DSN for frontend error tracking |
 | `CACHE_MAX_MEMORY_PCT` | No | `0.7` | Max cache memory as % of container limit |
 | `MAX_SUBDOMAIN_SIZE_MB` | No | `10` | Max storage per subdomain |
+| `MAX_REQUEST_BODY_MB` | No | `10` | Max HTTP request body size |
 | `SESSION_RATE_LIMIT` | No | `10` | Max sessions per IP per window |
 | `SESSION_RATE_WINDOW_SECS` | No | `60` | Rate limit window in seconds |
+| `ALLOW_ALL_HEADERS` | No | `false` | Allow dangerous headers (e.g., Service-Worker-Allowed) |
+| `RUST_LOG` | No | `info` | Log level (trace, debug, info, warn, error) |
 
 ## Interface
 
