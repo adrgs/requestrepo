@@ -18,7 +18,7 @@ use crate::http::AppState;
 use crate::ip2country::lookup_country;
 use crate::models::{Header, HttpRequestLog, Response as ResponseModel};
 use crate::utils::{
-    generate_request_id, get_current_timestamp, get_file_path_from_url,
+    config::CONFIG, generate_request_id, get_current_timestamp, get_file_path_from_url,
     get_subdomain_from_hostname, get_subdomain_from_path,
 };
 use serde_json::json;
@@ -62,7 +62,10 @@ pub async fn catch_all(
 
     let path = uri.path();
 
-    let subdomain = get_subdomain_from_hostname(host).or_else(|| get_subdomain_from_path(path));
+    // Check if subdomain comes from hostname (true subdomain) or path (main domain /r/ routing)
+    let subdomain_from_host = get_subdomain_from_hostname(host);
+    let on_main_domain = subdomain_from_host.is_none();
+    let subdomain = subdomain_from_host.or_else(|| get_subdomain_from_path(path));
 
     // Handle OPTIONS preflight requests for CORS
     if method == axum::http::Method::OPTIONS {
@@ -178,7 +181,7 @@ pub async fn catch_all(
 
         // Extract the file path from the URL (for /r/subdomain/path routing)
         let file_path = get_file_path_from_url(path);
-        return serve_file(state, subdomain, &file_path).await;
+        return serve_file(state, subdomain, &file_path, on_main_domain).await;
     }
 
     // No subdomain - serve static dashboard files from memory cache
@@ -263,8 +266,13 @@ fn resolve_file_path<'a>(
     files.get("index.html")
 }
 
+/// Headers that are blocked on main domain path-based routing for security
+/// Service-Worker-Allowed: Can be abused to register a SW controlling the entire domain
+const BLOCKED_HEADERS_ON_MAIN_DOMAIN: &[&str] = &["service-worker-allowed"];
+
 /// Serve a file from the subdomain's file tree
-async fn serve_file(state: AppState, subdomain: String, path: &str) -> Response {
+/// `on_main_domain`: true when using path-based routing (/r/subdomain/), false for subdomain routing
+async fn serve_file(state: AppState, subdomain: String, path: &str, on_main_domain: bool) -> Response {
     let files_json = match state.cache.get(&format!("files:{subdomain}")).await {
         Ok(Some(files)) => files,
         _ => "{}".to_string(),
@@ -307,8 +315,18 @@ async fn serve_file(state: AppState, subdomain: String, path: &str) -> Response 
         let mut response = Response::builder()
             .status(StatusCode::from_u16(file.status_code).unwrap_or(StatusCode::OK));
 
-        // Apply only user-configured headers - no automatic additions
+        // Apply user-configured headers with security filtering
         for file_header in &file.headers {
+            let header_lower = file_header.header.to_lowercase();
+
+            // Block dangerous headers on main domain unless ALLOW_ALL_HEADERS is set
+            if on_main_domain
+                && !CONFIG.allow_all_headers
+                && BLOCKED_HEADERS_ON_MAIN_DOMAIN.contains(&header_lower.as_str())
+            {
+                continue; // Skip this header for security
+            }
+
             if let Ok(name) = HeaderName::from_str(&file_header.header) {
                 if let Ok(value) = HeaderValue::from_str(&file_header.value) {
                     response = response.header(name, value);

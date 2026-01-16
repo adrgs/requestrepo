@@ -37,6 +37,9 @@ pub struct Config {
     pub session_rate_window_secs: u64,
     // Sentry DSN for frontend error tracking (injected at runtime)
     pub sentry_dsn_frontend: Option<String>,
+    // Security: Allow all response headers including dangerous ones like Service-Worker-Allowed
+    // Default: false (blocked on main domain path-based routing)
+    pub allow_all_headers: bool,
 }
 
 impl Config {
@@ -152,6 +155,14 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty());
 
+        // Security: Allow all response headers (default: false)
+        // When false, dangerous headers like Service-Worker-Allowed are blocked
+        // on main domain path-based routing (/r/subdomain/) to prevent SW scope attacks
+        let allow_all_headers = env::var("ALLOW_ALL_HEADERS")
+            .unwrap_or_else(|_| "false".to_string())
+            .to_lowercase()
+            == "true";
+
         Self {
             server_ip,
             server_domain,
@@ -180,6 +191,7 @@ impl Config {
             session_rate_limit,
             session_rate_window_secs,
             sentry_dsn_frontend,
+            allow_all_headers,
         }
     }
 }
