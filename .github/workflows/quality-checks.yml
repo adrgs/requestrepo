@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust:
     name: Rust Checks
