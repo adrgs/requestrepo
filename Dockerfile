@@ -24,11 +24,6 @@ RUN touch src/main.rs && cargo build --release
 # Stage 2: Build frontend
 FROM oven/bun:1-alpine AS frontend-builder
 
-# Build-time variables with defaults for ghcr.io release
-# Override with --build-arg for custom deployments
-ARG VITE_DOMAIN=requestrepo.com
-ARG VITE_SENTRY_DSN_FRONTEND=
-
 WORKDIR /app
 
 # Copy package files
@@ -40,9 +35,8 @@ RUN bun install
 # Copy frontend source
 COPY frontend/ ./
 
-# Create .env for Vite build (uses ARG values)
-RUN printf "VITE_DOMAIN=%s\nVITE_SENTRY_DSN_FRONTEND=%s\n" \
-    "${VITE_DOMAIN}" "${VITE_SENTRY_DSN_FRONTEND}" > .env
+# Create empty .env (config uses runtime detection, no build-time vars needed)
+RUN touch .env
 
 # Build frontend
 RUN bun run build
