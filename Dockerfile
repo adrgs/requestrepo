@@ -35,9 +35,6 @@ RUN bun install
 # Copy frontend source
 COPY frontend/ ./
 
-# Create empty .env (config uses runtime detection, no build-time vars needed)
-RUN touch .env
-
 # Build frontend
 RUN bun run build
 

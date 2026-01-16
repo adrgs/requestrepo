@@ -4,8 +4,6 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  // Load .env from parent directory (shared with backend)
-  envDir: path.resolve(__dirname, ".."),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
