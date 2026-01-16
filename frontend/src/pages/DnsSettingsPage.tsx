@@ -123,15 +123,17 @@ export function DnsSettingsPage() {
           <h3 className="text-base font-semibold">Add New Record</h3>
         </CardHeader>
         <Divider />
-        <CardBody>
-          <div className="flex items-end gap-4">
-            <Input
-              label="Domain"
-              placeholder="subdomain"
-              value={newRecord.domain}
-              onValueChange={(v) => setNewRecord((r) => ({ ...r, domain: v }))}
-              className="flex-1"
-            />
+        <CardBody className="gap-4">
+          {/* Domain - full width on mobile */}
+          <Input
+            label="Domain"
+            placeholder="subdomain"
+            value={newRecord.domain}
+            onValueChange={(v) => setNewRecord((r) => ({ ...r, domain: v }))}
+          />
+
+          {/* Type + Value row */}
+          <div className="flex flex-col gap-4 md:flex-row">
             <Select
               label="Type"
               selectedKeys={newRecord.type ? [newRecord.type] : []}
@@ -143,7 +145,7 @@ export function DnsSettingsPage() {
                     type: String(key) as DnsRecordType,
                   }));
               }}
-              className="w-32"
+              className="w-full md:w-32"
             >
               {DNS_TYPES.map((type) => (
                 <SelectItem key={type}>{type}</SelectItem>
@@ -164,18 +166,22 @@ export function DnsSettingsPage() {
               onValueChange={(v) => setNewRecord((r) => ({ ...r, value: v }))}
               className="flex-1"
             />
-            <Button
-              color="primary"
-              startContent={<Plus className="h-4 w-4" />}
-              onPress={handleAddRecord}
-              isLoading={updateDnsMutation.isPending}
-            >
-              Add
-            </Button>
           </div>
-          <p className="mt-2 text-xs text-default-400">
+
+          {/* Add button - full width on mobile */}
+          <Button
+            color="primary"
+            startContent={<Plus className="h-4 w-4" />}
+            onPress={handleAddRecord}
+            isLoading={updateDnsMutation.isPending}
+            className="w-full md:w-auto md:self-start"
+          >
+            Add Record
+          </Button>
+
+          <p className="text-xs text-default-400">
             Will respond to:{" "}
-            <code className="text-primary">
+            <code className="break-all text-primary">
               {newRecord.domain || "*"}.{session.subdomain}.{getDnsDomain()}
             </code>
             {newRecord.type === "A" &&
@@ -199,37 +205,49 @@ export function DnsSettingsPage() {
             records.map((record, index) => (
               <div
                 key={index}
-                className="flex items-center gap-4 rounded-lg bg-default-100 p-3"
+                className="flex flex-col gap-2 rounded-lg bg-default-100 p-3 md:flex-row md:items-center md:gap-4"
               >
-                <Chip
-                  color={
-                    getDnsTypeColor(record.type) as
-                      | "success"
-                      | "primary"
-                      | "warning"
-                      | "danger"
-                      | "secondary"
-                      | "default"
-                  }
-                  variant="flat"
-                  className="min-w-[60px]"
-                >
-                  {record.type}
-                </Chip>
-                <span className="flex-1 font-mono text-sm">
-                  {record.domain}.{session.subdomain}.{getDnsDomain()}
-                </span>
-                <span className="font-mono text-sm text-default-500">→</span>
-                <span className="flex-1 font-mono text-sm">{record.value}</span>
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="light"
-                  color="danger"
-                  onPress={() => handleDeleteRecord(index)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {/* Type badge + domain */}
+                <div className="flex items-center gap-2 md:flex-1">
+                  <Chip
+                    color={
+                      getDnsTypeColor(record.type) as
+                        | "success"
+                        | "primary"
+                        | "warning"
+                        | "danger"
+                        | "secondary"
+                        | "default"
+                    }
+                    variant="flat"
+                    size="sm"
+                    className="min-w-[50px]"
+                  >
+                    {record.type}
+                  </Chip>
+                  <span className="truncate font-mono text-sm">
+                    {record.domain}.{session.subdomain}.{getDnsDomain()}
+                  </span>
+                </div>
+
+                {/* Value + delete */}
+                <div className="flex items-center gap-2 pl-[58px] md:flex-1 md:pl-0">
+                  <span className="hidden font-mono text-sm text-default-500 md:inline">
+                    →
+                  </span>
+                  <span className="flex-1 truncate font-mono text-sm">
+                    {record.value}
+                  </span>
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    color="danger"
+                    onPress={() => handleDeleteRecord(index)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))
           )}

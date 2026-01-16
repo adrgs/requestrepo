@@ -56,7 +56,7 @@ export function Toolbar() {
   ];
 
   return (
-    <div className="flex h-12 items-center justify-between bg-default-50 px-6">
+    <div className="flex h-auto min-h-[48px] flex-col gap-2 bg-default-50 px-3 py-2 md:h-12 md:flex-row md:items-center md:justify-between md:gap-0 md:px-6 md:py-0">
       {/* Navigation Tabs */}
       <div className="flex items-center gap-1 rounded-full bg-default-100 p-1">
         {tabs.map((tab) => {
@@ -73,7 +73,7 @@ export function Toolbar() {
               onPress={() => navigate(`/${tab.key}`)}
               className={isActive ? "" : "bg-transparent"}
             >
-              {tab.label}
+              <span className="hidden md:inline">{tab.label}</span>
             </Button>
           );
         })}
@@ -87,7 +87,7 @@ export function Toolbar() {
           size="sm"
           variant="flat"
           radius="lg"
-          className="w-56 cursor-pointer"
+          className="min-w-0 flex-1 cursor-pointer md:w-56 md:flex-none"
           classNames={{
             input: "text-sm font-mono cursor-pointer",
             inputWrapper: "bg-default-100 shadow-none cursor-pointer",
@@ -102,8 +102,20 @@ export function Toolbar() {
           variant="flat"
           size="sm"
           radius="lg"
+          isIconOnly
+          className="md:hidden"
+          onPress={handleCopyUrl}
+        >
+          <Copy className="h-4 w-4" />
+        </Button>
+        <Button
+          color="success"
+          variant="flat"
+          size="sm"
+          radius="lg"
           startContent={<Copy className="h-4 w-4" />}
           onPress={handleCopyUrl}
+          className="hidden md:flex"
         >
           Copy URL
         </Button>
@@ -111,8 +123,19 @@ export function Toolbar() {
           color="primary"
           size="sm"
           radius="lg"
+          isIconOnly
+          className="md:hidden"
+          onPress={handleNewUrl}
+        >
+          <Shuffle className="h-4 w-4" />
+        </Button>
+        <Button
+          color="primary"
+          size="sm"
+          radius="lg"
           startContent={<Shuffle className="h-4 w-4" />}
           onPress={handleNewUrl}
+          className="hidden md:flex"
         >
           New URL
         </Button>

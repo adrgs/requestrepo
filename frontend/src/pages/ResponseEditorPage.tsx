@@ -6,8 +6,23 @@ import {
   AutocompleteItem,
   Card,
   CardBody,
+  Select,
+  SelectItem,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
 } from "@heroui/react";
-import { Plus, Trash2, Save } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Save,
+  ChevronDown,
+  ChevronUp,
+  FolderOpen,
+  FilePlus,
+} from "lucide-react";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -139,6 +154,9 @@ export function ResponseEditorPage() {
   const [headers, setHeaders] = useState<ResponseHeader[]>([
     { header: "Content-Type", value: "text/html" },
   ]);
+  const [settingsExpanded, setSettingsExpanded] = useState(true);
+  const [newFileModalOpen, setNewFileModalOpen] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
   const handleSaveRef = useRef<() => void>(() => {});
 
   const { data: files = {}, isLoading: isLoadingFiles } = useQuery({
@@ -246,17 +264,94 @@ export function ResponseEditorPage() {
     [],
   );
 
+  const handleOpenNewFileModal = useCallback(() => {
+    setNewFileName("");
+    setNewFileModalOpen(true);
+  }, []);
+
+  const handleCreateFile = useCallback(() => {
+    const trimmed = newFileName.trim();
+    if (!trimmed) {
+      toast.error("Filename cannot be empty");
+      return;
+    }
+    if (files[trimmed]) {
+      toast.error("File already exists");
+      return;
+    }
+
+    const newFiles: FileTreeType = {
+      ...files,
+      [trimmed]: {
+        raw: encodeBase64(""),
+        status_code: 200,
+        headers: [{ header: "Content-Type", value: "text/html" }],
+      },
+    };
+    updateFilesMutation.mutate(newFiles, {
+      onSuccess: () => {
+        setSelectedFile(trimmed);
+        setNewFileModalOpen(false);
+        setNewFileName("");
+      },
+    });
+  }, [newFileName, files, updateFilesMutation]);
+
   if (!session) {
     return <div className="p-4 text-default-500">No session selected</div>;
   }
 
+  const fileList = Object.keys(files);
+
   return (
     <Card className="h-full">
-      <CardBody className="p-0 flex flex-row h-full overflow-hidden">
-        {/* Left: Editor + Settings */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Editor - 60% */}
-          <div className="flex-[6] min-h-0">
+      <CardBody className="flex h-full flex-col overflow-hidden p-0 md:flex-row">
+        {/* Main Content: Editor + Settings */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* Mobile: Top bar with file selector and save */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-default-200 p-2 md:hidden">
+            <FolderOpen className="h-4 w-4 shrink-0 text-default-400" />
+            <Select
+              size="sm"
+              selectedKeys={[selectedFile]}
+              onSelectionChange={(keys) => {
+                const selected = Array.from(keys)[0] as string;
+                if (selected) setSelectedFile(selected);
+              }}
+              className="flex-1"
+              classNames={{
+                trigger: "h-8 min-h-8",
+                value: "font-mono text-sm",
+              }}
+              aria-label="Select file"
+            >
+              {fileList.map((file) => (
+                <SelectItem key={file} textValue={file}>
+                  <span className="font-mono text-sm">{file}</span>
+                </SelectItem>
+              ))}
+            </Select>
+            <Button
+              size="sm"
+              isIconOnly
+              variant="flat"
+              onPress={handleOpenNewFileModal}
+            >
+              <FilePlus className="h-4 w-4" />
+            </Button>
+            <Button
+              color="primary"
+              size="sm"
+              isIconOnly
+              onPress={handleSave}
+              isLoading={updateFilesMutation.isPending}
+            >
+              <Save className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Editor */}
+          <div className="min-h-[200px] flex-[6] md:min-h-0">
             <Editor
               height="100%"
               language={getLanguage(selectedFile)}
@@ -275,113 +370,140 @@ export function ResponseEditorPage() {
             />
           </div>
 
-          {/* Response Settings - 40% */}
-          <div className="flex-[4] p-4 overflow-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium">Response Settings</h3>
+          {/* Response Settings */}
+          <div className="flex-[4] overflow-auto border-t border-default-200 md:border-t-0">
+            {/* Settings Header - collapsible on mobile */}
+            <div
+              className="flex cursor-pointer items-center justify-between p-3 md:cursor-default md:p-4"
+              onClick={() => setSettingsExpanded(!settingsExpanded)}
+            >
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-medium">Response Settings</h3>
+                <button className="text-default-400 md:hidden">
+                  {settingsExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              {/* Desktop save button */}
               <Button
                 color="primary"
                 size="sm"
                 startContent={<Save className="h-4 w-4" />}
                 onPress={handleSave}
                 isLoading={updateFilesMutation.isPending}
+                className="hidden md:flex"
               >
                 Save
               </Button>
             </div>
 
-            {/* Status Code */}
-            <div className="flex items-center gap-4 mb-4">
-              <label className="text-sm text-default-500 w-24">
-                Status Code
-              </label>
-              <Input
-                type="number"
-                size="sm"
-                value={statusCode}
-                onValueChange={setStatusCode}
-                min={100}
-                max={599}
-                className="w-32"
-                classNames={{
-                  input: "font-mono",
-                }}
-              />
-            </div>
-
-            {/* Headers */}
-            <div className="flex items-start gap-4">
-              <label className="text-sm text-default-500 w-24 pt-2">
-                Headers
-              </label>
-              <div className="flex-1">
-                <div className="space-y-2">
-                  {headers.map((header, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Autocomplete
-                        size="sm"
-                        placeholder="Header name"
-                        defaultItems={HTTP_HEADERS.map((h) => ({ value: h }))}
-                        inputValue={header.header}
-                        onInputChange={(value) =>
-                          handleHeaderChange(index, "header", value)
-                        }
-                        onSelectionChange={(key) => {
-                          if (key)
-                            handleHeaderChange(index, "header", String(key));
-                        }}
-                        className="w-80"
-                        classNames={{
-                          base: "font-mono text-sm",
-                        }}
-                        allowsCustomValue
-                      >
-                        {(item) => (
-                          <AutocompleteItem key={item.value}>
-                            {item.value}
-                          </AutocompleteItem>
-                        )}
-                      </Autocomplete>
-                      <Input
-                        size="sm"
-                        placeholder="Value"
-                        value={header.value}
-                        onValueChange={(v) =>
-                          handleHeaderChange(index, "value", v)
-                        }
-                        className="flex-1"
-                        classNames={{
-                          input: "font-mono text-sm",
-                        }}
-                      />
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        color="danger"
-                        onPress={() => handleRemoveHeader(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <Button
+            {/* Settings Content - collapsible on mobile */}
+            <div
+              className={`space-y-4 px-3 pb-3 md:px-4 md:pb-4 ${
+                settingsExpanded ? "block" : "hidden md:block"
+              }`}
+            >
+              {/* Status Code */}
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+                <label className="text-sm text-default-500 md:w-24">
+                  Status Code
+                </label>
+                <Input
+                  type="number"
                   size="sm"
-                  variant="flat"
-                  startContent={<Plus className="h-4 w-4" />}
-                  onPress={handleAddHeader}
-                  className="mt-2"
-                >
-                  Add Header
-                </Button>
+                  value={statusCode}
+                  onValueChange={setStatusCode}
+                  min={100}
+                  max={599}
+                  className="w-full md:w-32"
+                  classNames={{
+                    input: "font-mono",
+                  }}
+                />
+              </div>
+
+              {/* Headers */}
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-4">
+                <label className="text-sm text-default-500 md:w-24 md:pt-2">
+                  Headers
+                </label>
+                <div className="flex-1">
+                  <div className="space-y-3">
+                    {headers.map((header, index) => (
+                      <div
+                        key={index}
+                        className="flex flex-col gap-2 rounded-lg bg-default-50 p-2 md:flex-row md:items-center md:bg-transparent md:p-0"
+                      >
+                        <Autocomplete
+                          size="sm"
+                          placeholder="Header name"
+                          defaultItems={HTTP_HEADERS.map((h) => ({ value: h }))}
+                          inputValue={header.header}
+                          onInputChange={(value) =>
+                            handleHeaderChange(index, "header", value)
+                          }
+                          onSelectionChange={(key) => {
+                            if (key)
+                              handleHeaderChange(index, "header", String(key));
+                          }}
+                          className="w-full md:w-64 lg:w-80"
+                          classNames={{
+                            base: "font-mono text-sm",
+                          }}
+                          allowsCustomValue
+                        >
+                          {(item) => (
+                            <AutocompleteItem key={item.value}>
+                              {item.value}
+                            </AutocompleteItem>
+                          )}
+                        </Autocomplete>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            size="sm"
+                            placeholder="Value"
+                            value={header.value}
+                            onValueChange={(v) =>
+                              handleHeaderChange(index, "value", v)
+                            }
+                            className="flex-1"
+                            classNames={{
+                              input: "font-mono text-sm",
+                            }}
+                          />
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="light"
+                            color="danger"
+                            onPress={() => handleRemoveHeader(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    startContent={<Plus className="h-4 w-4" />}
+                    onPress={handleAddHeader}
+                    className="mt-3"
+                  >
+                    Add Header
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right: File Explorer */}
-        <div className="w-56 shrink-0 flex flex-col bg-default-50 dark:bg-zinc-900/50">
+        {/* Right: File Explorer - Desktop only */}
+        <div className="hidden w-56 shrink-0 flex-col bg-default-50 dark:bg-zinc-900/50 md:flex">
           {/* Explorer Header */}
           <div className="flex items-center px-3 py-2 text-xs font-medium uppercase text-default-500">
             <span>Files</span>
@@ -400,6 +522,52 @@ export function ResponseEditorPage() {
           />
         </div>
       </CardBody>
+
+      {/* New File Modal */}
+      <Modal
+        isOpen={newFileModalOpen}
+        onOpenChange={setNewFileModalOpen}
+        size="sm"
+      >
+        <ModalContent>
+          {(onClose) => (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateFile();
+              }}
+            >
+              <ModalHeader>Create New File</ModalHeader>
+              <ModalBody>
+                <Input
+                  label="Filename"
+                  placeholder="e.g., page.html, api.json"
+                  value={newFileName}
+                  onValueChange={setNewFileName}
+                  autoFocus
+                  classNames={{
+                    input: "font-mono",
+                  }}
+                />
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="flat" onPress={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  color="primary"
+                  type="submit"
+                  isDisabled={!newFileName.trim()}
+                  isLoading={updateFilesMutation.isPending}
+                  startContent={<FilePlus className="h-4 w-4" />}
+                >
+                  Create
+                </Button>
+              </ModalFooter>
+            </form>
+          )}
+        </ModalContent>
+      </Modal>
     </Card>
   );
 }

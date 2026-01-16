@@ -18,6 +18,9 @@ interface UiState {
   // Visited tracking per subdomain
   visitedRequests: Record<string, Record<string, boolean>>;
 
+  // Mobile sidebar state
+  sidebarOpen: boolean;
+
   // Actions
   setFilters: (http: boolean, dns: boolean, smtp: boolean) => void;
   setSearchQuery: (query: string) => void;
@@ -27,6 +30,8 @@ interface UiState {
   markAllAsRead: (subdomain: string, requestIds: string[]) => void;
   isRequestVisited: (subdomain: string, requestId: string) => boolean;
   clearVisited: (subdomain: string) => void;
+  setSidebarOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -39,6 +44,7 @@ export const useUiStore = create<UiState>()(
       selectedRequestId: null,
       sharedRequest: null,
       visitedRequests: {},
+      sidebarOpen: false,
 
       setFilters: (http, dns, smtp) =>
         set({ httpFilter: http, dnsFilter: dns, smtpFilter: smtp }),
@@ -81,6 +87,10 @@ export const useUiStore = create<UiState>()(
             [subdomain]: {},
           },
         })),
+
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+      toggleSidebar: () =>
+        set((state) => ({ sidebarOpen: !state.sidebarOpen })),
     }),
     {
       name: "requestrepo-ui",

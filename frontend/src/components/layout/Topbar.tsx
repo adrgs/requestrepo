@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Input, Button, Tooltip } from "@heroui/react";
-import { Star, Plus, Share2, Search, X } from "lucide-react";
+import { Star, Plus, Share2, Search, X, Menu } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "./ThemeToggle";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -27,6 +27,10 @@ export function Topbar() {
   const visitedRequests = useUiStore((s) => s.visitedRequests);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setSearchQuery = useUiStore((s) => s.setSearchQuery);
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+
+  // Mobile search toggle
+  const [searchVisible, setSearchVisible] = useState(false);
 
   // GitHub stars count (only fetch in production)
   const [starsCount, setStarsCount] = useState<number | null>(null);
@@ -91,10 +95,22 @@ export function Topbar() {
   };
 
   return (
-    <div className="flex h-[50px] items-center justify-between bg-white px-5 shadow-sm dark:bg-zinc-800">
-      {/* Left: Logo + Star + Badge */}
-      <div className="flex items-center gap-4">
-        <a href="/" className="flex items-center">
+    <div className="flex h-[50px] items-center justify-between bg-white px-3 shadow-sm dark:bg-zinc-800 md:px-5">
+      {/* Left: Hamburger + Logo + Star + Badge */}
+      <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-4">
+        {/* Hamburger menu - mobile only */}
+        <Button
+          isIconOnly
+          variant="light"
+          size="sm"
+          radius="full"
+          onPress={toggleSidebar}
+          className="shrink-0 lg:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        <a href="/" className="flex shrink-0 items-center">
           <img src="/logo.svg" alt="requestrepo" className="h-5" />
         </a>
 
@@ -104,7 +120,7 @@ export function Topbar() {
               href="https://github.com/adrgs/requestrepo"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-full bg-default-100 px-2.5 py-1 text-xs font-medium hover:bg-default-200 transition-colors"
+              className="hidden shrink-0 items-center gap-1.5 rounded-full bg-default-100 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-default-200 md:flex"
             >
               <Star className="h-3.5 w-3.5" />
               {starsCount !== null && <span>{starsCount}</span>}
@@ -112,15 +128,15 @@ export function Topbar() {
           </Tooltip>
         )}
 
-        {/* Session Tabs */}
+        {/* Session Tabs - scrollable on mobile */}
         {sessions.length > 0 && (
-          <div className="flex items-center gap-1 ml-2">
+          <div className="ml-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto md:ml-2">
             {sessions.map((session) => {
               const unreadCount = getUnreadCount(session.subdomain);
               return (
                 <div
                   key={session.subdomain}
-                  className={`group flex items-center gap-1.5 px-3 py-1 rounded-md cursor-pointer text-sm font-medium transition-colors ${
+                  className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors md:px-3 md:text-sm ${
                     session.subdomain === activeSubdomain
                       ? "bg-primary/10 text-primary"
                       : "bg-default-100 text-default-600 hover:bg-default-200"
@@ -128,13 +144,13 @@ export function Topbar() {
                   onClick={() => setActiveSession(session.subdomain)}
                 >
                   {unreadCount > 0 && (
-                    <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold text-white bg-red-500 rounded-full">
+                    <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
                       {unreadCount}
                     </span>
                   )}
                   <span className="font-mono">{session.subdomain}</span>
                   <button
-                    className="ml-1 opacity-0 group-hover:opacity-100 hover:text-danger transition-opacity"
+                    className="ml-1 hidden opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 md:block"
                     onClick={(e) => handleCloseSession(e, session.subdomain)}
                   >
                     <X className="h-3 w-3" />
@@ -147,7 +163,7 @@ export function Topbar() {
       </div>
 
       {/* Right: Icons + Search */}
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <Tooltip content="New session">
           <Button
             isIconOnly
@@ -167,6 +183,7 @@ export function Topbar() {
             size="sm"
             radius="full"
             onPress={handleShare}
+            className="hidden md:flex"
           >
             <Share2 className="h-4 w-4" />
           </Button>
@@ -174,6 +191,19 @@ export function Topbar() {
 
         <ThemeToggle />
 
+        {/* Mobile search toggle */}
+        <Button
+          isIconOnly
+          variant="light"
+          size="sm"
+          radius="full"
+          onPress={() => setSearchVisible(!searchVisible)}
+          className="md:hidden"
+        >
+          <Search className="h-4 w-4" />
+        </Button>
+
+        {/* Desktop search - always visible */}
         <Input
           placeholder="Search..."
           size="sm"
@@ -181,7 +211,7 @@ export function Topbar() {
           value={searchQuery}
           onValueChange={setSearchQuery}
           startContent={<Search className="h-4 w-4 text-default-400" />}
-          className="ml-2 w-44"
+          className="ml-2 hidden w-44 md:block"
           radius="full"
           classNames={{
             input: "text-sm",
@@ -189,6 +219,38 @@ export function Topbar() {
           }}
         />
       </div>
+
+      {/* Mobile search bar - expandable */}
+      {searchVisible && (
+        <div className="absolute left-0 right-0 top-[50px] z-50 bg-white p-2 shadow-md dark:bg-zinc-800 md:hidden">
+          <Input
+            placeholder="Search requests..."
+            size="sm"
+            variant="flat"
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+            startContent={<Search className="h-4 w-4 text-default-400" />}
+            endContent={
+              <Button
+                isIconOnly
+                variant="light"
+                size="sm"
+                radius="full"
+                onPress={() => setSearchVisible(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            }
+            className="w-full"
+            radius="full"
+            classNames={{
+              input: "text-sm",
+              inputWrapper: "bg-default-100 shadow-none",
+            }}
+            autoFocus
+          />
+        </div>
+      )}
     </div>
   );
 }

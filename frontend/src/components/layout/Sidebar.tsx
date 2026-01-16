@@ -15,7 +15,11 @@ import { cn, formatRelativeTime, getFlagClass } from "@/lib/utils";
 import type { Request } from "@/types";
 import { isHttpRequest, isSmtpRequest } from "@/types";
 
-export function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export function Sidebar({ onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -195,6 +199,22 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Mobile header with close button */}
+      {onClose && (
+        <div className="flex h-[50px] shrink-0 items-center justify-between border-b border-default-200 px-3">
+          <span className="text-sm font-semibold">Requests</span>
+          <Button
+            isIconOnly
+            variant="light"
+            size="sm"
+            radius="full"
+            onPress={onClose}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+      )}
+
       {/* Delete all requests button - aligned with toolbar (h-12 = 48px) */}
       <div className="flex h-12 shrink-0 items-center px-3">
         <Button

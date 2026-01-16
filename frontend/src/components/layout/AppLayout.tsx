@@ -5,6 +5,7 @@ import { Toolbar } from "./Toolbar";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAutoSession } from "@/hooks/useAutoSession";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useUiStore } from "@/stores/uiStore";
 
 export function AppLayout() {
   // Auto-create session if none exists
@@ -16,6 +17,11 @@ export function AppLayout() {
   // Update document title with unseen request count
   useDocumentTitle();
 
+  const sidebarOpen = useUiStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
+
+  const handleCloseSidebar = () => setSidebarOpen(false);
+
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-100 dark:bg-zinc-900">
       {/* Fixed Topbar - 50px height */}
@@ -23,18 +29,35 @@ export function AppLayout() {
         <Topbar />
       </header>
 
-      {/* Fixed Sidebar - 200px width */}
-      <aside className="fixed bottom-0 left-0 top-[50px] z-40 w-[240px] bg-gray-50 dark:bg-[#1f1f23]">
+      {/* Desktop Sidebar - hidden on mobile */}
+      <aside className="fixed bottom-0 left-0 top-[50px] z-40 hidden w-[240px] bg-gray-50 dark:bg-[#1f1f23] lg:block">
         <Sidebar />
       </aside>
 
-      {/* Main Content - offset by topbar and sidebar */}
-      <main className="ml-[240px] mt-[50px] h-[calc(100vh-50px)] overflow-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            onClick={handleCloseSidebar}
+          />
+          {/* Sidebar */}
+          <aside className="fixed bottom-0 left-0 top-0 z-50 w-[280px] bg-gray-50 dark:bg-[#1f1f23] lg:hidden">
+            <Sidebar onClose={handleCloseSidebar} />
+          </aside>
+        </>
+      )}
+
+      {/* Main Content - offset by topbar and sidebar (sidebar margin only on lg+) */}
+      <main className="mt-[50px] flex h-[calc(100vh-50px)] flex-col overflow-hidden lg:ml-[240px]">
         {/* Toolbar row */}
-        <Toolbar />
+        <div className="shrink-0">
+          <Toolbar />
+        </div>
 
         {/* Content area */}
-        <div className="h-[calc(100%-48px)] overflow-auto p-6">
+        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
           <Outlet />
         </div>
       </main>
