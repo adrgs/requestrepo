@@ -97,10 +97,21 @@ impl Config {
             * 1024;
 
         // Max cache memory as percentage of container limit: default 70%
-        let cache_max_memory_pct = env::var("CACHE_MAX_MEMORY_PCT")
-            .unwrap_or_else(|_| "0.7".to_string())
-            .parse()
-            .unwrap_or(0.7);
+        // Accepts both decimal (0.7) and percentage (70) formats
+        let cache_max_memory_pct = {
+            let raw_value: f64 = env::var("CACHE_MAX_MEMORY_PCT")
+                .unwrap_or_else(|_| "0.7".to_string())
+                .parse()
+                .unwrap_or(0.7);
+            // If > 1, treat as percentage (e.g., 70 -> 0.7)
+            let normalized = if raw_value > 1.0 {
+                raw_value / 100.0
+            } else {
+                raw_value
+            };
+            // Clamp between 0.1 (10%) and 0.95 (95%)
+            normalized.clamp(0.1, 0.95)
+        };
 
         // TLS/ACME configuration
         let tls_enabled = env::var("TLS_ENABLED")
