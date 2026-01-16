@@ -3,8 +3,17 @@ import { useSessionStore } from "@/stores/sessionStore";
 import { useRequestStore } from "@/stores/requestStore";
 import type { WebSocketServerMessage, Session } from "@/types";
 
-const RECONNECT_DELAY = 2500;
+// Reconnection with exponential backoff
+const INITIAL_RECONNECT_DELAY = 1000; // Start at 1 second
+const MAX_RECONNECT_DELAY = 30000; // Cap at 30 seconds
+const RECONNECT_BACKOFF_MULTIPLIER = 2;
 const HEARTBEAT_INTERVAL = 30000;
+
+// Add jitter to avoid thundering herd (±25%)
+function addJitter(delay: number): number {
+  const jitter = delay * 0.25;
+  return delay + (Math.random() * 2 - 1) * jitter;
+}
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -14,6 +23,8 @@ export function useWebSocket() {
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  // Track reconnection attempts for exponential backoff
+  const reconnectAttemptsRef = useRef<number>(0);
   // Track tokens being registered to correlate with errors
   const pendingTokensRef = useRef<string[]>([]);
   // Track validated subdomains
@@ -103,6 +114,8 @@ export function useWebSocket() {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      // Reset backoff on successful connection
+      reconnectAttemptsRef.current = 0;
       validatedSubdomainsRef.current.clear();
 
       // Register all sessions - track pending tokens
@@ -134,9 +147,18 @@ export function useWebSocket() {
 
       // Reconnect unless intentionally closed
       if (event.code !== 1000) {
+        // Calculate delay with exponential backoff
+        const baseDelay = Math.min(
+          INITIAL_RECONNECT_DELAY *
+            Math.pow(RECONNECT_BACKOFF_MULTIPLIER, reconnectAttemptsRef.current),
+          MAX_RECONNECT_DELAY,
+        );
+        const delay = addJitter(baseDelay);
+        reconnectAttemptsRef.current++;
+
         reconnectTimeoutRef.current = setTimeout(() => {
           connectRef.current();
-        }, RECONNECT_DELAY);
+        }, delay);
       }
     };
 
@@ -159,6 +181,8 @@ export function useWebSocket() {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
+    // Reset backoff so next connect starts fresh
+    reconnectAttemptsRef.current = 0;
     wsRef.current?.close(1000);
     wsRef.current = null;
   }, []);
