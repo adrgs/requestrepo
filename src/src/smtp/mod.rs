@@ -466,8 +466,8 @@ async fn log_smtp_request(
     command: &str,
     data: Option<&str>,
     client_ip: &str,
-    _mail_from: Option<&str>,
-    _rcpt_to: &[String],
+    mail_from: Option<&str>,
+    rcpt_to: &[String],
     transaction_log: &str,
     cache: &Cache,
     tx: &broadcast::Sender<CacheMessage>,
@@ -487,6 +487,16 @@ async fn log_smtp_request(
     // Use the full transaction log as raw content
     let raw_content = transaction_log.to_string();
 
+    // Fall back to SMTP envelope values if email headers are missing
+    let from = parsed.from.or_else(|| mail_from.map(|s| s.to_string()));
+    let to = parsed.to.or_else(|| {
+        if rcpt_to.is_empty() {
+            None
+        } else {
+            Some(rcpt_to.join(", "))
+        }
+    });
+
     let request_log = SmtpRequestLog {
         _id: request_id.clone(),
         r#type: "smtp".to_string(),
@@ -497,10 +507,10 @@ async fn log_smtp_request(
         date: get_current_timestamp(),
         ip: Some(client_ip.to_string()),
         country,
-        // Include parsed email headers
+        // Include parsed email headers (with envelope fallback)
         subject: parsed.subject,
-        from: parsed.from,
-        to: parsed.to,
+        from,
+        to,
         cc: parsed.cc,
         bcc: parsed.bcc,
     };
