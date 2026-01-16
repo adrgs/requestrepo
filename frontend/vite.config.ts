@@ -4,6 +4,9 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
+  // Load .env from parent directory (shared with backend for local dev)
+  // In Docker builds, parent has no .env - Vite handles this gracefully
+  envDir: path.resolve(__dirname, ".."),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
