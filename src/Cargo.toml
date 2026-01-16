@@ -67,7 +67,7 @@ linked-hash-map = "0.5"
 mail-parser = "0.9"
 
 # Error tracking
-sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "panic", "tracing"] }
+sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "panic", "tracing", "reqwest", "rustls"] }
 
 # Utilities
 rand = "0.8.5"
