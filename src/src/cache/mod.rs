@@ -381,40 +381,75 @@ impl Cache {
         let current = self.current_memory.load(Ordering::Relaxed);
         let max = self.max_memory.load(Ordering::Relaxed);
 
-        // Start evicting at 70% capacity
+        // Start evicting at configured threshold (default 70%)
         let threshold = (max as f64 * CONFIG.cache_max_memory_pct) as usize;
 
         if current > threshold {
-            self.evict_oldest_requests(current - threshold);
+            // Evict enough to get below threshold, plus 10% extra to avoid
+            // triggering eviction again immediately
+            let extra_buffer = max / 10; // 10% of max memory
+            let bytes_to_free = (current - threshold) + extra_buffer;
+            self.evict_oldest_requests(bytes_to_free);
         }
     }
 
-    /// Evict oldest request lists to free up `bytes_to_free` bytes
+    /// Evict oldest individual requests to free up `bytes_to_free` bytes
+    /// Uses round-robin across all subdomain lists to be fair
     fn evict_oldest_requests(&self, bytes_to_free: usize) {
         let mut freed = 0usize;
+        let mut evicted_count = 0usize;
+        let mut empty_lists: Vec<String> = Vec::new();
 
         if let Ok(mut store) = self.request_store.write() {
-            // LinkedHashMap iterates in insertion order (oldest first)
-            let keys_to_remove: Vec<String> = store
-                .iter()
-                .take_while(|(_, entry)| {
-                    if freed < bytes_to_free {
-                        freed += entry.total_size;
-                        true
-                    } else {
-                        false
-                    }
-                })
-                .map(|(k, _)| k.clone())
-                .collect();
+            // Keep evicting until we've freed enough memory
+            while freed < bytes_to_free {
+                let mut made_progress = false;
 
-            for key in keys_to_remove {
-                if let Some(entry) = store.remove(&key) {
-                    self.current_memory
-                        .fetch_sub(entry.total_size, Ordering::Relaxed);
-                    info!("Evicted request list {} ({} bytes)", key, entry.total_size);
+                // Get all keys (we need to collect to avoid borrow issues)
+                let keys: Vec<String> = store.keys().cloned().collect();
+
+                // Round-robin: pop one oldest request from each list
+                for key in &keys {
+                    if freed >= bytes_to_free {
+                        break;
+                    }
+
+                    if let Some(entry) = store.get_mut(key) {
+                        if let Some(oldest_request) = entry.items.pop_front() {
+                            let request_size = oldest_request.len();
+                            entry.total_size = entry.total_size.saturating_sub(request_size);
+                            freed += request_size;
+                            evicted_count += 1;
+                            made_progress = true;
+
+                            // Track empty lists for cleanup
+                            if entry.items.is_empty() {
+                                empty_lists.push(key.clone());
+                            }
+                        }
+                    }
+                }
+
+                // If no progress was made (all lists empty), break to avoid infinite loop
+                if !made_progress {
+                    break;
                 }
             }
+
+            // Remove empty lists
+            for key in &empty_lists {
+                store.remove(key);
+            }
+        }
+
+        if evicted_count > 0 {
+            self.current_memory.fetch_sub(freed, Ordering::Relaxed);
+            info!(
+                "Evicted {} individual requests ({} bytes freed), removed {} empty lists",
+                evicted_count,
+                freed,
+                empty_lists.len()
+            );
         }
     }
 }
