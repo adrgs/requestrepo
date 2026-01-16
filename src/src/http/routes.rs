@@ -12,9 +12,7 @@ use axum::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::collections::HashMap;
-use std::path::Path;
 use std::str::FromStr;
-use tokio::fs;
 
 use crate::http::AppState;
 use crate::ip2country::lookup_country;
@@ -24,9 +22,6 @@ use crate::utils::{
     get_subdomain_from_hostname, get_subdomain_from_path,
 };
 use serde_json::json;
-
-/// Directory for serving static dashboard files
-const PUBLIC_DIR: &str = "./public";
 
 /// Health check endpoint for monitoring and orchestration
 pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
@@ -186,18 +181,18 @@ pub async fn catch_all(
         return serve_file(state, subdomain, &file_path).await;
     }
 
-    // No subdomain - serve static dashboard files
-    serve_static_file(path).await
+    // No subdomain - serve static dashboard files from memory cache
+    serve_static_file(&state, path)
 }
 
-/// Serve static files from the public directory (dashboard)
-/// Includes LFI protection to prevent directory traversal attacks
-async fn serve_static_file(path: &str) -> Response {
-    // Sanitize path: remove leading slashes, decode URL encoding is handled by axum
+/// Serve static files from in-memory cache
+/// Files are loaded at startup with config injection for index.html
+fn serve_static_file(state: &AppState, path: &str) -> Response {
+    // Sanitize path: remove leading slashes
     let path = path.trim_start_matches('/');
 
-    // LFI Protection: reject any path containing ".." or starting with "/"
-    if path.contains("..") || path.starts_with('/') || path.contains('\0') {
+    // LFI Protection: reject any path containing ".." or null bytes
+    if path.contains("..") || path.contains('\0') {
         return Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .header(header::CONTENT_TYPE, "text/plain")
@@ -206,107 +201,21 @@ async fn serve_static_file(path: &str) -> Response {
             .into_response();
     }
 
-    // Build the file path within PUBLIC_DIR
-    let public_dir = Path::new(PUBLIC_DIR)
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(PUBLIC_DIR).to_path_buf());
-
-    let file_path = if path.is_empty() {
-        public_dir.join("index.html")
-    } else {
-        public_dir.join(path)
-    };
-
-    // LFI Protection: ensure the resolved path is still within PUBLIC_DIR
-    let canonical_path = match file_path.canonicalize() {
-        Ok(p) => p,
-        Err(_) => {
-            // File doesn't exist - for SPA routing, serve index.html for non-asset paths
-            let has_extension = path.contains('.') && !path.ends_with('/');
-            if has_extension {
-                // Asset file not found
-                return Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .header(header::CONTENT_TYPE, "text/plain")
-                    .body(Body::from("Not found"))
-                    .unwrap()
-                    .into_response();
-            }
-            // SPA route - serve index.html
-            public_dir.join("index.html")
-        }
-    };
-
-    // Final LFI check: ensure path is within public directory
-    if !canonical_path.starts_with(&public_dir) {
-        return Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .header(header::CONTENT_TYPE, "text/plain")
-            .body(Body::from("Forbidden"))
+    // Get file from memory cache (handles SPA routing internally)
+    match state.static_files.get(path) {
+        Some((content, content_type, cache_control)) => Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, content_type)
+            .header(header::CACHE_CONTROL, cache_control)
+            .body(Body::from(content.to_vec()))
             .unwrap()
-            .into_response();
-    }
-
-    // Check if it's a directory - serve index.html
-    let final_path = if canonical_path.is_dir() {
-        canonical_path.join("index.html")
-    } else {
-        canonical_path
-    };
-
-    // Read the file
-    match fs::read(&final_path).await {
-        Ok(content) => {
-            // Determine content type from extension
-            let content_type = match final_path.extension().and_then(|e| e.to_str()) {
-                Some("html") => "text/html; charset=utf-8",
-                Some("css") => "text/css; charset=utf-8",
-                Some("js") => "application/javascript; charset=utf-8",
-                Some("json") => "application/json; charset=utf-8",
-                Some("svg") => "image/svg+xml",
-                Some("png") => "image/png",
-                Some("jpg") | Some("jpeg") => "image/jpeg",
-                Some("gif") => "image/gif",
-                Some("ico") => "image/x-icon",
-                Some("woff") => "font/woff",
-                Some("woff2") => "font/woff2",
-                Some("ttf") => "font/ttf",
-                Some("eot") => "application/vnd.ms-fontobject",
-                Some("webp") => "image/webp",
-                Some("map") => "application/json", // Source maps
-                _ => "application/octet-stream",
-            };
-
-            // Cache static assets longer (hashed filenames from Vite)
-            let cache_control =
-                if path.contains("-") && (path.ends_with(".js") || path.ends_with(".css")) {
-                    // Hashed assets can be cached indefinitely
-                    "public, max-age=31536000, immutable"
-                } else if path.ends_with(".html") {
-                    // HTML should be revalidated
-                    "no-cache"
-                } else {
-                    // Other assets cached for 1 hour
-                    "public, max-age=3600"
-                };
-
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, content_type)
-                .header(header::CACHE_CONTROL, cache_control)
-                .body(Body::from(content))
-                .unwrap()
-                .into_response()
-        }
-        Err(_) => {
-            // File not found
-            Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .header(header::CONTENT_TYPE, "text/plain")
-                .body(Body::from("Not found"))
-                .unwrap()
-                .into_response()
-        }
+            .into_response(),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(header::CONTENT_TYPE, "text/plain")
+            .body(Body::from("Not found"))
+            .unwrap()
+            .into_response(),
     }
 }
 

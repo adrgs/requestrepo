@@ -35,6 +35,8 @@ pub struct Config {
     // Rate limiting for session creation
     pub session_rate_limit: u32,
     pub session_rate_window_secs: u64,
+    // Sentry DSN for frontend error tracking (injected at runtime)
+    pub sentry_dsn_frontend: Option<String>,
 }
 
 impl Config {
@@ -145,6 +147,11 @@ impl Config {
             .parse()
             .unwrap_or(60);
 
+        // Sentry DSN for frontend (injected into HTML at runtime)
+        let sentry_dsn_frontend = env::var("SENTRY_DSN_FRONTEND")
+            .ok()
+            .filter(|s| !s.is_empty());
+
         Self {
             server_ip,
             server_domain,
@@ -172,6 +179,7 @@ impl Config {
             cert_check_hours,
             session_rate_limit,
             session_rate_window_secs,
+            sentry_dsn_frontend,
         }
     }
 }

@@ -18,9 +18,28 @@ A tool for analyzing HTTP, DNS, and SMTP requests with custom DNS records and re
 - **Admin authentication**: Optional password protection for session creation
 - **No external dependencies**: In-memory cache with LRU eviction (no Redis required)
 
-## Getting Started
+## Quick Start
 
-Quick-start using Docker Compose:
+Run RequestRepo with Docker:
+
+```bash
+docker run -d \
+  --name requestrepo \
+  -p 80:80 -p 443:443 -p 53:53/udp -p 53:53/tcp -p 25:25 \
+  -e JWT_SECRET=your-secret-key-min-32-chars \
+  -e DOMAIN=yourdomain.com \
+  -e SERVER_IP=your.server.ip \
+  -e TLS_ENABLED=true \
+  -e ACME_EMAIL=admin@yourdomain.com \
+  -v requestrepo-certs:/app/certs \
+  ghcr.io/adrgs/requestrepo:latest
+```
+
+This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25).
+
+## Using Docker Compose
+
+For more control, use Docker Compose:
 
 ```sh
 git clone https://github.com/adrgs/requestrepo.git
@@ -135,25 +154,24 @@ requestrepo/
 
 See [.env.example](.env.example) for all available options.
 
-### Required
-
-| Variable | Description |
-|----------|-------------|
-| `JWT_SECRET` | Secret key for JWT signing |
-| `DOMAIN` | Base domain (e.g., `requestrepo.com`) |
-| `SERVER_IP` | Public IP address of the server |
-
-### Optional
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ADMIN_TOKEN` | - | Password for session creation |
-| `TLS_ENABLED` | `false` | Enable HTTPS with auto-TLS |
-| `ACME_EMAIL` | - | Email for Let's Encrypt |
-| `HTTP_PORT` | `80` | HTTP server port |
-| `HTTPS_PORT` | `443` | HTTPS server port |
-| `DNS_PORT` | `53` | DNS server port |
-| `SMTP_PORT` | `25` | SMTP server port |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `JWT_SECRET` | Yes | - | Secret key for JWT signing (min 32 chars) |
+| `DOMAIN` | Yes | - | Base domain (e.g., `requestrepo.com`) |
+| `SERVER_IP` | Yes | - | Public IP for DNS responses |
+| `ADMIN_TOKEN` | No | - | Password for session creation |
+| `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
+| `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |
+| `HTTP_PORT` | No | `80` | HTTP server port |
+| `HTTPS_PORT` | No | `443` | HTTPS server port |
+| `DNS_PORT` | No | `53` | DNS server port |
+| `SMTP_PORT` | No | `25` | SMTP server port |
+| `SENTRY_DSN_BACKEND` | No | - | Sentry DSN for backend error tracking |
+| `SENTRY_DSN_FRONTEND` | No | - | Sentry DSN for frontend error tracking |
+| `CACHE_MAX_MEMORY_PCT` | No | `0.7` | Max cache memory as % of container limit |
+| `MAX_SUBDOMAIN_SIZE_MB` | No | `10` | Max storage per subdomain |
+| `SESSION_RATE_LIMIT` | No | `10` | Max sessions per IP per window |
+| `SESSION_RATE_WINDOW_SECS` | No | `60` | Rate limit window in seconds |
 
 ## Interface
 

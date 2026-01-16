@@ -38,6 +38,9 @@ pub async fn run() -> Result<()> {
     // Create shutdown channel
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
+    // Load static frontend files into memory (shared between HTTP and HTTPS)
+    let static_files = http::load_static_files().await;
+
     let dns_server = dns::Server::new(cache.clone(), tx.clone());
     let dns_handle = tokio::spawn(async move {
         if let Err(e) = dns_server.run().await {
@@ -45,7 +48,7 @@ pub async fn run() -> Result<()> {
         }
     });
 
-    let http_server = http::Server::new(cache.clone(), tx.clone());
+    let http_server = http::Server::new(cache.clone(), tx.clone(), static_files.clone());
     let http_handle = tokio::spawn(async move {
         if let Err(e) = http_server.run().await {
             error!("HTTP server error: {}", e);
@@ -78,8 +81,12 @@ pub async fn run() -> Result<()> {
                 certs::CertManager::start_renewal_task(cert_manager.clone());
 
                 // Start HTTPS server
-                let https_server =
-                    http::HttpsServer::new(cache.clone(), tx.clone(), cert_manager.tls_manager());
+                let https_server = http::HttpsServer::new(
+                    cache.clone(),
+                    tx.clone(),
+                    cert_manager.tls_manager(),
+                    static_files.clone(),
+                );
 
                 Some(tokio::spawn(async move {
                     if let Err(e) = https_server.run().await {

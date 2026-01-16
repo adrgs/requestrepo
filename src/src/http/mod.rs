@@ -1,6 +1,9 @@
 mod routes;
 mod routes_v2;
+mod static_files;
 mod websocket;
+
+pub use static_files::StaticFiles;
 
 use anyhow::{anyhow, Result};
 use axum::{
@@ -28,17 +31,32 @@ use crate::utils::config::CONFIG;
 pub struct Server {
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
+    static_files: Arc<StaticFiles>,
 }
 
 #[derive(Clone)]
 pub struct AppState {
     pub cache: Arc<Cache>,
     pub tx: Arc<broadcast::Sender<CacheMessage>>,
+    pub static_files: Arc<StaticFiles>,
+}
+
+/// Load static files into memory (call once at startup, share between servers)
+pub async fn load_static_files() -> Arc<StaticFiles> {
+    Arc::new(StaticFiles::load("./public").await)
 }
 
 impl Server {
-    pub fn new(cache: Arc<Cache>, tx: Arc<broadcast::Sender<CacheMessage>>) -> Self {
-        Self { cache, tx }
+    pub fn new(
+        cache: Arc<Cache>,
+        tx: Arc<broadcast::Sender<CacheMessage>>,
+        static_files: Arc<StaticFiles>,
+    ) -> Self {
+        Self {
+            cache,
+            tx,
+            static_files,
+        }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -47,6 +65,7 @@ impl Server {
         let state = AppState {
             cache: self.cache.clone(),
             tx: self.tx.clone(),
+            static_files: self.static_files.clone(),
         };
 
         let app = create_router(state);
@@ -121,6 +140,7 @@ pub struct HttpsServer {
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
     tls: TlsManager,
+    static_files: Arc<StaticFiles>,
 }
 
 impl HttpsServer {
@@ -128,8 +148,14 @@ impl HttpsServer {
         cache: Arc<Cache>,
         tx: Arc<broadcast::Sender<CacheMessage>>,
         tls: TlsManager,
+        static_files: Arc<StaticFiles>,
     ) -> Self {
-        Self { cache, tx, tls }
+        Self {
+            cache,
+            tx,
+            tls,
+            static_files,
+        }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -160,6 +186,7 @@ impl HttpsServer {
             let state = AppState {
                 cache: self.cache.clone(),
                 tx: self.tx.clone(),
+                static_files: self.static_files.clone(),
             };
 
             tokio::spawn(async move {

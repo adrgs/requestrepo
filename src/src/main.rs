@@ -10,6 +10,15 @@ async fn main() {
 
     dotenv::dotenv().ok();
 
+    // Initialize Sentry for error tracking (if DSN is configured)
+    let _sentry_guard = sentry::init((
+        std::env::var("SENTRY_DSN_BACKEND").ok(),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            ..Default::default()
+        },
+    ));
+
     tracing_subscriber::fmt::init();
 
     if let Err(e) = run().await {

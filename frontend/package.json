@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@heroui/react": "^2.8.7",
+    "@sentry/react": "^8.0.0",
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-query": "^5.90.16",
     "axios": "^1.13.2",
