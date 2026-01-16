@@ -24,6 +24,11 @@ RUN touch src/main.rs && cargo build --release
 # Stage 2: Build frontend
 FROM oven/bun:1-alpine AS frontend-builder
 
+# Build-time variables with defaults for ghcr.io release
+# Override with --build-arg for custom deployments
+ARG VITE_DOMAIN=requestrepo.com
+ARG VITE_SENTRY_DSN_FRONTEND=
+
 WORKDIR /app
 
 # Copy package files
@@ -32,11 +37,14 @@ COPY frontend/package.json frontend/bun.lockb* ./
 # Install dependencies
 RUN bun install
 
-# Copy frontend source and shared .env
+# Copy frontend source
 COPY frontend/ ./
-COPY .env .env
 
-# Build frontend (reads .env from current dir via vite envDir config)
+# Create .env for Vite build (uses ARG values)
+RUN printf "VITE_DOMAIN=%s\nVITE_SENTRY_DSN_FRONTEND=%s\n" \
+    "${VITE_DOMAIN}" "${VITE_SENTRY_DSN_FRONTEND}" > .env
+
+# Build frontend
 RUN bun run build
 
 # Stage 3: Download IP geolocation database

@@ -28,13 +28,6 @@ use crate::utils::{
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-pub struct AuthHeader {
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub authorization: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct TokenQuery {
     pub token: Option<String>,
 }
