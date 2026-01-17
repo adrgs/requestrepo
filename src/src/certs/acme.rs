@@ -261,7 +261,11 @@ impl AcmeClient {
         info!("Notifying ACME server about all challenges being ready");
         for (url, (identifier, _, _, needs_validation)) in &challenges {
             if *needs_validation {
-                info!("  Notifying ACME for {} (url: ...{})", identifier, &url[url.len().saturating_sub(30)..]);
+                info!(
+                    "  Notifying ACME for {} (url: ...{})",
+                    identifier,
+                    &url[url.len().saturating_sub(30)..]
+                );
                 order
                     .set_challenge_ready(url)
                     .await

@@ -1,8 +1,11 @@
 # Multi-stage Dockerfile for RequestRepo Rust backend
 # Stage 1: Build Rust backend
-FROM rust:1.85-alpine AS rust-builder
+FROM rust:1.92-slim-bookworm AS rust-builder
 
-RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -22,7 +25,7 @@ COPY src/src ./src
 RUN touch src/main.rs && cargo build --release
 
 # Stage 2: Build frontend
-FROM oven/bun:1-alpine AS frontend-builder
+FROM oven/bun:1.3.6-slim AS frontend-builder
 
 WORKDIR /app
 
@@ -39,7 +42,7 @@ COPY frontend/ ./
 RUN bun run build
 
 # Stage 3: Download IP geolocation database
-FROM alpine:3.19 AS ip2country-downloader
+FROM alpine:3.21 AS ip2country-downloader
 
 RUN apk add --no-cache curl
 
@@ -55,13 +58,17 @@ RUN mkdir -p vendor && \
     echo "Warning: Could not download DB-IP database, IP geolocation will be disabled"
 
 # Stage 4: Final runtime image
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN addgroup -g 1000 requestrepo && \
-    adduser -u 1000 -G requestrepo -s /bin/sh -D requestrepo
+RUN groupadd -g 1000 requestrepo && \
+    useradd -u 1000 -g requestrepo -s /bin/sh -m requestrepo
 
 WORKDIR /app
 
