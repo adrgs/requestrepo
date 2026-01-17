@@ -97,7 +97,6 @@ export const useUiStore = create<UiState>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         visitedRequests: state.visitedRequests,
-        selectedRequestId: state.selectedRequestId,
       }),
     },
   ),
@@ -112,7 +111,6 @@ if (typeof window !== "undefined") {
         if (parsed.state) {
           useUiStore.setState({
             visitedRequests: parsed.state.visitedRequests ?? {},
-            selectedRequestId: parsed.state.selectedRequestId ?? null,
           });
         }
       } catch {
