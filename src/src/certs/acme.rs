@@ -117,6 +117,12 @@ impl AcmeClient {
 
     /// Process all authorizations together to handle shared TXT record domains
     /// This is required for wildcard certs where base and wildcard use the same _acme-challenge domain
+    ///
+    /// IMPORTANT: For wildcard certificates (e.g., requestrepo.com + *.requestrepo.com):
+    /// - BOTH authorizations have identifier = "requestrepo.com" (per RFC 8555)
+    /// - Each authorization has a DIFFERENT challenge token
+    /// - BOTH TXT records must be set simultaneously at _acme-challenge.requestrepo.com
+    /// - We track by challenge URL (unique) not identifier (ambiguous)
     async fn process_all_authorizations(
         &self,
         order: &mut Order,
@@ -125,30 +131,41 @@ impl AcmeClient {
     ) -> Result<()> {
         use std::collections::HashMap;
 
-        // Collect all challenges that need processing
-        // Key: challenge_domain, Value: vec of (identifier, challenge_url, txt_value)
-        let mut challenges_by_domain: HashMap<String, Vec<(String, String, String)>> =
-            HashMap::new();
+        // Collect ALL challenges from ALL authorizations
+        // Key: challenge_url (unique), Value: (identifier, challenge_domain, txt_value, needs_validation)
+        let mut challenges: HashMap<String, (String, String, String, bool)> = HashMap::new();
+
+        // Also track which domains we set TXT records for (for cleanup)
+        let mut challenge_domains: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for auth in authorizations {
             let identifier = match &auth.identifier {
                 Identifier::Dns(domain) => domain.clone(),
             };
 
-            info!("Processing authorization for {}", identifier);
+            let needs_validation = !matches!(auth.status, AuthorizationStatus::Valid);
 
-            // Skip if already valid
-            if matches!(auth.status, AuthorizationStatus::Valid) {
-                debug!("Authorization already valid for {}", identifier);
-                continue;
-            }
+            info!(
+                "Processing authorization for {} (status={:?}, needs_validation={})",
+                identifier, auth.status, needs_validation
+            );
 
             // Find the DNS-01 challenge
-            let dns_challenge = auth
+            let dns_challenge = match auth
                 .challenges
                 .iter()
                 .find(|c| c.r#type == ChallengeType::Dns01)
-                .ok_or_else(|| anyhow!("No DNS-01 challenge found for {}", identifier))?;
+            {
+                Some(c) => c,
+                None => {
+                    if needs_validation {
+                        return Err(anyhow!("No DNS-01 challenge found for {}", identifier));
+                    }
+                    // Already valid, no challenge needed
+                    continue;
+                }
+            };
 
             // Get the challenge token
             let key_auth = order.key_authorization(dns_challenge);
@@ -158,57 +175,93 @@ impl AcmeClient {
             let challenge_domain =
                 format!("_acme-challenge.{}", identifier.trim_start_matches("*."));
 
-            challenges_by_domain
-                .entry(challenge_domain)
-                .or_default()
-                .push((identifier, dns_challenge.url.clone(), txt_value));
+            info!(
+                "  Challenge URL: {}, domain: {}, token: {}...",
+                dns_challenge.url,
+                challenge_domain,
+                &txt_value[..20.min(txt_value.len())]
+            );
+
+            challenges.insert(
+                dns_challenge.url.clone(),
+                (
+                    identifier,
+                    challenge_domain.clone(),
+                    txt_value,
+                    needs_validation,
+                ),
+            );
+            challenge_domains.insert(challenge_domain);
         }
 
-        if challenges_by_domain.is_empty() {
-            debug!("All authorizations already valid");
+        // Count how many challenges need validation
+        let pending_count = challenges.values().filter(|(_, _, _, n)| *n).count();
+
+        if pending_count == 0 {
+            debug!("All authorizations already valid, no challenges to process");
             return Ok(());
         }
 
-        // Debug: log what we collected
-        for (domain, challenges) in &challenges_by_domain {
-            info!(
-                "Challenge domain {} has {} challenges to process",
-                domain,
-                challenges.len()
-            );
-            for (id, url, val) in challenges {
+        info!(
+            "Setting up {} TXT records for {} pending challenges",
+            challenge_domains.len(),
+            pending_count
+        );
+
+        // Collect all TXT values per challenge domain
+        let mut txt_by_domain: HashMap<String, Vec<(String, String)>> = HashMap::new();
+
+        for (url, (identifier, challenge_domain, txt_value, needs_validation)) in &challenges {
+            if *needs_validation {
+                txt_by_domain
+                    .entry(challenge_domain.clone())
+                    .or_default()
+                    .push((identifier.clone(), txt_value.clone()));
                 info!(
-                    "  - identifier={}, url={}, token={}",
-                    id,
-                    url,
-                    &val[..20.min(val.len())]
+                    "Will set TXT for {} at {} (challenge URL: {})",
+                    identifier,
+                    challenge_domain,
+                    &url[url.len().saturating_sub(30)..]
                 );
             }
         }
 
-        // Set all TXT records first
-        for (challenge_domain, challenges) in &challenges_by_domain {
-            // For domains with multiple challenges (base + wildcard), they might have different tokens
-            // We need to handle this by setting multiple TXT records or processing sequentially
-            // Let's set the TXT record for the first challenge, then update if needed
-            for (identifier, _url, txt_value) in challenges {
+        // Set ALL TXT records before notifying ACME
+        for (challenge_domain, txt_entries) in &txt_by_domain {
+            info!(
+                "Setting {} TXT record(s) for domain {}",
+                txt_entries.len(),
+                challenge_domain
+            );
+
+            for (identifier, txt_value) in txt_entries {
                 info!(
-                    "Setting TXT record for {}: {} = {}",
-                    identifier, challenge_domain, txt_value
+                    "  Setting TXT for {}: {} = {}...",
+                    identifier,
+                    challenge_domain,
+                    &txt_value[..20.min(txt_value.len())]
                 );
                 handler.set_txt(challenge_domain, txt_value).await?;
+            }
 
-                // Wait for propagation
+            // Wait for propagation - check for ALL TXT values we set
+            // (DNS can return multiple TXT records for the same name)
+            for (identifier, txt_value) in txt_entries {
+                info!(
+                    "Waiting for TXT propagation for {}: {}",
+                    identifier, challenge_domain
+                );
                 handler
                     .wait_propagation(challenge_domain, txt_value, 1200)
                     .await?;
             }
         }
 
-        // Notify ACME server about all challenges being ready
-        for challenges in challenges_by_domain.values() {
-            for (identifier, url, _txt_value) in challenges {
-                info!("Notifying ACME server challenge ready for {}", identifier);
+        // Notify ACME server about ALL pending challenges being ready
+        info!("Notifying ACME server about all challenges being ready");
+        for (url, (identifier, _, _, needs_validation)) in &challenges {
+            if *needs_validation {
+                info!("  Notifying ACME for {} (url: ...{})", identifier, &url[url.len().saturating_sub(30)..]);
                 order
                     .set_challenge_ready(url)
                     .await
@@ -216,15 +269,15 @@ impl AcmeClient {
             }
         }
 
-        // Wait for all authorizations to be validated
-        for auth in authorizations {
-            if !matches!(auth.status, AuthorizationStatus::Valid) {
-                self.wait_for_challenge_valid(order, auth).await?;
-            }
-        }
+        // Wait for all authorizations to be validated by polling order state
+        // This is more robust than waiting for individual authorizations by identifier
+        // (which is ambiguous for wildcard certs)
+        info!("Waiting for all authorizations to validate...");
+        self.wait_for_all_authorizations_valid(order, &challenges)
+            .await?;
 
         // Clean up all TXT records after all validations complete
-        for challenge_domain in challenges_by_domain.keys() {
+        for challenge_domain in &challenge_domains {
             info!("Clearing TXT record for {}", challenge_domain);
             handler.clear_txt(challenge_domain).await?;
         }
@@ -232,48 +285,90 @@ impl AcmeClient {
         Ok(())
     }
 
-    /// Wait for a challenge to be validated
-    async fn wait_for_challenge_valid(
+    /// Wait for all authorizations to become valid by polling order state
+    /// This avoids the identifier ambiguity issue with wildcard certs
+    async fn wait_for_all_authorizations_valid(
         &self,
         order: &mut Order,
-        auth: &instant_acme::Authorization,
+        challenges: &std::collections::HashMap<String, (String, String, String, bool)>,
     ) -> Result<()> {
-        let identifier = match &auth.identifier {
-            Identifier::Dns(domain) => domain.clone(),
-        };
-
-        let max_attempts = 30;
+        let max_attempts = 60; // 2 minutes at 2s intervals
         let mut attempts = 0;
 
         loop {
             attempts += 1;
             if attempts > max_attempts {
-                return Err(anyhow!("Challenge validation timeout for {}", identifier));
+                return Err(anyhow!("Authorization validation timeout"));
             }
 
-            // Fetch fresh authorization state
+            // Fetch fresh authorizations
             let fresh_auths = order
                 .authorizations()
                 .await
                 .context("Failed to refresh authorizations")?;
 
-            // Find our authorization
-            if let Some(fresh_auth) = fresh_auths.iter().find(|a| match &a.identifier {
-                Identifier::Dns(d) => d == &identifier,
-            }) {
+            // Check status of each authorization by matching challenge URLs
+            let mut all_valid = true;
+            let mut any_invalid = false;
+
+            for fresh_auth in &fresh_auths {
+                let identifier = match &fresh_auth.identifier {
+                    Identifier::Dns(d) => d.clone(),
+                };
+
+                // Find matching challenge URL
+                let matching_challenge_url = fresh_auth
+                    .challenges
+                    .iter()
+                    .find(|c| c.r#type == ChallengeType::Dns01)
+                    .map(|c| c.url.clone());
+
+                let needs_validation = matching_challenge_url
+                    .as_ref()
+                    .and_then(|url| challenges.get(url))
+                    .map(|(_, _, _, n)| *n)
+                    .unwrap_or(false);
+
+                if !needs_validation {
+                    // This authorization was already valid, skip
+                    continue;
+                }
+
                 match fresh_auth.status {
                     AuthorizationStatus::Valid => {
-                        info!("Authorization validated for {}", identifier);
-                        return Ok(());
+                        debug!("Authorization validated for {}", identifier);
                     }
                     AuthorizationStatus::Invalid => {
-                        return Err(anyhow!("Authorization invalid for {}", identifier));
+                        // Log challenge errors for debugging
+                        for challenge in &fresh_auth.challenges {
+                            if let Some(ref error) = challenge.error {
+                                info!(
+                                    "Challenge error for {} (type={:?}): {:?}",
+                                    identifier, challenge.r#type, error
+                                );
+                            }
+                        }
+                        any_invalid = true;
                     }
                     AuthorizationStatus::Pending => {
                         debug!("Authorization still pending for {}", identifier);
+                        all_valid = false;
                     }
-                    _ => {}
+                    _ => {
+                        all_valid = false;
+                    }
                 }
+            }
+
+            if any_invalid {
+                return Err(anyhow!(
+                    "One or more authorizations became invalid. Check logs for challenge errors."
+                ));
+            }
+
+            if all_valid {
+                info!("All authorizations validated successfully");
+                return Ok(());
             }
 
             sleep(Duration::from_secs(2)).await;
