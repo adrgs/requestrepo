@@ -5,16 +5,6 @@
  * Falls back to window.location-based detection for development
  */
 
-// Extend Window interface for injected config
-declare global {
-  interface Window {
-    __CONFIG__?: {
-      DOMAIN?: string;
-      SENTRY_DSN_FRONTEND?: string;
-    };
-  }
-}
-
 // Detect if we're running in development mode
 const isDev = import.meta.env.DEV;
 

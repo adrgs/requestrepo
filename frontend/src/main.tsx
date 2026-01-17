@@ -15,6 +15,7 @@ import "flag-icons/css/flag-icons.min.css";
 declare global {
   interface Window {
     __CONFIG__?: {
+      DOMAIN?: string;
       SENTRY_DSN_FRONTEND?: string;
     };
   }
