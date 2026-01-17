@@ -57,6 +57,8 @@ function App() {
           <Route path="requests" element={<RequestsPage />} />
           <Route path="response" element={<ResponseEditorPage />} />
           <Route path="dns" element={<DnsSettingsPage />} />
+          {/* Catch-all: redirect unknown routes to /requests */}
+          <Route path="*" element={<Navigate to="/requests" replace />} />
         </Route>
       </Routes>
     </main>
