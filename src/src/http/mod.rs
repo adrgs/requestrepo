@@ -5,6 +5,11 @@ mod websocket;
 
 pub use static_files::StaticFiles;
 
+/// Marker extension to indicate a request came over TLS
+/// This is inserted by the HTTPS server and cannot be spoofed by clients
+#[derive(Clone, Copy, Debug)]
+pub struct TlsConnectInfo;
+
 use anyhow::{anyhow, Result};
 use axum::{
     extract::{ConnectInfo, DefaultBodyLimit},
@@ -256,6 +261,8 @@ where
 
     fn call(&mut self, mut req: axum::http::Request<ReqBody>) -> Self::Future {
         req.extensions_mut().insert(ConnectInfo(self.addr));
+        // Mark this request as coming over TLS - cannot be spoofed by clients
+        req.extensions_mut().insert(TlsConnectInfo);
         self.inner.call(req)
     }
 }

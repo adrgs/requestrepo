@@ -14,17 +14,45 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::http::AppState;
+use crate::http::{AppState, TlsConnectInfo};
 use crate::ip2country::lookup_country;
 use crate::models::{Header, HttpRequestLog, Response as ResponseModel};
 use crate::utils::{
     config::CONFIG, generate_request_id, get_current_timestamp, get_file_path_from_url,
-    get_subdomain_from_hostname, get_subdomain_from_path,
+    get_subdomain_from_hostname, get_subdomain_from_path, is_private_ip,
 };
 use serde_json::json;
 
 /// Health check endpoint for monitoring and orchestration
-pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
+/// Only accessible from private IPs (10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x)
+/// For external requests, behaves like any other route (logs request, serves custom response)
+pub async fn health(
+    State(state): State<AppState>,
+    connect_info: axum::extract::ConnectInfo<std::net::SocketAddr>,
+    tls_info: Option<axum::Extension<TlsConnectInfo>>,
+    uri: Uri,
+    method: axum::http::Method,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let client_ip = connect_info.0.ip().to_string();
+
+    // Only return health stats for private/internal IPs
+    if !is_private_ip(&client_ip) {
+        // For external requests, treat /health as a normal route
+        return catch_all(
+            State(state),
+            connect_info,
+            tls_info,
+            uri,
+            method,
+            headers,
+            body,
+        )
+        .await
+        .into_response();
+    }
+
     let stats = state.cache.stats();
 
     let memory_used_mb = stats.memory_used_bytes as f64 / 1024.0 / 1024.0;
@@ -44,17 +72,21 @@ pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
             }
         })),
     )
+        .into_response()
 }
 
 /// Catch-all handler that logs HTTP requests and serves files
 pub async fn catch_all(
     State(state): State<AppState>,
     connect_info: axum::extract::ConnectInfo<std::net::SocketAddr>,
+    tls_info: Option<axum::Extension<TlsConnectInfo>>,
     uri: Uri,
     method: axum::http::Method,
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Check if request came over TLS - this is set by our server and cannot be spoofed
+    let is_tls = tls_info.is_some();
     let host = headers
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
@@ -96,18 +128,13 @@ pub async fn catch_all(
 
         // Extract query string and build full URL
         let query_string = uri.query().map(|s| format!("?{s}"));
-        let protocol = "HTTP/1.1".to_string();
 
-        // Build full URL (fragments are not sent to server in HTTP)
-        let scheme = if headers
-            .get("x-forwarded-proto")
-            .and_then(|h| h.to_str().ok())
-            .map(|s| s == "https")
-            .unwrap_or(false)
-        {
-            "https"
+        // Determine scheme and protocol from actual TLS state (cannot be spoofed by clients)
+        let scheme = if is_tls { "https" } else { "http" };
+        let protocol = if is_tls {
+            "HTTPS/1.1".to_string()
         } else {
-            "http"
+            "HTTP/1.1".to_string()
         };
         let full_url = format!(
             "{}://{}{}{}",
@@ -179,8 +206,10 @@ pub async fn catch_all(
 
         let _ = state.tx.send(message);
 
-        // Extract the file path from the URL (for /r/subdomain/path routing)
-        let file_path = get_file_path_from_url(path);
+        // Extract the file path from the URL
+        // For main domain path-based routing (/r/subdomain/path): strips /r/subdomain prefix
+        // For true subdomain requests: keeps path as-is (so /r/folder works)
+        let file_path = get_file_path_from_url(path, on_main_domain);
         return serve_file(state, subdomain, &file_path, on_main_domain).await;
     }
 

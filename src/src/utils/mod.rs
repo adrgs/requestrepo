@@ -5,6 +5,7 @@ use crate::models::{Claims, ShareClaims};
 use config::CONFIG;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::Rng;
+use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -14,6 +15,16 @@ pub fn verify_subdomain(
     alphabet_set: &std::collections::HashSet<char>,
 ) -> bool {
     subdomain.len() == length && subdomain.chars().all(|c| alphabet_set.contains(&c))
+}
+
+/// Check if an IP address is private (internal network) or loopback
+/// Returns true for: 10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x, ::1
+pub fn is_private_ip(ip: &str) -> bool {
+    match ip.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ipv4)) => ipv4.is_private() || ipv4.is_loopback(),
+        Ok(IpAddr::V6(ipv6)) => ipv6.is_loopback(),
+        Err(_) => false,
+    }
 }
 
 pub fn verify_jwt(token: &str) -> Option<String> {
@@ -78,9 +89,18 @@ pub fn get_subdomain_from_path(path: &str) -> Option<String> {
     Some(subdomain)
 }
 
-/// Extract the file path portion from a /r/subdomain/path URL
-/// Returns the path after the subdomain portion (e.g., "/r/abc123/foo/bar" -> "/foo/bar")
-pub fn get_file_path_from_url(path: &str) -> String {
+/// Extract the file path portion from a URL
+/// When `on_main_domain` is true (path-based routing like /r/subdomain/path):
+///   Returns the path after the subdomain portion (e.g., "/r/abc123/foo/bar" -> "/foo/bar")
+/// When `on_main_domain` is false (true subdomain routing):
+///   Returns the path as-is (e.g., "/r/test.html" -> "/r/test.html")
+pub fn get_file_path_from_url(path: &str, on_main_domain: bool) -> String {
+    // For true subdomain requests, don't strip anything - the path is the actual file path
+    if !on_main_domain {
+        return path.to_string();
+    }
+
+    // For main domain path-based routing, strip the /r/subdomain prefix
     let path_lower = path.to_lowercase();
     let trimmed = path_lower.trim_start_matches('/');
 
