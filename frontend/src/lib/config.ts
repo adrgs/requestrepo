@@ -1,23 +1,38 @@
 /**
  * Frontend configuration
  *
- * Uses window.location at runtime for domain detection
- * This allows a single Docker image to work on any domain
+ * Uses runtime config injected by the backend (window.__CONFIG__.DOMAIN)
+ * Falls back to window.location-based detection for development
  */
+
+// Extend Window interface for injected config
+declare global {
+  interface Window {
+    __CONFIG__?: {
+      DOMAIN?: string;
+      SENTRY_DSN_FRONTEND?: string;
+    };
+  }
+}
 
 // Detect if we're running in development mode
 const isDev = import.meta.env.DEV;
 
 /**
- * Extract base domain from hostname at runtime
- * Uses VITE_DOMAIN to determine how many parts make up the base domain
- * e.g., if VITE_DOMAIN is "requestrepo.aisafe.red" (3 parts):
- *   "abc.requestrepo.aisafe.red" → "requestrepo.aisafe.red"
- * e.g., if VITE_DOMAIN is "requestrepo.com" (2 parts):
- *   "abc.requestrepo.com" → "requestrepo.com"
+ * Get the base domain from runtime config or fallback to detection
+ * Priority:
+ * 1. Backend-injected window.__CONFIG__.DOMAIN (most reliable)
+ * 2. VITE_DOMAIN env var (for development)
+ * 3. Window location-based detection (fallback)
  */
 function getRuntimeDomain(): string {
   if (typeof window !== "undefined") {
+    // Use backend-injected domain if available (most reliable)
+    if (window.__CONFIG__?.DOMAIN) {
+      return window.__CONFIG__.DOMAIN;
+    }
+
+    // Fallback: try to detect from hostname
     const hostname = window.location.hostname;
     const parts = hostname.split(".");
 
