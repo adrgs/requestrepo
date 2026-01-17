@@ -349,9 +349,13 @@ async fn build_dns_response(
             let custom_record = cache.get(&dns_key).await.unwrap_or(None);
 
             let txt_value = custom_record.unwrap_or_else(|| CONFIG.txt_record.clone());
-            let txt_data = TXT::new(vec![txt_value]);
-            let record = Record::from_rdata(name.clone(), 1, RData::TXT(txt_data));
-            response.add_answer(record);
+
+            // Support multiple TXT records (newline-separated) for ACME wildcard certs
+            for value in txt_value.lines() {
+                let txt_data = TXT::new(vec![value.to_string()]);
+                let record = Record::from_rdata(name.clone(), 1, RData::TXT(txt_data));
+                response.add_answer(record);
+            }
             response.set_response_code(ResponseCode::NoError);
         }
         RecordType::MX => {

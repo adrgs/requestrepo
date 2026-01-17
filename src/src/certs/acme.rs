@@ -87,10 +87,11 @@ impl AcmeClient {
 
         info!("Processing {} authorizations", authorizations.len());
 
-        for auth in &authorizations {
-            self.process_authorization(&mut order, auth, handler)
-                .await?;
-        }
+        // For wildcard certs, both authorizations use the same TXT record domain
+        // We must set ALL TXT records, validate ALL, then clear ALL
+        // to avoid clearing a record that another authorization still needs
+        self.process_all_authorizations(&mut order, &authorizations, handler)
+            .await?;
 
         // Wait for order to be ready
         self.wait_for_order_ready(&mut order).await?;
@@ -114,59 +115,102 @@ impl AcmeClient {
         Ok((cert_chain.into_bytes(), key_pem))
     }
 
-    /// Process a single authorization by completing its DNS-01 challenge
-    async fn process_authorization(
+    /// Process all authorizations together to handle shared TXT record domains
+    /// This is required for wildcard certs where base and wildcard use the same _acme-challenge domain
+    async fn process_all_authorizations(
         &self,
         order: &mut Order,
-        auth: &instant_acme::Authorization,
+        authorizations: &[instant_acme::Authorization],
         handler: &DnsChallengeHandler,
     ) -> Result<()> {
-        let identifier = match &auth.identifier {
-            Identifier::Dns(domain) => domain.clone(),
-        };
+        use std::collections::HashMap;
 
-        info!("Processing authorization for {}", identifier);
+        // Collect all challenges that need processing
+        // Key: challenge_domain, Value: vec of (identifier, challenge_url, txt_value)
+        let mut challenges_by_domain: HashMap<String, Vec<(String, String, String)>> =
+            HashMap::new();
 
-        // Skip if already valid
-        if matches!(auth.status, AuthorizationStatus::Valid) {
-            debug!("Authorization already valid for {}", identifier);
+        for auth in authorizations {
+            let identifier = match &auth.identifier {
+                Identifier::Dns(domain) => domain.clone(),
+            };
+
+            info!("Processing authorization for {}", identifier);
+
+            // Skip if already valid
+            if matches!(auth.status, AuthorizationStatus::Valid) {
+                debug!("Authorization already valid for {}", identifier);
+                continue;
+            }
+
+            // Find the DNS-01 challenge
+            let dns_challenge = auth
+                .challenges
+                .iter()
+                .find(|c| c.r#type == ChallengeType::Dns01)
+                .ok_or_else(|| anyhow!("No DNS-01 challenge found for {}", identifier))?;
+
+            // Get the challenge token
+            let key_auth = order.key_authorization(dns_challenge);
+            let txt_value = key_auth.dns_value();
+
+            // For wildcards, use _acme-challenge.{base_domain}
+            let challenge_domain =
+                format!("_acme-challenge.{}", identifier.trim_start_matches("*."));
+
+            challenges_by_domain
+                .entry(challenge_domain)
+                .or_default()
+                .push((identifier, dns_challenge.url.clone(), txt_value));
+        }
+
+        if challenges_by_domain.is_empty() {
+            debug!("All authorizations already valid");
             return Ok(());
         }
 
-        // Find the DNS-01 challenge
-        let dns_challenge = auth
-            .challenges
-            .iter()
-            .find(|c| c.r#type == ChallengeType::Dns01)
-            .ok_or_else(|| anyhow!("No DNS-01 challenge found for {}", identifier))?;
+        // Set all TXT records first
+        for (challenge_domain, challenges) in &challenges_by_domain {
+            // For domains with multiple challenges (base + wildcard), they might have different tokens
+            // We need to handle this by setting multiple TXT records or processing sequentially
+            // Let's set the TXT record for the first challenge, then update if needed
+            for (identifier, _url, txt_value) in challenges {
+                info!(
+                    "Setting TXT record for {}: {} = {}",
+                    identifier, challenge_domain, txt_value
+                );
+                handler.set_txt(challenge_domain, txt_value).await?;
 
-        // Get the challenge token (key authorization digest)
-        let key_auth = order.key_authorization(dns_challenge);
-        let txt_value = key_auth.dns_value();
+                // Wait for propagation
+                handler
+                    .wait_propagation(challenge_domain, txt_value, 1200)
+                    .await?;
+            }
+        }
 
-        // The challenge domain is _acme-challenge.{domain}
-        // For wildcards, use _acme-challenge.{base_domain}
-        let challenge_domain = format!("_acme-challenge.{}", identifier.trim_start_matches("*."));
+        // Notify ACME server about all challenges being ready
+        for challenges in challenges_by_domain.values() {
+            for (identifier, url, _txt_value) in challenges {
+                info!("Notifying ACME server challenge ready for {}", identifier);
+                order
+                    .set_challenge_ready(url)
+                    .await
+                    .context(format!("Failed to notify ACME server for {identifier}"))?;
+            }
+        }
 
-        // Set the TXT record
-        handler.set_txt(&challenge_domain, &txt_value).await?;
+        // Wait for all authorizations to be validated
+        for auth in authorizations {
+            if !matches!(auth.status, AuthorizationStatus::Valid) {
+                self.wait_for_challenge_valid(order, auth).await?;
+            }
+        }
 
-        // Wait for DNS propagation (20 minute timeout)
-        handler
-            .wait_propagation(&challenge_domain, &txt_value, 1200)
-            .await?;
-
-        // Tell ACME server we're ready
-        order
-            .set_challenge_ready(&dns_challenge.url)
-            .await
-            .context("Failed to notify ACME server of challenge completion")?;
-
-        // Wait for challenge validation
-        self.wait_for_challenge_valid(order, auth).await?;
-
-        // Clean up TXT record
-        handler.clear_txt(&challenge_domain).await?;
+        // Clean up all TXT records after all validations complete
+        for challenge_domain in challenges_by_domain.keys() {
+            info!("Clearing TXT record for {}", challenge_domain);
+            handler.clear_txt(challenge_domain).await?;
+        }
 
         Ok(())
     }

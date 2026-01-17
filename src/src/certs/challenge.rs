@@ -19,7 +19,7 @@ impl DnsChallengeHandler {
         Self { cache }
     }
 
-    /// Set a TXT record for ACME challenge
+    /// Add a TXT record for ACME challenge (supports multiple values per domain)
     /// The domain should be the full _acme-challenge.{domain} hostname
     pub async fn set_txt(&self, challenge_domain: &str, token: &str) -> Result<()> {
         // Ensure domain ends with a dot for DNS consistency and lowercase for case-insensitive lookup
@@ -32,15 +32,25 @@ impl DnsChallengeHandler {
         let key = format!("dns:TXT:{domain}");
         info!("Setting ACME challenge TXT record: {} = {}", domain, token);
 
+        // Get existing values and append (supports multiple TXT records for wildcard certs)
+        let existing = self.cache.get(&key).await.ok().flatten();
+        let new_value = match existing {
+            Some(existing_values) => {
+                // Append new token, separated by newline
+                format!("{existing_values}\n{token}")
+            }
+            None => token.to_string(),
+        };
+
         self.cache
-            .set(&key, token)
+            .set(&key, &new_value)
             .await
             .context("Failed to set TXT record in cache")?;
 
         Ok(())
     }
 
-    /// Clear the TXT record after challenge is complete
+    /// Clear all TXT records for the challenge domain
     pub async fn clear_txt(&self, challenge_domain: &str) -> Result<()> {
         let domain = if challenge_domain.ends_with('.') {
             challenge_domain.to_lowercase()
@@ -101,21 +111,21 @@ impl DnsChallengeHandler {
 
             for (resolver_ip, resolver_name) in &resolvers {
                 match self.query_txt(&domain, resolver_ip).await {
-                    Ok(Some(value)) if value == expected_token => {
+                    Ok(values) if values.iter().any(|v| v == expected_token) => {
                         debug!(
                             "DNS propagation confirmed via {} for {}",
                             resolver_name, domain
                         );
                         confirmed_resolvers.push(*resolver_name);
                     }
-                    Ok(Some(value)) => {
+                    Ok(values) if !values.is_empty() => {
                         debug!(
-                            "TXT record found but value mismatch on {}: expected '{}', got '{}'",
-                            resolver_name, expected_token, value
+                            "TXT records found but token not present on {}: expected '{}', got {:?}",
+                            resolver_name, expected_token, values
                         );
                         all_confirmed = false;
                     }
-                    Ok(None) => {
+                    Ok(_) => {
                         debug!("TXT record not found on {} for {}", resolver_name, domain);
                         all_confirmed = false;
                     }
@@ -151,8 +161,9 @@ impl DnsChallengeHandler {
         }
     }
 
-    /// Query TXT record from a specific DNS resolver
-    async fn query_txt(&self, domain: &str, resolver_ip: &str) -> Result<Option<String>> {
+    /// Query all TXT records from a specific DNS resolver
+    /// Returns all TXT record values (supports multiple records for ACME wildcard certs)
+    async fn query_txt(&self, domain: &str, resolver_ip: &str) -> Result<Vec<String>> {
         let ip: Ipv4Addr = resolver_ip.parse().context("Invalid resolver IP address")?;
 
         let socket = SocketAddr::new(IpAddr::V4(ip), 53);
@@ -172,15 +183,16 @@ impl DnsChallengeHandler {
 
         let response = resolver.txt_lookup(query_name).await?;
 
+        let mut values = Vec::new();
         for txt in response.iter() {
             // TXT records can have multiple strings, concatenate them
             let value: String = txt.iter().map(|s| String::from_utf8_lossy(s)).collect();
             if !value.is_empty() {
-                return Ok(Some(value));
+                values.push(value);
             }
         }
 
-        Ok(None)
+        Ok(values)
     }
 }
 
