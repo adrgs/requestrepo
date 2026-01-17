@@ -169,6 +169,23 @@ impl AcmeClient {
             return Ok(());
         }
 
+        // Debug: log what we collected
+        for (domain, challenges) in &challenges_by_domain {
+            info!(
+                "Challenge domain {} has {} challenges to process",
+                domain,
+                challenges.len()
+            );
+            for (id, url, val) in challenges {
+                info!(
+                    "  - identifier={}, url={}, token={}",
+                    id,
+                    url,
+                    &val[..20.min(val.len())]
+                );
+            }
+        }
+
         // Set all TXT records first
         for (challenge_domain, challenges) in &challenges_by_domain {
             // For domains with multiple challenges (base + wildcard), they might have different tokens
