@@ -205,7 +205,7 @@ export function RequestsPage() {
 
     // Build raw request
     const rawRequest = [
-      `${selectedRequest.method} ${selectedRequest.path}${selectedRequest.query ?? ""} ${selectedRequest.protocol}`,
+      `${selectedRequest.method} ${selectedRequest.path}${selectedRequest.query ?? ""} HTTP/1.1`,
       ...Object.entries(selectedRequest.headers).map(([k, v]) => `${k}: ${v}`),
       "",
       isPrintable ? bodyText : "[Binary data]",
