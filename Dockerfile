@@ -3,11 +3,12 @@
 
 # Stage 1: Chef - install cargo-chef and sccache
 FROM rust:1.85-slim-bookworm AS chef
-RUN cargo install cargo-chef sccache --locked
+# Install OpenSSL dev packages first (required to build sccache)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef sccache --locked
 ENV RUSTC_WRAPPER=sccache
 ENV SCCACHE_DIR=/sccache
 WORKDIR /app
