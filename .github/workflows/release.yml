@@ -44,6 +44,24 @@ jobs:
             type=raw,value=latest
             type=sha,prefix=
 
+      # Persistent sccache for incremental Rust builds
+      - name: Restore sccache cache
+        uses: actions/cache@v4
+        with:
+          path: sccache-cache
+          key: sccache-${{ runner.os }}-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: |
+            sccache-${{ runner.os }}-
+
+      - name: Inject sccache cache into Docker
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            {
+              "sccache-cache": "/sccache"
+            }
+          skip-extraction: ${{ steps.cache.outputs.cache-hit }}
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

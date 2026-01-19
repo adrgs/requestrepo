@@ -23,13 +23,13 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS rust-builder
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this layer is cached unless dependencies change
-# Use BuildKit cache mount for sccache
-RUN --mount=type=cache,target=/sccache \
+# Use BuildKit cache mount for sccache (id matches buildkit-cache-dance config)
+RUN --mount=type=cache,id=sccache-cache,target=/sccache \
     cargo chef cook --release --recipe-path recipe.json
 # Copy source and build application
 COPY src/Cargo.toml src/Cargo.lock ./
 COPY src/src ./src
-RUN --mount=type=cache,target=/sccache \
+RUN --mount=type=cache,id=sccache-cache,target=/sccache \
     cargo build --release && \
     sccache --show-stats
 
