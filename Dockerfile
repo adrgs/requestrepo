@@ -1,31 +1,39 @@
 # Multi-stage Dockerfile for RequestRepo Rust backend
-# Stage 1: Build Rust backend
-FROM rust:1.92-slim-bookworm AS rust-builder
+# Uses cargo-chef for optimized dependency caching + sccache for compiler caching
 
+# Stage 1: Chef - install cargo-chef and sccache
+FROM rust:1.85-slim-bookworm AS chef
+RUN cargo install cargo-chef sccache --locked
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
-
+ENV RUSTC_WRAPPER=sccache
+ENV SCCACHE_DIR=/sccache
 WORKDIR /app
 
-# Copy Cargo files for dependency caching
+# Stage 2: Planner - analyze dependencies
+FROM chef AS planner
 COPY src/Cargo.toml src/Cargo.lock ./
-
-# Create dummy main.rs to build dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-
-# Build dependencies only (this layer will be cached)
-RUN cargo build --release && rm -rf src
-
-# Copy actual source code
 COPY src/src ./src
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build the actual application
-RUN touch src/main.rs && cargo build --release
+# Stage 3: Builder - build dependencies then source
+FROM chef AS rust-builder
+COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies - this layer is cached unless dependencies change
+# Use BuildKit cache mount for sccache
+RUN --mount=type=cache,target=/sccache \
+    cargo chef cook --release --recipe-path recipe.json
+# Copy source and build application
+COPY src/Cargo.toml src/Cargo.lock ./
+COPY src/src ./src
+RUN --mount=type=cache,target=/sccache \
+    cargo build --release && \
+    sccache --show-stats
 
-# Stage 2: Build frontend
-FROM oven/bun:1.3.6-slim AS frontend-builder
+# Stage 4: Build frontend
+FROM oven/bun:1.2-slim AS frontend-builder
 
 WORKDIR /app
 
@@ -41,7 +49,7 @@ COPY frontend/ ./
 # Build frontend
 RUN bun run build
 
-# Stage 3: Download IP geolocation database
+# Stage 5: Download IP geolocation database
 FROM alpine:3.21 AS ip2country-downloader
 
 RUN apk add --no-cache curl
@@ -57,7 +65,7 @@ RUN mkdir -p vendor && \
       -o vendor/dbip-country-lite.csv.gz || \
     echo "Warning: Could not download DB-IP database, IP geolocation will be disabled"
 
-# Stage 4: Final runtime image
+# Stage 6: Final runtime image
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
