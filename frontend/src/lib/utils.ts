@@ -25,7 +25,34 @@ export function truncate(str: string, maxLength: number): string {
 }
 
 export function copyToClipboard(text: string): Promise<void> {
-  return navigator.clipboard.writeText(text);
+  // Modern API for HTTPS
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => {
+      // Fall through to legacy method
+      return legacyCopy(text);
+    });
+  }
+  return legacyCopy(text);
+}
+
+function legacyCopy(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    } catch {
+      // Silently fail - nothing more we can do
+    }
+    resolve();
+  });
 }
 
 export function getMethodColor(method: string | undefined | null): string {

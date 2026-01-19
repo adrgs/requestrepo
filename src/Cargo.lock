@@ -2247,6 +2247,7 @@ dependencies = [
  "rustls",
  "rustls-pemfile",
  "sentry",
+ "sentry-tower",
  "serde",
  "serde_json",
  "tempfile",
@@ -2576,6 +2577,20 @@ checksum = "3f02c7162f7b69b8de872b439d4696dc1d65f80b13ddd3c3831723def4756b63"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
+]
+
+[[package]]
+name = "sentry-tower"
+version = "0.46.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01876ce0b0bfa801ea596f1684fca570cdf2ad191267253cdcc04251433c3bd7"
+dependencies = [
+ "http 1.3.1",
+ "pin-project",
+ "sentry-core",
+ "tower-layer",
+ "tower-service",
+ "url",
 ]
 
 [[package]]

@@ -242,15 +242,32 @@ impl Cache {
         }
 
         // Now get_refresh to move to end (most recently used) and modify
-        let len = if let Some(entry) = store.get_refresh(key) {
-            entry.items.push_back(value.to_string());
+        let (len, evicted_size) = if let Some(entry) = store.get_refresh(key) {
+            entry.items.push_back(value.to_string()); // O(1)
             entry.total_size += value_size;
-            entry.items.len()
+
+            // Enforce per-session limit - O(1) pop if over limit
+            let mut evicted = 0usize;
+            if entry.items.len() > CONFIG.max_requests_per_session {
+                if let Some(old) = entry.items.pop_front() {
+                    // O(1)
+                    let old_size = old.len();
+                    entry.total_size = entry.total_size.saturating_sub(old_size);
+                    evicted = old_size;
+                }
+            }
+
+            (entry.items.len(), evicted)
         } else {
             return Err(anyhow!("Failed to insert into request store"));
         };
 
+        // Update memory tracking: add new, subtract evicted
         self.current_memory.fetch_add(value_size, Ordering::Relaxed);
+        if evicted_size > 0 {
+            self.current_memory
+                .fetch_sub(evicted_size, Ordering::Relaxed);
+        }
 
         Ok(len)
     }

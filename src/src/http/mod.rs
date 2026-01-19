@@ -19,6 +19,7 @@ use axum::{
 };
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
+use sentry_tower::{NewSentryLayer, SentryHttpLayer};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -137,6 +138,8 @@ fn create_router(state: AppState) -> Router {
         .merge(api_routes)
         .fallback(routes::catch_all)
         .layer(DefaultBodyLimit::max(CONFIG.max_request_body_bytes))
+        .layer(SentryHttpLayer::new().enable_transaction())
+        .layer(NewSentryLayer::new_from_top())
         .with_state(state)
 }
 

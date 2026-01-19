@@ -40,6 +40,8 @@ pub struct Config {
     // Security: Allow all response headers including dangerous ones like Service-Worker-Allowed
     // Default: false (blocked on main domain path-based routing)
     pub allow_all_headers: bool,
+    // Max requests per session (FIFO eviction when exceeded)
+    pub max_requests_per_session: usize,
 }
 
 impl Config {
@@ -163,6 +165,12 @@ impl Config {
             .to_lowercase()
             == "true";
 
+        // Max requests per session: default 10000, FIFO eviction when exceeded
+        let max_requests_per_session = env::var("MAX_REQUESTS_PER_SESSION")
+            .unwrap_or_else(|_| "10000".to_string())
+            .parse()
+            .unwrap_or(10000);
+
         Self {
             server_ip,
             server_domain,
@@ -192,6 +200,7 @@ impl Config {
             session_rate_window_secs,
             sentry_dsn_frontend,
             allow_all_headers,
+            max_requests_per_session,
         }
     }
 }

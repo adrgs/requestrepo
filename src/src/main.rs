@@ -10,11 +10,13 @@ async fn main() {
 
     dotenv::dotenv().ok();
 
-    // Initialize Sentry for error tracking (if DSN is configured)
+    // Initialize Sentry for error tracking and performance monitoring
     let _sentry_guard = sentry::init((
         std::env::var("SENTRY_DSN_BACKEND").ok(),
         sentry::ClientOptions {
             release: sentry::release_name!(),
+            traces_sample_rate: 0.2, // 20% of requests for performance monitoring
+            send_default_pii: true,
             ..Default::default()
         },
     ));

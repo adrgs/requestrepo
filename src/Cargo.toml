@@ -68,6 +68,7 @@ mail-parser = "0.9"
 
 # Error tracking
 sentry = "0.46"
+sentry-tower = { version = "0.46", features = ["http"] }
 
 # Utilities
 rand = "0.8.5"
