@@ -295,7 +295,10 @@ async fn build_dns_response(
             // Try wildcard match if no exact match
             if custom_record.is_none() {
                 if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
-                    custom_record = cache.get(&format!("dns:A:{wildcard_key}")).await.unwrap_or(None);
+                    custom_record = cache
+                        .get(&format!("dns:A:{wildcard_key}"))
+                        .await
+                        .unwrap_or(None);
                 }
             }
 
@@ -325,7 +328,10 @@ async fn build_dns_response(
             // Try wildcard match if no exact match
             if custom_record.is_none() {
                 if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
-                    custom_record = cache.get(&format!("dns:AAAA:{wildcard_key}")).await.unwrap_or(None);
+                    custom_record = cache
+                        .get(&format!("dns:AAAA:{wildcard_key}"))
+                        .await
+                        .unwrap_or(None);
                 }
             }
 
@@ -361,7 +367,10 @@ async fn build_dns_response(
             // Try wildcard match if no exact match
             if custom_record.is_none() {
                 if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
-                    custom_record = cache.get(&format!("dns:CNAME:{wildcard_key}")).await.unwrap_or(None);
+                    custom_record = cache
+                        .get(&format!("dns:CNAME:{wildcard_key}"))
+                        .await
+                        .unwrap_or(None);
                 }
             }
 
@@ -391,7 +400,10 @@ async fn build_dns_response(
             // Try wildcard match if no exact match
             if custom_record.is_none() {
                 if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
-                    custom_record = cache.get(&format!("dns:TXT:{wildcard_key}")).await.unwrap_or(None);
+                    custom_record = cache
+                        .get(&format!("dns:TXT:{wildcard_key}"))
+                        .await
+                        .unwrap_or(None);
                 }
             }
 
