@@ -1,47 +1,42 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardBody, Code, Button } from "@heroui/react";
-import { Share2 } from "lucide-react";
+import { Share2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
-// TODO: Python library coming soon
-// import { useState } from "react";
-// import { Copy, Check } from "lucide-react";
-// import Editor from "@monaco-editor/react";
+import Editor from "@monaco-editor/react";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useRequestStore } from "@/stores/requestStore";
 import { useUiStore } from "@/stores/uiStore";
 import { apiClient } from "@/api/client";
-// import { useTheme } from "@/hooks/useTheme";
+import { useTheme } from "@/hooks/useTheme";
 import { isHttpRequest, isDnsRequest, isSmtpRequest } from "@/types";
 import { formatDate, copyToClipboard, getFlagClass } from "@/lib/utils";
 import { decodeBase64Safe } from "@/lib/base64";
 import { getBaseDomain, getDnsDomain } from "@/lib/config";
 
-// TODO: Python library coming soon - pip install requestrepo
-// const PYTHON_EXAMPLE = `from requestrepo import Requestrepo  # pip install requestrepo
-//
-// client = Requestrepo(token="TOKEN_HERE", host="requestrepo.com")
-//
-// print(client.subdomain)  # SUBDOMAIN_HERE
-// print(client.domain)  # SUBDOMAIN_HERE.requestrepo.com
-//
-// # Wait for a new HTTP request
-// request = client.get_request()
-// print(request.method, request.path, request.headers)
-//
-// # Set a custom HTTP response
-// client.set_http_response(
-//     status_code=200,
-//     headers={"Content-Type": "text/html"},
-//     body="<h1>Hello from RequestRepo!</h1>"
-// )
-//
-// # Add DNS records
-// client.add_dns_record("A", "1.2.3.4")
-// client.add_dns_record("TXT", "verification=abc123")`;
+const PYTHON_EXAMPLE = `from requestrepo import Requestrepo  # pip install requestrepo
+
+# Create a session (use admin_token if your instance requires it)
+repo = Requestrepo(
+    token="TOKEN_HERE",  # Or omit to create a new session
+    admin_token="ADMIN_TOKEN_HERE",  # Optional: for protected instances
+)
+
+print(repo.subdomain)  # SUBDOMAIN_HERE
+print(f"{repo.subdomain}.{repo.domain}")  # Full domain
+
+# Wait for a new HTTP request (blocks until one arrives)
+request = repo.get_http_request()
+print(request.method, request.path, request.headers)
+
+# Set a custom HTTP response
+repo.set_file("index.html", "<h1>Hello from RequestRepo!</h1>", status_code=200)
+
+# Add DNS records
+repo.add_dns("@", "A", "1.2.3.4")
+repo.add_dns("@", "TXT", "verification=abc123")`;
 
 export function RequestsPage() {
-  // TODO: Python library coming soon
-  // const { resolvedTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const sessions = useSessionStore((s) => s.sessions);
   const activeSubdomain = useSessionStore((s) => s.activeSubdomain);
   const session = sessions.find((s) => s.subdomain === activeSubdomain);
@@ -53,8 +48,7 @@ export function RequestsPage() {
   const markRequestVisited = useUiStore((s) => s.markRequestVisited);
   const sharedRequest = useUiStore((s) => s.sharedRequest);
 
-  // TODO: Python library coming soon
-  // const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Use shared request if available, otherwise find from session requests
   const selectedRequest =
@@ -78,16 +72,17 @@ export function RequestsPage() {
     isSharedRequestView,
   ]);
 
-  // TODO: Python library coming soon
-  // const handleCopyCode = () => {
-  //   const code = PYTHON_EXAMPLE.replace(
-  //     /TOKEN_HERE/g,
-  //     session?.token || "your_token",
-  //   ).replace(/SUBDOMAIN_HERE/g, subdomain);
-  //   copyToClipboard(code);
-  //   setCopied(true);
-  //   setTimeout(() => setCopied(false), 2000);
-  // };
+  const handleCopyCode = () => {
+    const code = PYTHON_EXAMPLE.replace(/TOKEN_HERE/g, session?.token || "")
+      .replace(/SUBDOMAIN_HERE/g, subdomain)
+      .replace(
+        /admin_token="ADMIN_TOKEN_HERE",\s{2}# Optional: for protected instances\n/g,
+        "",
+      );
+    copyToClipboard(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleShareRequest = async () => {
     if (!selectedRequest || !session?.token) return;
@@ -145,7 +140,6 @@ export function RequestsPage() {
           </p>
         </div>
 
-        {/* TODO: Python library coming soon
         <div className="flex-1">
           <p className="mb-3 text-default-500">
             Automate requests/responses using the requestrepo Python library:
@@ -159,6 +153,7 @@ export function RequestsPage() {
                 variant="flat"
                 className="absolute right-2 top-2 z-10"
                 onPress={handleCopyCode}
+                title="Copy code (with real token)"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-success" />
@@ -167,13 +162,20 @@ export function RequestsPage() {
                 )}
               </Button>
               <Editor
-                height="280px"
+                height="320px"
                 language="python"
                 theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
                 value={PYTHON_EXAMPLE.replace(
                   /TOKEN_HERE/g,
-                  session?.token ? "********" : "your_token",
-                ).replace(/SUBDOMAIN_HERE/g, subdomain)}
+                  session?.token
+                    ? "********************************"
+                    : "<your_token>",
+                )
+                  .replace(/SUBDOMAIN_HERE/g, subdomain)
+                  .replace(
+                    /ADMIN_TOKEN_HERE/g,
+                    "<your_admin_token_if_required>",
+                  )}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },
@@ -190,7 +192,6 @@ export function RequestsPage() {
             </CardBody>
           </Card>
         </div>
-        */}
       </div>
     );
   }
