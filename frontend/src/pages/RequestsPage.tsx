@@ -18,7 +18,7 @@ const PYTHON_EXAMPLE = `from requestrepo import Requestrepo  # pip install reque
 # Create a session (use admin_token if your instance requires it)
 repo = Requestrepo(
     token="TOKEN_HERE",  # Or omit to create a new session
-    admin_token="ADMIN_TOKEN_HERE",  # Optional: for protected instances
+    admin_token="",  # Optional: for protected instances
 )
 
 print(repo.subdomain)  # SUBDOMAIN_HERE
@@ -74,11 +74,7 @@ export function RequestsPage() {
 
   const handleCopyCode = () => {
     const code = PYTHON_EXAMPLE.replace(/TOKEN_HERE/g, session?.token || "")
-      .replace(/SUBDOMAIN_HERE/g, subdomain)
-      .replace(
-        /admin_token="ADMIN_TOKEN_HERE",\s{2}# Optional: for protected instances\n/g,
-        "",
-      );
+      .replace(/SUBDOMAIN_HERE/g, subdomain);
     copyToClipboard(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -170,12 +166,7 @@ export function RequestsPage() {
                   session?.token
                     ? "********************************"
                     : "<your_token>",
-                )
-                  .replace(/SUBDOMAIN_HERE/g, subdomain)
-                  .replace(
-                    /ADMIN_TOKEN_HERE/g,
-                    "<your_admin_token_if_required>",
-                  )}
+                ).replace(/SUBDOMAIN_HERE/g, subdomain)}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },
