@@ -1,16 +1,13 @@
 # Multi-stage Dockerfile for RequestRepo Rust backend
-# Uses cargo-chef for optimized dependency caching + sccache for compiler caching
+# Uses cargo-chef for optimized dependency caching
 
-# Stage 1: Chef - install cargo-chef and sccache
+# Stage 1: Chef - install cargo-chef
 FROM rust:1.85-slim-bookworm AS chef
-# Install OpenSSL dev packages first (required to build sccache)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef sccache --locked
-ENV RUSTC_WRAPPER=sccache
-ENV SCCACHE_DIR=/sccache
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
 # Stage 2: Planner - analyze dependencies
@@ -23,15 +20,11 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS rust-builder
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this layer is cached unless dependencies change
-# Use BuildKit cache mount for sccache (id matches buildkit-cache-dance config)
-RUN --mount=type=cache,id=sccache-cache,target=/sccache \
-    cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 # Copy source and build application
 COPY src/Cargo.toml src/Cargo.lock ./
 COPY src/src ./src
-RUN --mount=type=cache,id=sccache-cache,target=/sccache \
-    cargo build --release && \
-    sccache --show-stats
+RUN cargo build --release
 
 # Stage 4: Build frontend
 FROM oven/bun:1.2-slim AS frontend-builder
