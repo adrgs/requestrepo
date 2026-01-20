@@ -32,8 +32,8 @@ print(request.method, request.path, request.headers)
 repo.set_file("index.html", "<h1>Hello from RequestRepo!</h1>", status_code=200)
 
 # Add DNS records
-repo.add_dns("@", "A", "1.2.3.4")
-repo.add_dns("@", "TXT", "verification=abc123")`;
+repo.add_dns("*", "A", "1.2.3.4")  # Wildcard for all sub-subdomains
+repo.add_dns("www", "TXT", "verification=abc123")  # Specific subdomain`;
 
 export function RequestsPage() {
   const { resolvedTheme } = useTheme();
@@ -73,8 +73,10 @@ export function RequestsPage() {
   ]);
 
   const handleCopyCode = () => {
-    const code = PYTHON_EXAMPLE.replace(/TOKEN_HERE/g, session?.token || "")
-      .replace(/SUBDOMAIN_HERE/g, subdomain);
+    const code = PYTHON_EXAMPLE.replace(
+      /TOKEN_HERE/g,
+      session?.token || "",
+    ).replace(/SUBDOMAIN_HERE/g, subdomain);
     copyToClipboard(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

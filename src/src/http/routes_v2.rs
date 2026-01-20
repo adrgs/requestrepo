@@ -12,7 +12,7 @@ use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use crate::http::AppState;
 use crate::models::{DnsRecord, DnsRecords, FileTree};
@@ -126,6 +126,88 @@ fn verify_token_or_error(
             }),
         )
     })
+}
+
+/// Validate a DNS domain name for security and RFC compliance
+///
+/// Security: Blocks empty domains and "@" (root subdomain) to prevent
+/// users from setting DNS records for their root subdomain, which could
+/// allow TLS certificate issuance via DNS-01 challenges.
+///
+/// Allowed:
+/// - "*" for wildcard (matches all unmatched sub-subdomains)
+/// - Simple subdomains like "www", "api"
+/// - Nested subdomains like "a.b.c"
+/// - Underscores for things like "_acme-challenge"
+fn validate_dns_domain(domain: &str) -> Result<String, String> {
+    let domain = domain.trim().trim_matches('.').to_lowercase();
+
+    // Block empty domain
+    if domain.is_empty() {
+        return Err("Domain cannot be empty".to_string());
+    }
+
+    // Block @ (root subdomain - security risk for cert issuance)
+    if domain == "@" {
+        return Err("Cannot set DNS for root subdomain (security risk)".to_string());
+    }
+
+    // Allow * for wildcard
+    if domain == "*" {
+        return Ok("*".to_string());
+    }
+
+    // Character validation (allow _ for things like _acme-challenge)
+    if domain.contains(|c: char| !c.is_alphanumeric() && c != '.' && c != '-' && c != '_') {
+        return Err(format!("Invalid characters in domain '{domain}'"));
+    }
+
+    // Label length validation (DNS spec: max 63 chars per label)
+    for label in domain.split('.') {
+        if label.is_empty() {
+            return Err("Domain contains empty label".to_string());
+        }
+        if label.len() > 63 {
+            return Err(format!("Label '{label}' exceeds 63 characters"));
+        }
+    }
+
+    // Total length validation (DNS spec: max 253 chars)
+    if domain.len() > 253 {
+        return Err("Domain exceeds 253 characters".to_string());
+    }
+
+    Ok(domain)
+}
+
+/// Validate a DNS record value based on record type
+fn validate_dns_value(record_type: &str, value: &str) -> Result<(), String> {
+    match record_type {
+        "A" => {
+            // Must be valid IPv4 address(es) separated by %
+            for ip in value.split('%') {
+                ip.parse::<Ipv4Addr>()
+                    .map_err(|_| format!("Invalid IPv4 address '{ip}'"))?;
+            }
+            Ok(())
+        }
+        "AAAA" => {
+            // Must be valid IPv6 address(es) separated by %
+            for ip in value.split('%') {
+                ip.parse::<Ipv6Addr>()
+                    .map_err(|_| format!("Invalid IPv6 address '{ip}'"))?;
+            }
+            Ok(())
+        }
+        "CNAME" | "TXT" => {
+            // These can contain arbitrary values
+            if value.is_empty() {
+                return Err("Value cannot be empty".to_string());
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 // ============================================================================
@@ -321,13 +403,25 @@ pub async fn update_dns(
                 .into_response();
         }
 
-        let domain = record.domain.to_lowercase();
-        if domain.contains(|c: char| !c.is_alphanumeric() && c != '.' && c != '-') {
+        // Validate domain (security + RFC compliance)
+        if let Err(e) = validate_dns_domain(&record.domain) {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
-                    "error": format!("Invalid characters in domain '{}'", domain),
+                    "error": e,
                     "code": "invalid_domain"
+                })),
+            )
+                .into_response();
+        }
+
+        // Validate record value (e.g., valid IPv4 for A records)
+        if let Err(e) = validate_dns_value(&record.r#type, &record.value) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": e,
+                    "code": "invalid_value"
                 })),
             )
                 .into_response();
@@ -355,8 +449,8 @@ pub async fn update_dns(
     // Store new records
     let mut final_records = Vec::new();
     for record in records.records {
-        // Store the user's input as-is for display
-        let short_domain = record.domain.to_lowercase();
+        // Use validated/normalized domain
+        let short_domain = validate_dns_domain(&record.domain).unwrap(); // Already validated above
 
         // Compute full FQDN for DNS cache key
         let fqdn = format!("{}.{}.{}.", short_domain, subdomain, CONFIG.server_domain);
@@ -890,4 +984,138 @@ pub async fn get_shared_request(
         })),
     )
         .into_response()
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_dns_domain_valid() {
+        // Wildcard
+        assert_eq!(validate_dns_domain("*").unwrap(), "*");
+
+        // Simple subdomains
+        assert_eq!(validate_dns_domain("www").unwrap(), "www");
+        assert_eq!(validate_dns_domain("api").unwrap(), "api");
+
+        // Nested subdomains
+        assert_eq!(validate_dns_domain("a.b.c").unwrap(), "a.b.c");
+        assert_eq!(validate_dns_domain("a.b.c.d.e").unwrap(), "a.b.c.d.e");
+
+        // With underscores (for ACME challenges)
+        assert_eq!(
+            validate_dns_domain("_acme-challenge").unwrap(),
+            "_acme-challenge"
+        );
+        assert_eq!(
+            validate_dns_domain("_acme-challenge.www").unwrap(),
+            "_acme-challenge.www"
+        );
+
+        // With hyphens
+        assert_eq!(validate_dns_domain("my-api").unwrap(), "my-api");
+
+        // Normalization: trim whitespace
+        assert_eq!(validate_dns_domain("  www  ").unwrap(), "www");
+
+        // Normalization: remove leading/trailing dots
+        assert_eq!(validate_dns_domain(".www.").unwrap(), "www");
+
+        // Normalization: lowercase
+        assert_eq!(validate_dns_domain("WWW").unwrap(), "www");
+    }
+
+    #[test]
+    fn test_validate_dns_domain_blocked() {
+        // Empty domain
+        assert!(validate_dns_domain("").is_err());
+        assert!(validate_dns_domain("   ").is_err());
+        assert!(validate_dns_domain("..").is_err());
+
+        // Root subdomain (@) - security risk
+        assert!(validate_dns_domain("@").is_err());
+        let err = validate_dns_domain("@").unwrap_err();
+        assert!(err.contains("security"));
+
+        // Invalid characters
+        assert!(validate_dns_domain("test@domain").is_err());
+        assert!(validate_dns_domain("test/path").is_err());
+        assert!(validate_dns_domain("test:8080").is_err());
+
+        // Empty label in middle
+        assert!(validate_dns_domain("a..b").is_err());
+    }
+
+    #[test]
+    fn test_validate_dns_domain_length_limits() {
+        // Label > 63 chars should fail
+        let long_label = "a".repeat(64);
+        assert!(validate_dns_domain(&long_label).is_err());
+
+        // Label == 63 chars should pass
+        let max_label = "a".repeat(63);
+        assert!(validate_dns_domain(&max_label).is_ok());
+
+        // Total > 253 chars should fail
+        let long_domain = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(63)
+        );
+        assert!(validate_dns_domain(&long_domain).is_err());
+    }
+
+    #[test]
+    fn test_validate_dns_value_a_record() {
+        // Valid IPv4
+        assert!(validate_dns_value("A", "1.2.3.4").is_ok());
+        assert!(validate_dns_value("A", "192.168.1.1").is_ok());
+        assert!(validate_dns_value("A", "255.255.255.255").is_ok());
+
+        // Multiple IPs separated by %
+        assert!(validate_dns_value("A", "1.2.3.4%5.6.7.8").is_ok());
+
+        // Invalid IPv4
+        assert!(validate_dns_value("A", "not-an-ip").is_err());
+        assert!(validate_dns_value("A", "256.1.1.1").is_err());
+        assert!(validate_dns_value("A", "1.2.3").is_err());
+        assert!(validate_dns_value("A", "::1").is_err()); // IPv6 not allowed for A records
+    }
+
+    #[test]
+    fn test_validate_dns_value_aaaa_record() {
+        // Valid IPv6
+        assert!(validate_dns_value("AAAA", "::1").is_ok());
+        assert!(validate_dns_value("AAAA", "2001:db8::1").is_ok());
+        assert!(validate_dns_value("AAAA", "fe80::1").is_ok());
+
+        // Multiple IPs separated by %
+        assert!(validate_dns_value("AAAA", "::1%::2").is_ok());
+
+        // Invalid IPv6
+        assert!(validate_dns_value("AAAA", "not-an-ip").is_err());
+        assert!(validate_dns_value("AAAA", "1.2.3.4").is_err()); // IPv4 not allowed for AAAA records
+    }
+
+    #[test]
+    fn test_validate_dns_value_cname_txt() {
+        // Valid CNAME
+        assert!(validate_dns_value("CNAME", "example.com").is_ok());
+        assert!(validate_dns_value("CNAME", "example.com.").is_ok());
+
+        // Valid TXT
+        assert!(validate_dns_value("TXT", "v=spf1 include:example.com ~all").is_ok());
+        assert!(validate_dns_value("TXT", "verification=abc123").is_ok());
+
+        // Empty values should fail
+        assert!(validate_dns_value("CNAME", "").is_err());
+        assert!(validate_dns_value("TXT", "").is_err());
+    }
 }

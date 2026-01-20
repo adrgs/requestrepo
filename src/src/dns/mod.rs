@@ -227,6 +227,21 @@ async fn log_dns_request(
     Ok(())
 }
 
+/// Generate the wildcard key for a DNS query
+/// e.g., "www.abc123.requestrepo.com." -> "*.abc123.requestrepo.com."
+fn get_wildcard_key(name_lower: &str, subdomain: &Option<String>) -> Option<String> {
+    let subdomain = subdomain.as_ref()?;
+    let domain = CONFIG.server_domain.to_lowercase();
+    let suffix = format!("{subdomain}.{domain}.");
+
+    if name_lower.ends_with(&suffix) && name_lower.len() > suffix.len() {
+        // Replace the prefix with *
+        Some(format!("*.{suffix}"))
+    } else {
+        None
+    }
+}
+
 /// Check if the query is for our domain (including base domain and subdomains)
 fn is_our_domain(name_str: &str) -> bool {
     let name_lower = name_str.to_lowercase();
@@ -273,8 +288,16 @@ async fn build_dns_response(
 
     match query_type {
         RecordType::A => {
+            // Try exact match first
             let dns_key = format!("dns:A:{name_lower}");
-            let custom_record = cache.get(&dns_key).await.unwrap_or(None);
+            let mut custom_record = cache.get(&dns_key).await.unwrap_or(None);
+
+            // Try wildcard match if no exact match
+            if custom_record.is_none() {
+                if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
+                    custom_record = cache.get(&format!("dns:A:{wildcard_key}")).await.unwrap_or(None);
+                }
+            }
 
             if let Some(value) = custom_record {
                 // Support multiple IPs separated by '%' - pick one randomly
@@ -295,8 +318,16 @@ async fn build_dns_response(
             response.set_response_code(ResponseCode::NoError);
         }
         RecordType::AAAA => {
+            // Try exact match first
             let dns_key = format!("dns:AAAA:{name_lower}");
-            let custom_record = cache.get(&dns_key).await.unwrap_or(None);
+            let mut custom_record = cache.get(&dns_key).await.unwrap_or(None);
+
+            // Try wildcard match if no exact match
+            if custom_record.is_none() {
+                if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
+                    custom_record = cache.get(&format!("dns:AAAA:{wildcard_key}")).await.unwrap_or(None);
+                }
+            }
 
             if let Some(value) = custom_record {
                 // Support multiple IPs separated by '%' - pick one randomly
@@ -323,8 +354,16 @@ async fn build_dns_response(
             }
         }
         RecordType::CNAME => {
+            // Try exact match first
             let dns_key = format!("dns:CNAME:{name_lower}");
-            let custom_record = cache.get(&dns_key).await.unwrap_or(None);
+            let mut custom_record = cache.get(&dns_key).await.unwrap_or(None);
+
+            // Try wildcard match if no exact match
+            if custom_record.is_none() {
+                if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
+                    custom_record = cache.get(&format!("dns:CNAME:{wildcard_key}")).await.unwrap_or(None);
+                }
+            }
 
             let cname_value = custom_record.unwrap_or_else(|| {
                 // Default to server_domain with trailing dot
@@ -345,8 +384,16 @@ async fn build_dns_response(
             }
         }
         RecordType::TXT => {
+            // Try exact match first
             let dns_key = format!("dns:TXT:{name_lower}");
-            let custom_record = cache.get(&dns_key).await.unwrap_or(None);
+            let mut custom_record = cache.get(&dns_key).await.unwrap_or(None);
+
+            // Try wildcard match if no exact match
+            if custom_record.is_none() {
+                if let Some(wildcard_key) = get_wildcard_key(&name_lower, _subdomain) {
+                    custom_record = cache.get(&format!("dns:TXT:{wildcard_key}")).await.unwrap_or(None);
+                }
+            }
 
             let txt_value = custom_record.unwrap_or_else(|| CONFIG.txt_record.clone());
 
