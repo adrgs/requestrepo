@@ -49,6 +49,7 @@ export function RequestsPage() {
   const sharedRequest = useUiStore((s) => s.sharedRequest);
 
   const [copied, setCopied] = useState(false);
+  const [editorFocused, setEditorFocused] = useState(false);
 
   // Use shared request if available, otherwise find from session requests
   const selectedRequest =
@@ -165,9 +166,19 @@ export function RequestsPage() {
                 theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
                 value={PYTHON_EXAMPLE.replace(
                   /TOKEN_HERE/g,
-                  session?.token || "<your_token>",
+                  session?.token
+                    ? editorFocused
+                      ? session.token
+                      : "********************************"
+                    : "<your_token>",
                 ).replace(/SUBDOMAIN_HERE/g, subdomain)}
-                loading={<div className="p-4 text-default-500">Loading editor...</div>}
+                loading={
+                  <div className="p-4 text-default-500">Loading editor...</div>
+                }
+                onMount={(editor) => {
+                  editor.onDidFocusEditorText(() => setEditorFocused(true));
+                  editor.onDidBlurEditorText(() => setEditorFocused(false));
+                }}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },
