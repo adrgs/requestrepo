@@ -29,7 +29,7 @@ request = repo.get_http_request()
 print(request.method, request.path, request.headers)
 
 # Set a custom HTTP response
-repo.set_file("index.html", "<h1>Hello from RequestRepo!</h1>", status_code=200)
+repo.set_file("index.html", b"<h1>Hello from RequestRepo!</h1>", status_code=200)
 
 # Add DNS records
 repo.add_dns("*", "A", "1.2.3.4")  # Wildcard for all sub-subdomains
@@ -165,10 +165,9 @@ export function RequestsPage() {
                 theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
                 value={PYTHON_EXAMPLE.replace(
                   /TOKEN_HERE/g,
-                  session?.token
-                    ? "********************************"
-                    : "<your_token>",
+                  session?.token || "<your_token>",
                 ).replace(/SUBDOMAIN_HERE/g, subdomain)}
+                loading={<div className="p-4 text-default-500">Loading editor...</div>}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },

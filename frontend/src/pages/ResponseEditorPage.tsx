@@ -358,6 +358,7 @@ export function ResponseEditorPage() {
               theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
               value={content}
               onChange={(value) => setContent(value ?? "")}
+              loading={<div className="p-4 text-default-500">Loading editor...</div>}
               options={{
                 minimap: { enabled: false },
                 fontSize: 13,
