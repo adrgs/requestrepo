@@ -34,6 +34,24 @@ declare global {
 if (window.__CONFIG__?.SENTRY_DSN_FRONTEND) {
   Sentry.init({
     dsn: window.__CONFIG__.SENTRY_DSN_FRONTEND,
+    beforeSend(event, hint) {
+      const error = hint.originalException;
+      // Filter out Monaco editor cancellation errors (expected during navigation/disposal)
+      if (
+        error instanceof Error &&
+        (error.name === "Canceled" || error.message === "Canceled")
+      ) {
+        return null;
+      }
+      // Filter out Monaco worker load errors (already handled locally)
+      if (
+        error instanceof ErrorEvent ||
+        (error instanceof Event && error.type === "error")
+      ) {
+        return null;
+      }
+      return event;
+    },
   });
 }
 
