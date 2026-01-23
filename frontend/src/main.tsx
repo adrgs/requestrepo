@@ -7,14 +7,13 @@ import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "sonner";
 import * as Sentry from "@sentry/react";
 import { loader } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
 import App from "./App";
 import "./index.css";
 import "flag-icons/css/flag-icons.min.css";
 
-// Configure and pre-initialize Monaco to prevent race conditions
-loader.config({
-  "vs/nls": { availableLanguages: { "*": "en" } },
-});
+// Use locally bundled Monaco instead of CDN (jsdelivr is blocked in some regions)
+loader.config({ monaco });
 
 // Pre-initialize Monaco - catches init errors at the source
 loader.init().catch(() => {

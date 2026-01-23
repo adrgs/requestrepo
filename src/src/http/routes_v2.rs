@@ -279,11 +279,11 @@ pub async fn create_session(
 
     // Set cookie if admin token was provided in body (first-time auth)
     // This persists the admin token for future session creations
-    if body.admin_token.is_some() && is_admin_token_required() {
-        if let Ok(cookie_value) =
-            HeaderValue::from_str(&build_admin_cookie(body.admin_token.as_ref().unwrap()))
-        {
-            response.headers_mut().insert(SET_COOKIE, cookie_value);
+    if let Some(ref admin_token) = body.admin_token {
+        if is_admin_token_required() {
+            if let Ok(cookie_value) = HeaderValue::from_str(&build_admin_cookie(admin_token)) {
+                response.headers_mut().insert(SET_COOKIE, cookie_value);
+            }
         }
     }
 
