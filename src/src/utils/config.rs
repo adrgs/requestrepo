@@ -61,7 +61,10 @@ impl Config {
         let subdomain_alphabet = env::var("SUBDOMAIN_ALPHABET")
             .unwrap_or_else(|_| "0123456789abcdefghijklmnopqrstuvwxyz".to_string());
         let subdomain_alphabet_set = subdomain_alphabet.chars().collect();
-        let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "secret".to_string());
+        let jwt_secret = env::var("JWT_SECRET").expect(
+            "JWT_SECRET environment variable is required. \
+             Generate a secure random string (32+ chars) and set it before starting the server.",
+        );
         let txt_record = env::var("TXT").unwrap_or_else(|_| "Hello!".to_string());
         let http_port = env::var("HTTP_PORT")
             .unwrap_or_else(|_| "21337".to_string())

@@ -66,7 +66,7 @@ test: test-backend test-frontend
 
 .PHONY: test-backend
 test-backend:
-	cd $(RUST_DIR) && cargo test
+	cd $(RUST_DIR) && JWT_SECRET=test_secret_for_ci cargo test
 
 .PHONY: test-frontend
 test-frontend:
