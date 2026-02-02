@@ -180,6 +180,47 @@ export function deleteFromTree(files: FileTree, path: string): FileTree {
 }
 
 /**
+ * Get the Content-Type header value based on file extension
+ */
+export function getContentTypeFromExtension(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  const mimeTypes: Record<string, string> = {
+    // Text/Code
+    html: "text/html; charset=utf-8",
+    htm: "text/html; charset=utf-8",
+    css: "text/css; charset=utf-8",
+    js: "text/javascript; charset=utf-8",
+    mjs: "text/javascript; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    xml: "application/xml; charset=utf-8",
+    txt: "text/plain; charset=utf-8",
+    md: "text/markdown; charset=utf-8",
+    csv: "text/csv; charset=utf-8",
+    yaml: "text/yaml; charset=utf-8",
+    yml: "text/yaml; charset=utf-8",
+    // Images
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    ico: "image/x-icon",
+    webp: "image/webp",
+    // Fonts
+    woff: "font/woff",
+    woff2: "font/woff2",
+    ttf: "font/ttf",
+    otf: "font/otf",
+    eot: "application/vnd.ms-fontobject",
+    // Other
+    pdf: "application/pdf",
+    zip: "application/zip",
+    wasm: "application/wasm",
+  };
+  return mimeTypes[ext] || "text/plain; charset=utf-8";
+}
+
+/**
  * Get unique folder paths from a FileTree
  */
 export function getFolderPaths(files: FileTree): string[] {

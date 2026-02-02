@@ -19,6 +19,7 @@ import {
   renameInTree,
   deleteFromTree,
   getFilesInFolder,
+  getContentTypeFromExtension,
 } from "@/lib/fileTree";
 import type { FileTree as FileTreeType } from "@/types";
 
@@ -349,7 +350,10 @@ export function FileTree({
           raw: "", // Empty content
           headers: [
             { header: "Access-Control-Allow-Origin", value: "*" },
-            { header: "Content-Type", value: "text/plain" },
+            {
+              header: "Content-Type",
+              value: getContentTypeFromExtension(fullPath),
+            },
           ],
           status_code: 200,
         },

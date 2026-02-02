@@ -201,6 +201,7 @@ Thank you to the following researchers for responsibly disclosing security issue
 - [JaGoTu](https://infosec.exchange/@jagotu) - DoS via unrestricted file upload
 - [m0z](https://x.com/LooseSecurity) - LFI via session subdomain
 - [Jorian](https://x.com/J0R1AN) - Session hijacking via Service-Worker-Allowed header
+- [aisafe.io](https://aisafe.io) - Insecure JWT_SECRET default allowing token forgery
 
 ## Contributing
 
