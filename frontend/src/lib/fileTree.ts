@@ -217,7 +217,7 @@ export function getContentTypeFromExtension(filename: string): string {
     zip: "application/zip",
     wasm: "application/wasm",
   };
-  return mimeTypes[ext] || "text/plain; charset=utf-8";
+  return mimeTypes[ext] || "text/html; charset=utf-8";
 }
 
 /**
