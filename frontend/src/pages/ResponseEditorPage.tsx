@@ -137,7 +137,7 @@ function getLanguage(filename: string): string {
     case "xml":
       return "xml";
     default:
-      return "plaintext";
+      return "html";
   }
 }
 
