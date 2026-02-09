@@ -32,7 +32,7 @@ tokio-rustls = "0.26"
 rustls-pemfile = "2.2"
 
 # ACME (Let's Encrypt)
-instant-acme = "0.7"
+instant-acme = "0.8"
 rcgen = "0.13"
 
 # Certificate parsing

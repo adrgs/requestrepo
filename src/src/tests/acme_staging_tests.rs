@@ -23,7 +23,7 @@
 #[cfg(test)]
 mod tests {
     use crate::cache::Cache;
-    use crate::certs::CertManager;
+    use crate::certs::{CertManager, HttpChallengeHandler};
     use std::env;
     use std::sync::Arc;
 
@@ -72,15 +72,16 @@ mod tests {
         env::set_var("ACME_DIRECTORY", ACME_DIRECTORY_STAGING);
         env::set_var("DOMAIN", &domain);
 
-        // Create CertManager
-        let manager = CertManager::new(cache.clone())
+        // Create CertManager with HTTP challenge handler
+        let http_handler = HttpChallengeHandler::new();
+        let manager = CertManager::new(cache.clone(), http_handler)
             .await
             .expect("Failed to create CertManager");
 
-        // Attempt to obtain a certificate
+        // Attempt to obtain a domain certificate
         // Note: This requires the DNS server to be running and serving
         // the _acme-challenge TXT records from the cache
-        let result = manager.check_and_renew().await;
+        let result = manager.check_and_renew_domain().await;
 
         match result {
             Ok(()) => {

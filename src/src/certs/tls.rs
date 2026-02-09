@@ -1,16 +1,62 @@
 use anyhow::{anyhow, Context, Result};
 use arc_swap::ArcSwap;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::server::{ClientHello, ResolvesServerCert};
+use rustls::sign::CertifiedKey;
 use rustls::ServerConfig;
+use std::fmt;
 use std::io::BufReader;
 use std::sync::Arc;
 use tokio_rustls::TlsAcceptor;
-use tracing::info;
+use tracing::{debug, info};
 
-/// Hot-reloadable TLS configuration manager
-/// Uses ArcSwap to atomically swap TLS configs without dropping connections
+/// SNI-based certificate resolver that serves different certs for domain vs IP connections.
+/// - When SNI is present (domain name): serves domain cert
+/// - When SNI is absent (IP address, per RFC 6066): serves IP cert, falls back to domain cert
+struct DualCertResolver {
+    domain_cert: Arc<ArcSwap<Option<Arc<CertifiedKey>>>>,
+    ip_cert: Arc<ArcSwap<Option<Arc<CertifiedKey>>>>,
+}
+
+impl fmt::Debug for DualCertResolver {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DualCertResolver")
+            .field("domain_cert", &self.domain_cert.load().is_some())
+            .field("ip_cert", &self.ip_cert.load().is_some())
+            .finish()
+    }
+}
+
+impl ResolvesServerCert for DualCertResolver {
+    fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
+        match client_hello.server_name() {
+            Some(_) => {
+                // SNI present → serve domain cert
+                let cert = self.domain_cert.load();
+                cert.as_ref().clone()
+            }
+            None => {
+                // No SNI → IP connection, serve IP cert with domain cert fallback
+                let ip = self.ip_cert.load();
+                if let Some(cert) = ip.as_ref().as_ref() {
+                    debug!("Serving IP certificate (no SNI)");
+                    Some(cert.clone())
+                } else {
+                    // Fallback to domain cert if IP cert not yet available
+                    let domain = self.domain_cert.load();
+                    domain.as_ref().clone()
+                }
+            }
+        }
+    }
+}
+
+/// Hot-reloadable TLS configuration manager with dual cert support.
+/// Uses ArcSwap to atomically swap TLS configs without dropping connections.
 pub struct TlsManager {
     config: Arc<ArcSwap<Option<Arc<ServerConfig>>>>,
+    domain_cert: Arc<ArcSwap<Option<Arc<CertifiedKey>>>>,
+    ip_cert: Arc<ArcSwap<Option<Arc<CertifiedKey>>>>,
 }
 
 impl TlsManager {
@@ -18,6 +64,8 @@ impl TlsManager {
     pub fn new() -> Self {
         Self {
             config: Arc::new(ArcSwap::new(Arc::new(None))),
+            domain_cert: Arc::new(ArcSwap::new(Arc::new(None))),
+            ip_cert: Arc::new(ArcSwap::new(Arc::new(None))),
         }
     }
 
@@ -31,12 +79,44 @@ impl TlsManager {
             .map(|c| TlsAcceptor::from(c.clone()))
     }
 
-    /// Reload the TLS configuration with new certificates
-    /// This atomically swaps the config, existing connections are unaffected
+    /// Reload the TLS configuration with new domain certificates.
+    /// Backward-compatible alias for `reload_domain()` (used by tests).
+    #[cfg(test)]
     pub fn reload(&self, chain_pem: &[u8], key_pem: &[u8]) -> Result<()> {
-        let new_config = build_server_config(chain_pem, key_pem)?;
-        self.config.store(Arc::new(Some(Arc::new(new_config))));
-        info!("TLS configuration reloaded successfully");
+        self.reload_domain(chain_pem, key_pem)
+    }
+
+    /// Reload the domain certificate and rebuild the TLS config
+    pub fn reload_domain(&self, chain_pem: &[u8], key_pem: &[u8]) -> Result<()> {
+        let certified_key = build_certified_key(chain_pem, key_pem)?;
+        self.domain_cert
+            .store(Arc::new(Some(Arc::new(certified_key))));
+        self.rebuild_config()?;
+        info!("Domain TLS certificate reloaded successfully");
+        Ok(())
+    }
+
+    /// Reload the IP certificate and rebuild the TLS config
+    pub fn reload_ip(&self, chain_pem: &[u8], key_pem: &[u8]) -> Result<()> {
+        let certified_key = build_certified_key(chain_pem, key_pem)?;
+        self.ip_cert.store(Arc::new(Some(Arc::new(certified_key))));
+        self.rebuild_config()?;
+        info!("IP TLS certificate reloaded successfully");
+        Ok(())
+    }
+
+    /// Rebuild the ServerConfig with the DualCertResolver
+    fn rebuild_config(&self) -> Result<()> {
+        let resolver = DualCertResolver {
+            domain_cert: Arc::clone(&self.domain_cert),
+            ip_cert: Arc::clone(&self.ip_cert),
+        };
+
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_cert_resolver(Arc::new(resolver));
+
+        self.config.store(Arc::new(Some(Arc::new(config))));
         Ok(())
     }
 }
@@ -45,6 +125,8 @@ impl Clone for TlsManager {
     fn clone(&self) -> Self {
         Self {
             config: Arc::clone(&self.config),
+            domain_cert: Arc::clone(&self.domain_cert),
+            ip_cert: Arc::clone(&self.ip_cert),
         }
     }
 }
@@ -55,7 +137,23 @@ impl Default for TlsManager {
     }
 }
 
+/// Build a CertifiedKey from PEM-encoded certificate chain and private key
+fn build_certified_key(chain_pem: &[u8], key_pem: &[u8]) -> Result<CertifiedKey> {
+    let certs = parse_certificates(chain_pem)?;
+    if certs.is_empty() {
+        return Err(anyhow!("No certificates found in PEM data"));
+    }
+
+    let key_der = parse_private_key(key_pem)?;
+    let signing_key = rustls::crypto::aws_lc_rs::sign::any_supported_type(&key_der)
+        .map_err(|e| anyhow!("Failed to create signing key: {:?}", e))?;
+
+    Ok(CertifiedKey::new(certs, signing_key))
+}
+
 /// Build a rustls ServerConfig from PEM-encoded certificate chain and private key
+/// (used by tests)
+#[cfg(test)]
 fn build_server_config(chain_pem: &[u8], key_pem: &[u8]) -> Result<ServerConfig> {
     // Parse certificate chain
     let certs = parse_certificates(chain_pem)?;
@@ -237,5 +335,54 @@ t57I39/asDr7i7haub9Q1cb0
         // Both should see the same config (shared Arc)
         assert!(manager.acceptor().is_some());
         assert!(cloned.acceptor().is_some());
+    }
+
+    #[test]
+    fn test_reload_domain() {
+        setup_crypto_provider();
+        let manager = TlsManager::new();
+        assert!(manager.acceptor().is_none());
+
+        manager
+            .reload_domain(TEST_CERT.as_bytes(), TEST_KEY.as_bytes())
+            .unwrap();
+        assert!(manager.acceptor().is_some());
+    }
+
+    #[test]
+    fn test_reload_ip() {
+        setup_crypto_provider();
+        let manager = TlsManager::new();
+        assert!(manager.acceptor().is_none());
+
+        // Load IP cert (using same test cert for simplicity)
+        manager
+            .reload_ip(TEST_CERT.as_bytes(), TEST_KEY.as_bytes())
+            .unwrap();
+        assert!(manager.acceptor().is_some());
+    }
+
+    #[test]
+    fn test_reload_domain_then_ip() {
+        setup_crypto_provider();
+        let manager = TlsManager::new();
+
+        manager
+            .reload_domain(TEST_CERT.as_bytes(), TEST_KEY.as_bytes())
+            .unwrap();
+        assert!(manager.acceptor().is_some());
+
+        // Loading IP cert should not break existing config
+        manager
+            .reload_ip(TEST_CERT.as_bytes(), TEST_KEY.as_bytes())
+            .unwrap();
+        assert!(manager.acceptor().is_some());
+    }
+
+    #[test]
+    fn test_build_certified_key() {
+        setup_crypto_provider();
+        let key = build_certified_key(TEST_CERT.as_bytes(), TEST_KEY.as_bytes()).unwrap();
+        assert!(!key.cert.is_empty());
     }
 }

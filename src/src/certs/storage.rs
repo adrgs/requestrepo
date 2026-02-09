@@ -34,6 +34,16 @@ impl CertStorage {
         self.cert_dir.join("privkey.pem")
     }
 
+    /// Path to the IP certificate chain (PEM format)
+    pub fn ip_fullchain_path(&self) -> PathBuf {
+        self.cert_dir.join("ip_fullchain.pem")
+    }
+
+    /// Path to the IP private key (PEM format)
+    pub fn ip_privkey_path(&self) -> PathBuf {
+        self.cert_dir.join("ip_privkey.pem")
+    }
+
     /// Path to the ACME account credentials (JSON format)
     pub fn account_path(&self) -> PathBuf {
         self.cert_dir.join("account.json")
@@ -42,40 +52,70 @@ impl CertStorage {
     /// Load existing certificate and private key if they exist
     /// Returns None if either file is missing
     pub fn load_certificate(&self) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
-        let chain_path = self.fullchain_path();
-        let key_path = self.privkey_path();
+        self.load_cert_pair(&self.fullchain_path(), &self.privkey_path())
+    }
 
+    /// Save certificate and private key atomically
+    /// Uses temp file + rename to prevent corruption on crash
+    pub fn save_certificate(&self, chain: &[u8], key: &[u8]) -> Result<()> {
+        self.save_cert_pair(&self.fullchain_path(), &self.privkey_path(), chain, key)
+    }
+
+    /// Load existing IP certificate and private key if they exist
+    pub fn load_ip_certificate(&self) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
+        self.load_cert_pair(&self.ip_fullchain_path(), &self.ip_privkey_path())
+    }
+
+    /// Save IP certificate and private key atomically
+    pub fn save_ip_certificate(&self, chain: &[u8], key: &[u8]) -> Result<()> {
+        self.save_cert_pair(
+            &self.ip_fullchain_path(),
+            &self.ip_privkey_path(),
+            chain,
+            key,
+        )
+    }
+
+    /// Load a certificate chain and private key from the given paths
+    fn load_cert_pair(
+        &self,
+        chain_path: &PathBuf,
+        key_path: &PathBuf,
+    ) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
         if !chain_path.exists() || !key_path.exists() {
-            debug!("Certificate files not found");
+            debug!("Certificate files not found at {:?}", chain_path);
             return Ok(None);
         }
 
-        let chain = fs::read(&chain_path)
+        let chain = fs::read(chain_path)
             .with_context(|| format!("Failed to read certificate chain: {chain_path:?}"))?;
-        let key = fs::read(&key_path)
+        let key = fs::read(key_path)
             .with_context(|| format!("Failed to read private key: {key_path:?}"))?;
 
         info!("Loaded existing certificate from {:?}", chain_path);
         Ok(Some((chain, key)))
     }
 
-    /// Save certificate and private key atomically
-    /// Uses temp file + rename to prevent corruption on crash
-    pub fn save_certificate(&self, chain: &[u8], key: &[u8]) -> Result<()> {
-        self.atomic_write(&self.fullchain_path(), chain)?;
-        self.atomic_write(&self.privkey_path(), key)?;
+    /// Save a certificate chain and private key atomically with restrictive permissions
+    fn save_cert_pair(
+        &self,
+        chain_path: &PathBuf,
+        key_path: &PathBuf,
+        chain: &[u8],
+        key: &[u8],
+    ) -> Result<()> {
+        self.atomic_write(chain_path, chain)?;
+        self.atomic_write(key_path, key)?;
 
-        // Set restrictive permissions on private key
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let key_path = self.privkey_path();
-            let mut perms = fs::metadata(&key_path)?.permissions();
+            let mut perms = fs::metadata(key_path)?.permissions();
             perms.set_mode(0o600);
-            fs::set_permissions(&key_path, perms)?;
+            fs::set_permissions(key_path, perms)?;
         }
 
-        info!("Saved certificate to {:?}", self.fullchain_path());
+        info!("Saved certificate to {:?}", chain_path);
         Ok(())
     }
 
@@ -173,6 +213,42 @@ mod tests {
         let (loaded_chain, loaded_key) = storage.load_certificate().unwrap().unwrap();
         assert_eq!(loaded_chain, chain);
         assert_eq!(loaded_key, key);
+    }
+
+    #[test]
+    fn test_ip_storage_paths() {
+        let dir = TempDir::new().unwrap();
+        let storage = CertStorage::new(dir.path()).unwrap();
+
+        assert_eq!(
+            storage.ip_fullchain_path(),
+            dir.path().join("ip_fullchain.pem")
+        );
+        assert_eq!(storage.ip_privkey_path(), dir.path().join("ip_privkey.pem"));
+    }
+
+    #[test]
+    fn test_save_and_load_ip_certificate() {
+        let dir = TempDir::new().unwrap();
+        let storage = CertStorage::new(dir.path()).unwrap();
+
+        let chain = b"-----BEGIN CERTIFICATE-----\nip-test\n-----END CERTIFICATE-----";
+        let key = b"-----BEGIN PRIVATE KEY-----\nip-test\n-----END PRIVATE KEY-----";
+
+        storage.save_ip_certificate(chain, key).unwrap();
+
+        let (loaded_chain, loaded_key) = storage.load_ip_certificate().unwrap().unwrap();
+        assert_eq!(loaded_chain, chain);
+        assert_eq!(loaded_key, key);
+    }
+
+    #[test]
+    fn test_load_missing_ip_certificate() {
+        let dir = TempDir::new().unwrap();
+        let storage = CertStorage::new(dir.path()).unwrap();
+
+        let result = storage.load_ip_certificate().unwrap();
+        assert!(result.is_none());
     }
 
     #[test]

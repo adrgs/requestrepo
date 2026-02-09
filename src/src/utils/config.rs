@@ -32,6 +32,10 @@ pub struct Config {
     pub acme_directory: String,
     pub cert_renewal_days: u64,
     pub cert_check_hours: u64,
+    // IP certificate configuration (short-lived, 6-day certs via HTTP-01)
+    pub ip_cert_enabled: bool,
+    pub ip_cert_check_hours: u64,
+    pub ip_cert_renewal_hours: u64,
     // Rate limiting for session creation
     pub session_rate_limit: u32,
     pub session_rate_window_secs: u64,
@@ -145,6 +149,20 @@ impl Config {
             .parse()
             .unwrap_or(12);
 
+        // IP certificate configuration
+        let ip_cert_enabled = env::var("IP_CERT_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .to_lowercase()
+            == "true";
+        let ip_cert_check_hours = env::var("IP_CERT_CHECK_HOURS")
+            .unwrap_or_else(|_| "6".to_string())
+            .parse()
+            .unwrap_or(6);
+        let ip_cert_renewal_hours = env::var("IP_CERT_RENEWAL_HOURS")
+            .unwrap_or_else(|_| "96".to_string())
+            .parse()
+            .unwrap_or(96);
+
         // Rate limiting for session creation: max requests per IP per window
         let session_rate_limit = env::var("SESSION_RATE_LIMIT")
             .unwrap_or_else(|_| "10".to_string())
@@ -199,6 +217,9 @@ impl Config {
             acme_directory,
             cert_renewal_days,
             cert_check_hours,
+            ip_cert_enabled,
+            ip_cert_check_hours,
+            ip_cert_renewal_hours,
             session_rate_limit,
             session_rate_window_secs,
             sentry_dsn_frontend,

@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use std::net::IpAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 use x509_parser::prelude::*;
@@ -132,20 +133,108 @@ impl CertValidator {
 
     /// Calculate days until certificate expiry
     fn days_until_expiry(&self, cert: &X509Certificate) -> Result<i64> {
-        let not_after = cert.validity().not_after;
-
-        // Convert ASN1Time to timestamp (returns i64 directly)
-        let expiry_secs = not_after.timestamp();
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("System time before Unix epoch")?;
-
-        let seconds_until_expiry = expiry_secs - now.as_secs() as i64;
-        let days_until_expiry = seconds_until_expiry / 86400;
-
-        Ok(days_until_expiry)
+        Ok(seconds_until_expiry(cert)? / 86400)
     }
+}
+
+/// Validates IP certificates for expiry and IP SAN match
+/// Uses hours-level precision since IP certs are short-lived (6 days)
+pub struct IpCertValidator {
+    expected_ip: IpAddr,
+    renewal_hours: u64,
+}
+
+impl IpCertValidator {
+    pub fn new(expected_ip: IpAddr, renewal_hours: u64) -> Self {
+        Self {
+            expected_ip,
+            renewal_hours,
+        }
+    }
+
+    /// Validate an IP certificate and determine if renewal is needed
+    pub fn validate(&self, cert_pem: &[u8]) -> Result<ValidationResult> {
+        let pem_data = ::pem::parse(cert_pem).context("Failed to parse IP certificate PEM")?;
+        let cert_der = pem_data.contents();
+        let (_, cert) = X509Certificate::from_der(cert_der)
+            .map_err(|e| anyhow!("Failed to parse IP X.509 certificate: {:?}", e))?;
+
+        // Check IP SAN match
+        if !self.check_ip_match(&cert)? {
+            return Ok(ValidationResult {
+                needs_renewal: true,
+                reason: Some(format!("IP SAN mismatch: expected {}", self.expected_ip)),
+                days_until_expiry: None,
+            });
+        }
+
+        // Check expiry in hours (short-lived certs need finer granularity)
+        let hours_until_expiry = seconds_until_expiry(&cert)? / 3600;
+        let days_until_expiry = hours_until_expiry / 24;
+
+        info!(
+            "IP certificate expires in {} hours ({} days), renewal threshold: {} hours",
+            hours_until_expiry, days_until_expiry, self.renewal_hours
+        );
+
+        if hours_until_expiry < self.renewal_hours as i64 {
+            return Ok(ValidationResult {
+                needs_renewal: true,
+                reason: Some(format!(
+                    "IP certificate expires in {} hours (threshold: {} hours)",
+                    hours_until_expiry, self.renewal_hours
+                )),
+                days_until_expiry: Some(days_until_expiry),
+            });
+        }
+
+        Ok(ValidationResult {
+            needs_renewal: false,
+            reason: None,
+            days_until_expiry: Some(days_until_expiry),
+        })
+    }
+
+    /// Check if the certificate contains an IP SAN matching the expected IP
+    fn check_ip_match(&self, cert: &X509Certificate) -> Result<bool> {
+        let san_ext = match cert.subject_alternative_name() {
+            Ok(Some(ext)) => ext,
+            _ => return Ok(false),
+        };
+
+        for name in &san_ext.value.general_names {
+            if let GeneralName::IPAddress(bytes) = name {
+                let ip = match bytes.len() {
+                    4 => {
+                        let octets: [u8; 4] = bytes[..4].try_into().unwrap();
+                        IpAddr::from(octets)
+                    }
+                    16 => {
+                        let octets: [u8; 16] = bytes[..16].try_into().unwrap();
+                        IpAddr::from(octets)
+                    }
+                    _ => continue,
+                };
+
+                if ip == self.expected_ip {
+                    debug!("IP SAN match: {}", ip);
+                    return Ok(true);
+                }
+            }
+        }
+
+        warn!("No matching IP SAN found for {}", self.expected_ip);
+        Ok(false)
+    }
+}
+
+/// Calculate seconds until certificate expiry
+fn seconds_until_expiry(cert: &X509Certificate) -> Result<i64> {
+    let expiry_secs = cert.validity().not_after.timestamp();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("System time before Unix epoch")?;
+    Ok(expiry_secs - now.as_secs() as i64)
 }
 
 #[cfg(test)]
@@ -192,5 +281,41 @@ p6LUh+Xo8Cs=
         // Wrong domain
         let domains = vec!["other.com".to_string(), "*.other.com".to_string()];
         assert!(!validator.check_domain_match(&domains));
+    }
+
+    #[test]
+    fn test_ip_validator_creation() {
+        let ip: IpAddr = "1.2.3.4".parse().unwrap();
+        let validator = IpCertValidator::new(ip, 96);
+        assert_eq!(validator.expected_ip, ip);
+        assert_eq!(validator.renewal_hours, 96);
+    }
+
+    #[test]
+    fn test_ip_cert_validation_with_rcgen() {
+        use rcgen::{CertificateParams, KeyPair};
+
+        let key_pair = KeyPair::generate().unwrap();
+        let ip: IpAddr = "10.0.0.1".parse().unwrap();
+
+        let mut params = CertificateParams::default();
+        params.distinguished_name = rcgen::DistinguishedName::new();
+        params.subject_alt_names = vec![rcgen::SanType::IpAddress(ip)];
+        // Self-signed cert for testing
+        let cert = params.self_signed(&key_pair).unwrap();
+        let cert_pem = cert.pem();
+
+        // Matching IP
+        let validator = IpCertValidator::new(ip, 96);
+        let result = validator.validate(cert_pem.as_bytes()).unwrap();
+        assert!(!result.needs_renewal);
+        assert!(result.days_until_expiry.is_some());
+
+        // Non-matching IP
+        let wrong_ip: IpAddr = "10.0.0.2".parse().unwrap();
+        let validator2 = IpCertValidator::new(wrong_ip, 96);
+        let result2 = validator2.validate(cert_pem.as_bytes()).unwrap();
+        assert!(result2.needs_renewal);
+        assert!(result2.reason.unwrap().contains("IP SAN mismatch"));
     }
 }

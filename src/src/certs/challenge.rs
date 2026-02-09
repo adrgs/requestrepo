@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, info};
@@ -8,6 +9,41 @@ use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig, Res
 use trust_dns_resolver::TokioAsyncResolver;
 
 use crate::cache::Cache;
+
+/// Handles HTTP-01 ACME challenges by storing token -> key_authorization mappings.
+/// Tokens are served at /.well-known/acme-challenge/{token}
+#[derive(Clone)]
+pub struct HttpChallengeHandler {
+    tokens: Arc<RwLock<HashMap<String, String>>>,
+}
+
+impl HttpChallengeHandler {
+    pub fn new() -> Self {
+        Self {
+            tokens: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Store a challenge token and its key authorization
+    pub fn set_token(&self, token: &str, key_authorization: &str) {
+        let mut tokens = self.tokens.write().unwrap();
+        tokens.insert(token.to_string(), key_authorization.to_string());
+        info!("Set HTTP-01 challenge token: {}", token);
+    }
+
+    /// Remove a challenge token after validation
+    pub fn clear_token(&self, token: &str) {
+        let mut tokens = self.tokens.write().unwrap();
+        tokens.remove(token);
+        info!("Cleared HTTP-01 challenge token: {}", token);
+    }
+
+    /// Look up a challenge response by token
+    pub fn get_response(&self, token: &str) -> Option<String> {
+        let tokens = self.tokens.read().unwrap();
+        tokens.get(token).cloned()
+    }
+}
 
 /// Handles DNS-01 ACME challenges by setting TXT records in the cache
 pub struct DnsChallengeHandler {
@@ -19,26 +55,26 @@ impl DnsChallengeHandler {
         Self { cache }
     }
 
+    /// Normalize a domain to lowercase with trailing dot for DNS consistency
+    fn normalize_domain(domain: &str) -> String {
+        if domain.ends_with('.') {
+            domain.to_lowercase()
+        } else {
+            format!("{domain}.").to_lowercase()
+        }
+    }
+
     /// Add a TXT record for ACME challenge (supports multiple values per domain)
     /// The domain should be the full _acme-challenge.{domain} hostname
     pub async fn set_txt(&self, challenge_domain: &str, token: &str) -> Result<()> {
-        // Ensure domain ends with a dot for DNS consistency and lowercase for case-insensitive lookup
-        let domain = if challenge_domain.ends_with('.') {
-            challenge_domain.to_lowercase()
-        } else {
-            format!("{challenge_domain}.").to_lowercase()
-        };
-
+        let domain = Self::normalize_domain(challenge_domain);
         let key = format!("dns:TXT:{domain}");
         info!("Setting ACME challenge TXT record: {} = {}", domain, token);
 
         // Get existing values and append (supports multiple TXT records for wildcard certs)
         let existing = self.cache.get(&key).await.ok().flatten();
         let new_value = match existing {
-            Some(existing_values) => {
-                // Append new token, separated by newline
-                format!("{existing_values}\n{token}")
-            }
+            Some(existing_values) => format!("{existing_values}\n{token}"),
             None => token.to_string(),
         };
 
@@ -52,12 +88,7 @@ impl DnsChallengeHandler {
 
     /// Clear all TXT records for the challenge domain
     pub async fn clear_txt(&self, challenge_domain: &str) -> Result<()> {
-        let domain = if challenge_domain.ends_with('.') {
-            challenge_domain.to_lowercase()
-        } else {
-            format!("{challenge_domain}.").to_lowercase()
-        };
-
+        let domain = Self::normalize_domain(challenge_domain);
         let key = format!("dns:TXT:{domain}");
         info!("Clearing ACME challenge TXT record: {}", domain);
 
@@ -77,11 +108,7 @@ impl DnsChallengeHandler {
         expected_token: &str,
         timeout_secs: u64,
     ) -> Result<()> {
-        let domain = if challenge_domain.ends_with('.') {
-            challenge_domain.to_lowercase()
-        } else {
-            format!("{challenge_domain}.").to_lowercase()
-        };
+        let domain = Self::normalize_domain(challenge_domain);
 
         info!(
             "Waiting for DNS propagation of {} (timeout: {}s)",
@@ -222,6 +249,43 @@ mod tests {
         // Verify it's gone
         let value = cache.get(key).await.unwrap();
         assert!(value.is_none());
+    }
+
+    #[test]
+    fn test_http_challenge_set_get_clear() {
+        let handler = HttpChallengeHandler::new();
+
+        // Initially empty
+        assert!(handler.get_response("token1").is_none());
+
+        // Set a token
+        handler.set_token("token1", "key-auth-value-1");
+        assert_eq!(
+            handler.get_response("token1"),
+            Some("key-auth-value-1".to_string())
+        );
+
+        // Set another token
+        handler.set_token("token2", "key-auth-value-2");
+        assert_eq!(
+            handler.get_response("token2"),
+            Some("key-auth-value-2".to_string())
+        );
+
+        // Clear first token
+        handler.clear_token("token1");
+        assert!(handler.get_response("token1").is_none());
+        assert_eq!(
+            handler.get_response("token2"),
+            Some("key-auth-value-2".to_string())
+        );
+
+        // Clone shares state
+        let cloned = handler.clone();
+        assert_eq!(
+            cloned.get_response("token2"),
+            Some("key-auth-value-2".to_string())
+        );
     }
 
     #[tokio::test]
