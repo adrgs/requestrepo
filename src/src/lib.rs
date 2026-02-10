@@ -48,7 +48,20 @@ pub async fn run() -> Result<()> {
         }
     });
 
-    let http_server = http::Server::new(cache.clone(), tx.clone(), static_files.clone());
+    // Create HTTP challenge handler for ACME HTTP-01 (shared between HTTP server and CertManager)
+    let http_challenge_handler = if CONFIG.tls_enabled {
+        Some(certs::HttpChallengeHandler::new())
+    } else {
+        None
+    };
+
+    // HTTP server starts first — must be ready to serve ACME challenges before CertManager fires
+    let http_server = http::Server::new(
+        cache.clone(),
+        tx.clone(),
+        static_files.clone(),
+        http_challenge_handler.clone(),
+    );
     let http_handle = tokio::spawn(async move {
         if let Err(e) = http_server.run().await {
             error!("HTTP server error: {}", e);
@@ -73,11 +86,11 @@ pub async fn run() -> Result<()> {
     let https_handle = if CONFIG.tls_enabled {
         info!("TLS is enabled, initializing certificate manager");
 
-        match certs::CertManager::new(cache.clone()).await {
+        match certs::CertManager::new(cache.clone(), http_challenge_handler.unwrap()).await {
             Ok(cert_manager) => {
                 let cert_manager = Arc::new(cert_manager);
 
-                // Start background renewal task
+                // Start background renewal tasks (domain + IP)
                 certs::CertManager::start_renewal_task(cert_manager.clone());
 
                 // Start HTTPS server
@@ -86,6 +99,7 @@ pub async fn run() -> Result<()> {
                     tx.clone(),
                     cert_manager.tls_manager(),
                     static_files.clone(),
+                    None, // ACME challenges are served on HTTP, not HTTPS
                 );
 
                 Some(tokio::spawn(async move {

@@ -12,7 +12,7 @@ A tool for analyzing HTTP, DNS, and SMTP requests with custom DNS records and re
 - **Custom DNS records**: Create A, AAAA, CNAME, and TXT records for your subdomain
 - **Custom response files**: Define custom HTTP responses with headers and body
 - **Real-time updates**: WebSocket-based live request streaming
-- **Auto-TLS**: Automatic HTTPS certificates via Let's Encrypt (DNS-01 challenge)
+- **Auto-TLS**: Automatic HTTPS certificates via Let's Encrypt (DNS-01 for domains, HTTP-01 for IP addresses)
 - **IP Geolocation**: Country detection for incoming requests (via DB-IP)
 - **Request sharing**: Share individual requests via secure tokens
 - **Admin authentication**: Optional password protection for session creation
@@ -175,6 +175,9 @@ See [.env.example](.env.example) for all available options.
 | `ADMIN_TOKEN` | No | - | Password for session creation |
 | `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
 | `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |
+| `IP_CERT_ENABLED` | No | `false` | Enable IP address TLS certificates (HTTP-01) |
+| `IP_CERT_CHECK_HOURS` | No | `6` | How often to check IP cert expiry (hours) |
+| `IP_CERT_RENEWAL_HOURS` | No | `96` | Renew IP cert when fewer than this many hours remain |
 | `HTTP_PORT` | No | `80` | HTTP server port |
 | `HTTPS_PORT` | No | `443` | HTTPS server port |
 | `DNS_PORT` | No | `53` | DNS server port |

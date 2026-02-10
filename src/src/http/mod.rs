@@ -12,8 +12,9 @@ pub struct TlsConnectInfo;
 
 use anyhow::{anyhow, Result};
 use axum::{
-    extract::{ConnectInfo, DefaultBodyLimit},
-    http::Method,
+    extract::{ConnectInfo, DefaultBodyLimit, Path, State},
+    http::{Method, StatusCode},
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
@@ -30,7 +31,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
 use crate::cache::Cache;
-use crate::certs::TlsManager;
+use crate::certs::{HttpChallengeHandler, TlsManager};
 use crate::models::CacheMessage;
 use crate::utils::config::CONFIG;
 
@@ -38,6 +39,7 @@ pub struct Server {
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
     static_files: Arc<StaticFiles>,
+    http_challenge_handler: Option<HttpChallengeHandler>,
 }
 
 #[derive(Clone)]
@@ -45,6 +47,7 @@ pub struct AppState {
     pub cache: Arc<Cache>,
     pub tx: Arc<broadcast::Sender<CacheMessage>>,
     pub static_files: Arc<StaticFiles>,
+    pub http_challenge_handler: Option<HttpChallengeHandler>,
 }
 
 /// Load static files into memory (call once at startup, share between servers)
@@ -57,11 +60,13 @@ impl Server {
         cache: Arc<Cache>,
         tx: Arc<broadcast::Sender<CacheMessage>>,
         static_files: Arc<StaticFiles>,
+        http_challenge_handler: Option<HttpChallengeHandler>,
     ) -> Self {
         Self {
             cache,
             tx,
             static_files,
+            http_challenge_handler,
         }
     }
 
@@ -72,6 +77,7 @@ impl Server {
             cache: self.cache.clone(),
             tx: self.tx.clone(),
             static_files: self.static_files.clone(),
+            http_challenge_handler: self.http_challenge_handler.clone(),
         };
 
         let app = create_router(state);
@@ -132,15 +138,37 @@ fn create_router(state: AppState) -> Router {
         .route("/api/v2/ws", get(websocket::websocket_handler_v2))
         .layer(cors);
 
-    // Main router: API routes with CORS, catch_all WITHOUT CORS
+    // Main router: API routes with CORS, ACME challenge, catch_all WITHOUT CORS
     // This gives users full control over response headers for their files
     Router::new()
         .merge(api_routes)
+        .route(
+            "/.well-known/acme-challenge/:token",
+            get(acme_challenge_handler),
+        )
         .fallback(routes::catch_all)
         .layer(DefaultBodyLimit::max(CONFIG.max_request_body_bytes))
         .layer(SentryHttpLayer::new().enable_transaction())
         .layer(NewSentryLayer::new_from_top())
         .with_state(state)
+}
+
+/// Handler for ACME HTTP-01 challenges (IP certificate validation)
+async fn acme_challenge_handler(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> impl IntoResponse {
+    if let Some(ref handler) = state.http_challenge_handler {
+        if let Some(key_auth) = handler.get_response(&token) {
+            return (
+                StatusCode::OK,
+                [("content-type", "application/octet-stream")],
+                key_auth,
+            )
+                .into_response();
+        }
+    }
+    StatusCode::NOT_FOUND.into_response()
 }
 
 /// HTTPS server that runs alongside the HTTP server
@@ -149,6 +177,7 @@ pub struct HttpsServer {
     tx: Arc<broadcast::Sender<CacheMessage>>,
     tls: TlsManager,
     static_files: Arc<StaticFiles>,
+    http_challenge_handler: Option<HttpChallengeHandler>,
 }
 
 impl HttpsServer {
@@ -157,12 +186,14 @@ impl HttpsServer {
         tx: Arc<broadcast::Sender<CacheMessage>>,
         tls: TlsManager,
         static_files: Arc<StaticFiles>,
+        http_challenge_handler: Option<HttpChallengeHandler>,
     ) -> Self {
         Self {
             cache,
             tx,
             tls,
             static_files,
+            http_challenge_handler,
         }
     }
 
@@ -195,6 +226,7 @@ impl HttpsServer {
                 cache: self.cache.clone(),
                 tx: self.tx.clone(),
                 static_files: self.static_files.clone(),
+                http_challenge_handler: self.http_challenge_handler.clone(),
             };
 
             tokio::spawn(async move {

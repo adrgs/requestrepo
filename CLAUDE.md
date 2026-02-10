@@ -129,8 +129,10 @@ requestrepo/
 
 ### Certificates (`certs/`)
 - Auto-TLS via Let's Encrypt (production) or self-signed (dev)
-- DNS-01 challenge for wildcard certificates
-- Automatic renewal before expiration
+- DNS-01 challenge for wildcard domain certificates
+- HTTP-01 challenge for IP address certificates (short-lived, 6-day)
+- SNI-based dual cert selection: domain cert when SNI present, IP cert when absent
+- Automatic renewal before expiration (separate cycles for domain/IP)
 - Certificate persistence to disk
 
 ### DNS Server (`dns/mod.rs`)
@@ -282,6 +284,9 @@ interface Request {
 | `TLS_ENABLED` | `false` | Enable HTTPS with auto-TLS |
 | `ACME_EMAIL` | - | Email for Let's Encrypt registration |
 | `CERT_DIR` | `./certs` | Certificate storage directory |
+| `IP_CERT_ENABLED` | `false` | Enable IP address TLS certificates (HTTP-01) |
+| `IP_CERT_CHECK_HOURS` | `6` | How often to check IP cert expiry |
+| `IP_CERT_RENEWAL_HOURS` | `96` | Renew IP cert when fewer than this many hours remain |
 | `ADMIN_TOKEN` | - | Require password for session creation |
 | `SESSION_RATE_LIMIT` | `10` | Max sessions per IP per window |
 | `SESSION_RATE_WINDOW_SECS` | `60` | Rate limit window in seconds |
