@@ -372,6 +372,7 @@ docker run -d \
   -e SERVER_IP=1.2.3.4 \
   -e TLS_ENABLED=true \
   -e ACME_EMAIL=admin@example.com \
+  -e IP_CERT_ENABLED=true \
   -v ./certs:/app/certs \
   requestrepo
 ```
@@ -389,3 +390,17 @@ A     ns1   <SERVER_IP>
 NS    rr    ns1.example.com
 A     ns1   <SERVER_IP>
 ```
+
+### Production (requestrepo.com)
+
+Production runs on `130.61.138.67` (ssh as `ubuntu`):
+
+```bash
+ssh ubuntu@130.61.138.67
+cd /home/ubuntu/requestrepo-prod
+docker compose pull && docker compose up -d
+docker logs -f requestrepo  # monitor
+```
+
+Config: `/home/ubuntu/requestrepo-prod/.env`
+Image: `ghcr.io/adrgs/requestrepo:latest` (built by GitHub Actions Release workflow on push to main)
