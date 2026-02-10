@@ -26,21 +26,27 @@ impl HttpChallengeHandler {
 
     /// Store a challenge token and its key authorization
     pub fn set_token(&self, token: &str, key_authorization: &str) {
-        let mut tokens = self.tokens.write().unwrap();
+        let mut tokens = self
+            .tokens
+            .write()
+            .expect("challenge token lock poisoned");
         tokens.insert(token.to_string(), key_authorization.to_string());
         info!("Set HTTP-01 challenge token: {}", token);
     }
 
     /// Remove a challenge token after validation
     pub fn clear_token(&self, token: &str) {
-        let mut tokens = self.tokens.write().unwrap();
+        let mut tokens = self
+            .tokens
+            .write()
+            .expect("challenge token lock poisoned");
         tokens.remove(token);
         info!("Cleared HTTP-01 challenge token: {}", token);
     }
 
     /// Look up a challenge response by token
     pub fn get_response(&self, token: &str) -> Option<String> {
-        let tokens = self.tokens.read().unwrap();
+        let tokens = self.tokens.read().expect("challenge token lock poisoned");
         tokens.get(token).cloned()
     }
 }

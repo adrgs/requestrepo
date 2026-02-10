@@ -293,7 +293,9 @@ impl CertManager {
 
     /// Obtain a new IP certificate from Let's Encrypt via HTTP-01
     async fn obtain_ip_certificate(&self) -> Result<()> {
-        let ip = self.server_ip.unwrap();
+        let ip = self
+            .server_ip
+            .expect("IP validator exists, so server_ip must be Some");
         info!("Requesting new IP certificate for {}", ip);
 
         let acme = self.create_acme_client().await?;
