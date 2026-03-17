@@ -97,7 +97,7 @@ impl Server {
 
                     // Periodic cleanup of stale rate limiter entries
                     query_count += 1;
-                    if query_count % RATE_LIMITER_CLEANUP_INTERVAL == 0 {
+                    if query_count.is_multiple_of(RATE_LIMITER_CLEANUP_INTERVAL) {
                         rate_limiter.cleanup();
                     }
 
