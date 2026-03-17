@@ -290,11 +290,8 @@ async fn handle_smtp_connection(
                         if arg_upper.starts_with("TO:") {
                             // Check recipient limit
                             if rcpt_to.len() >= MAX_RECIPIENTS {
-                                transaction_log
-                                    .push_str("S: 452 Too many recipients\n");
-                                writer
-                                    .write_all(b"452 Too many recipients\r\n")
-                                    .await?;
+                                transaction_log.push_str("S: 452 Too many recipients\n");
+                                writer.write_all(b"452 Too many recipients\r\n").await?;
                                 continue;
                             }
 
@@ -554,20 +551,9 @@ async fn log_smtp_request(
 
     let request_json = serde_json::to_string(&request_log)?;
 
-    // Push request to list and get the new length to calculate the correct index
+    // Push request to list
     let list_key = format!("requests:{subdomain}");
-    let index = cache
-        .rpush(&list_key, &request_json)
-        .await?
-        .saturating_sub(1);
-
-    // Store the index for this request ID (used by delete endpoint)
-    cache
-        .set(
-            &format!("request:{subdomain}:{request_id}"),
-            &index.to_string(),
-        )
-        .await?;
+    cache.rpush(&list_key, &request_json).await?;
 
     let message = CacheMessage {
         cmd: "new_request".to_string(),

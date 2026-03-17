@@ -298,27 +298,25 @@ pub async fn create_session(
     response
 }
 
-/// Check rate limit for session creation
-async fn check_rate_limit(
+/// Generic cache-based rate limiter
+async fn check_rate_limit_generic(
     state: &AppState,
     client_ip: &str,
+    key_prefix: &str,
+    rate_limit: u32,
+    window_secs: u64,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let rate_limit = CONFIG.session_rate_limit;
-    let window_secs = CONFIG.session_rate_window_secs;
-
-    // Skip rate limiting if disabled
     if rate_limit == 0 {
         return Ok(());
     }
 
     let now = get_current_timestamp();
     let window_start = now - (window_secs as i64);
-    let rate_key = format!("ratelimit:session:{client_ip}");
+    let rate_key = format!("ratelimit:{key_prefix}:{client_ip}");
 
-    // Get current count and timestamp
+    // Get current count and timestamp (format: "count:timestamp")
     let (count, last_reset) = match state.cache.get(&rate_key).await {
         Ok(Some(data)) => {
-            // Format: "count:timestamp"
             let parts: Vec<&str> = data.split(':').collect();
             if parts.len() == 2 {
                 let c = parts[0].parse::<u32>().unwrap_or(0);
@@ -331,14 +329,12 @@ async fn check_rate_limit(
         _ => (0, now),
     };
 
-    // Reset counter if window has passed
     let (new_count, new_reset) = if last_reset < window_start {
         (1, now)
     } else {
         (count + 1, last_reset)
     };
 
-    // Check if over limit
     if new_count > rate_limit {
         let retry_after = (last_reset + window_secs as i64) - now;
         return Err((
@@ -351,7 +347,6 @@ async fn check_rate_limit(
         ));
     }
 
-    // Update counter
     let _ = state
         .cache
         .set(&rate_key, &format!("{new_count}:{new_reset}"))
@@ -360,60 +355,27 @@ async fn check_rate_limit(
     Ok(())
 }
 
-/// Check rate limit for share token creation (10 per 60 seconds per IP)
+/// Check rate limit for session creation
+async fn check_rate_limit(
+    state: &AppState,
+    client_ip: &str,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    check_rate_limit_generic(
+        state,
+        client_ip,
+        "session",
+        CONFIG.session_rate_limit,
+        CONFIG.session_rate_window_secs,
+    )
+    .await
+}
+
+/// Check rate limit for share token creation
 async fn check_share_rate_limit(
     state: &AppState,
     client_ip: &str,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let rate_limit: u32 = 10;
-    let window_secs: u32 = 60;
-
-    let now = get_current_timestamp();
-    let window_start = now - (window_secs as i64);
-    let rate_key = format!("ratelimit:share:{client_ip}");
-
-    // Get current count and timestamp
-    let (count, last_reset) = match state.cache.get(&rate_key).await {
-        Ok(Some(data)) => {
-            let parts: Vec<&str> = data.split(':').collect();
-            if parts.len() == 2 {
-                let c = parts[0].parse::<u32>().unwrap_or(0);
-                let t = parts[1].parse::<i64>().unwrap_or(0);
-                (c, t)
-            } else {
-                (0, now)
-            }
-        }
-        _ => (0, now),
-    };
-
-    // Reset counter if window has passed
-    let (new_count, new_reset) = if last_reset < window_start {
-        (1, now)
-    } else {
-        (count + 1, last_reset)
-    };
-
-    // Check if over limit
-    if new_count > rate_limit {
-        let retry_after = (last_reset + window_secs as i64) - now;
-        return Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({
-                "error": "Rate limit exceeded",
-                "code": "rate_limited",
-                "retry_after": retry_after.max(1)
-            })),
-        ));
-    }
-
-    // Update counter
-    let _ = state
-        .cache
-        .set(&rate_key, &format!("{new_count}:{new_reset}"))
-        .await;
-
-    Ok(())
+    check_rate_limit_generic(state, client_ip, "share", 10, 60).await
 }
 
 // ============================================================================

@@ -203,20 +203,9 @@ async fn handle_tcp_connection(
 
         let request_json = serde_json::to_string(&request_log)?;
 
-        // Push request to list and get the new length to calculate the correct index
+        // Push request to list
         let list_key = format!("requests:{subdomain}");
-        let index = cache
-            .rpush(&list_key, &request_json)
-            .await?
-            .saturating_sub(1);
-
-        // Store the index for this request ID (used by delete endpoint)
-        cache
-            .set(
-                &format!("request:{subdomain}:{request_id}"),
-                &index.to_string(),
-            )
-            .await?;
+        cache.rpush(&list_key, &request_json).await?;
 
         let message = CacheMessage {
             cmd: "new_request".to_string(),
