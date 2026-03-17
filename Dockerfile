@@ -2,7 +2,7 @@
 # Uses cargo-chef for optimized dependency caching
 
 # Stage 1: Chef - install cargo-chef
-FROM rust:1.85-slim-bookworm AS chef
+FROM rust:1.88-slim-bookworm AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     pkg-config \

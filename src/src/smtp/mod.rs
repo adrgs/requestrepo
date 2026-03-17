@@ -28,6 +28,15 @@ const READ_TIMEOUT: Duration = Duration::from_secs(60);
 /// Maximum line length (prevent memory exhaustion)
 const MAX_LINE_LENGTH: usize = 16 * 1024;
 
+/// Maximum transaction log size (64 KB)
+const MAX_TRANSACTION_LOG_SIZE: usize = 64 * 1024;
+
+/// Maximum commands per session
+const MAX_COMMANDS_PER_SESSION: u32 = 500;
+
+/// Maximum recipients per session
+const MAX_RECIPIENTS: usize = 100;
+
 pub struct Server {
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
@@ -114,6 +123,7 @@ async fn handle_smtp_connection(
     let mut rcpt_to: Vec<String> = Vec::new();
     let mut subdomain: Option<String> = None;
     let mut transaction_log = String::new();
+    let mut command_count: u32 = 0;
 
     // Log the greeting we sent
     transaction_log.push_str(&format!(
@@ -151,6 +161,23 @@ async fn handle_smtp_connection(
         }
 
         let line_trimmed = line.trim();
+
+        // Check transaction log size
+        if transaction_log.len() > MAX_TRANSACTION_LOG_SIZE {
+            let _ = writer
+                .write_all(b"421 Transaction log too large - disconnecting\r\n")
+                .await;
+            break;
+        }
+
+        // Check command count
+        command_count += 1;
+        if command_count > MAX_COMMANDS_PER_SESSION {
+            let _ = writer
+                .write_all(b"421 Too many commands - disconnecting\r\n")
+                .await;
+            break;
+        }
 
         if data_mode {
             if line_trimmed == "." {
@@ -261,6 +288,13 @@ async fn handle_smtp_connection(
                     if let Some(ref arg) = args {
                         let arg_upper = arg.to_uppercase();
                         if arg_upper.starts_with("TO:") {
+                            // Check recipient limit
+                            if rcpt_to.len() >= MAX_RECIPIENTS {
+                                transaction_log.push_str("S: 452 Too many recipients\n");
+                                writer.write_all(b"452 Too many recipients\r\n").await?;
+                                continue;
+                            }
+
                             let recipient = arg[3..].trim().to_string();
 
                             // Extract subdomain from the first valid recipient
@@ -517,20 +551,9 @@ async fn log_smtp_request(
 
     let request_json = serde_json::to_string(&request_log)?;
 
-    // Push request to list and get the new length to calculate the correct index
+    // Push request to list
     let list_key = format!("requests:{subdomain}");
-    let index = cache
-        .rpush(&list_key, &request_json)
-        .await?
-        .saturating_sub(1);
-
-    // Store the index for this request ID (used by delete endpoint)
-    cache
-        .set(
-            &format!("request:{subdomain}:{request_id}"),
-            &index.to_string(),
-        )
-        .await?;
+    cache.rpush(&list_key, &request_json).await?;
 
     let message = CacheMessage {
         cmd: "new_request".to_string(),

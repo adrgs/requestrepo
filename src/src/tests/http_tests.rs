@@ -78,10 +78,6 @@ mod tests {
             .rpush(&format!("requests:{subdomain}"), &request_json)
             .await
             .unwrap();
-        cache
-            .set(&format!("request:{subdomain}:{request_id}"), "0")
-            .await
-            .unwrap();
 
         // Verify requests can be retrieved
         let requests = cache
@@ -90,13 +86,6 @@ mod tests {
             .unwrap();
         assert_eq!(requests.len(), 1);
         assert!(requests[0].contains(request_id));
-
-        // Verify request index exists
-        let index = cache
-            .get(&format!("request:{subdomain}:{request_id}"))
-            .await
-            .unwrap();
-        assert_eq!(index, Some("0".to_string()));
     }
 
     #[tokio::test]

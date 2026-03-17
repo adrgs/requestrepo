@@ -95,8 +95,31 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
         }
     });
 
+    // Rate limiting for incoming messages
+    let mut msg_count: u32 = 0;
+    let mut window_start = std::time::Instant::now();
+    const MAX_MSGS_PER_SEC: u32 = 30;
+
     // Handle incoming messages
     while let Some(Ok(msg)) = receiver.next().await {
+        // Rate limit check
+        msg_count += 1;
+        if window_start.elapsed() >= std::time::Duration::from_secs(1) {
+            msg_count = 1;
+            window_start = std::time::Instant::now();
+        } else if msg_count > MAX_MSGS_PER_SEC {
+            let _ = tx
+                .send(
+                    json!({
+                        "cmd": "error",
+                        "code": "rate_limited",
+                        "message": "Too many messages, disconnecting"
+                    })
+                    .to_string(),
+                )
+                .await;
+            break;
+        }
         match msg {
             Message::Text(text) => {
                 if let Ok(json) = serde_json::from_str::<Value>(&text) {
@@ -132,10 +155,10 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                             break;
                                         }
 
-                                        // Send historical requests
+                                        // Send historical requests (last 100)
                                         if let Ok(requests) = state
                                             .cache
-                                            .lrange(&format!("requests:{subdomain}"), 0, -1)
+                                            .lrange(&format!("requests:{subdomain}"), -100, -1)
                                             .await
                                         {
                                             let requests: Vec<Value> = requests

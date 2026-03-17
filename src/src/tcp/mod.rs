@@ -3,9 +3,11 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
+use tokio::time::timeout;
 use tracing::{error, info};
 
 use crate::cache::Cache;
@@ -131,6 +133,7 @@ impl Server {
         let cache = self.cache.clone();
         let tx = self.tx.clone();
         let subdomain_clone = subdomain.clone();
+        let semaphore = Arc::new(Semaphore::new(100));
 
         tokio::spawn(async move {
             loop {
@@ -139,8 +142,13 @@ impl Server {
                         let cache = cache.clone();
                         let tx = tx.clone();
                         let subdomain = subdomain_clone.clone();
+                        let semaphore = semaphore.clone();
 
                         tokio::spawn(async move {
+                            let _permit = match semaphore.acquire().await {
+                                Ok(permit) => permit,
+                                Err(_) => return,
+                            };
                             if let Err(e) =
                                 handle_tcp_connection(socket, addr, port, &subdomain, cache, tx)
                                     .await
@@ -172,7 +180,10 @@ async fn handle_tcp_connection(
 
     let client_ip = addr.ip().to_string();
 
-    let n = socket.read(&mut buffer).await?;
+    let n = match timeout(Duration::from_secs(30), socket.read(&mut buffer)).await {
+        Ok(Ok(n)) => n,
+        _ => return Ok(()), // timeout or error
+    };
 
     if n > 0 {
         let request_id = generate_request_id();
@@ -192,20 +203,9 @@ async fn handle_tcp_connection(
 
         let request_json = serde_json::to_string(&request_log)?;
 
-        // Push request to list and get the new length to calculate the correct index
+        // Push request to list
         let list_key = format!("requests:{subdomain}");
-        let index = cache
-            .rpush(&list_key, &request_json)
-            .await?
-            .saturating_sub(1);
-
-        // Store the index for this request ID (used by delete endpoint)
-        cache
-            .set(
-                &format!("request:{subdomain}:{request_id}"),
-                &index.to_string(),
-            )
-            .await?;
+        cache.rpush(&list_key, &request_json).await?;
 
         let message = CacheMessage {
             cmd: "new_request".to_string(),

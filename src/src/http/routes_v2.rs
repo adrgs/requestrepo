@@ -199,10 +199,18 @@ fn validate_dns_value(record_type: &str, value: &str) -> Result<(), String> {
             }
             Ok(())
         }
-        "CNAME" | "TXT" => {
-            // These can contain arbitrary values
+        "CNAME" => {
             if value.is_empty() {
                 return Err("Value cannot be empty".to_string());
+            }
+            Ok(())
+        }
+        "TXT" => {
+            if value.is_empty() {
+                return Err("Value cannot be empty".to_string());
+            }
+            if value.len() > 512 {
+                return Err("TXT records cannot exceed 512 characters".to_string());
             }
             Ok(())
         }
@@ -290,27 +298,25 @@ pub async fn create_session(
     response
 }
 
-/// Check rate limit for session creation
-async fn check_rate_limit(
+/// Generic cache-based rate limiter
+async fn check_rate_limit_generic(
     state: &AppState,
     client_ip: &str,
+    key_prefix: &str,
+    rate_limit: u32,
+    window_secs: u64,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let rate_limit = CONFIG.session_rate_limit;
-    let window_secs = CONFIG.session_rate_window_secs;
-
-    // Skip rate limiting if disabled
     if rate_limit == 0 {
         return Ok(());
     }
 
     let now = get_current_timestamp();
     let window_start = now - (window_secs as i64);
-    let rate_key = format!("ratelimit:session:{client_ip}");
+    let rate_key = format!("ratelimit:{key_prefix}:{client_ip}");
 
-    // Get current count and timestamp
+    // Get current count and timestamp (format: "count:timestamp")
     let (count, last_reset) = match state.cache.get(&rate_key).await {
         Ok(Some(data)) => {
-            // Format: "count:timestamp"
             let parts: Vec<&str> = data.split(':').collect();
             if parts.len() == 2 {
                 let c = parts[0].parse::<u32>().unwrap_or(0);
@@ -323,14 +329,12 @@ async fn check_rate_limit(
         _ => (0, now),
     };
 
-    // Reset counter if window has passed
     let (new_count, new_reset) = if last_reset < window_start {
         (1, now)
     } else {
         (count + 1, last_reset)
     };
 
-    // Check if over limit
     if new_count > rate_limit {
         let retry_after = (last_reset + window_secs as i64) - now;
         return Err((
@@ -343,13 +347,35 @@ async fn check_rate_limit(
         ));
     }
 
-    // Update counter
     let _ = state
         .cache
         .set(&rate_key, &format!("{new_count}:{new_reset}"))
         .await;
 
     Ok(())
+}
+
+/// Check rate limit for session creation
+async fn check_rate_limit(
+    state: &AppState,
+    client_ip: &str,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    check_rate_limit_generic(
+        state,
+        client_ip,
+        "session",
+        CONFIG.session_rate_limit,
+        CONFIG.session_rate_window_secs,
+    )
+    .await
+}
+
+/// Check rate limit for share token creation
+async fn check_share_rate_limit(
+    state: &AppState,
+    client_ip: &str,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    check_rate_limit_generic(state, client_ip, "share", 10, 60).await
 }
 
 // ============================================================================
@@ -760,30 +786,54 @@ pub async fn delete_request(
         Err(e) => return e.into_response(),
     };
 
-    // Find and delete request by ID
-    let index_key = format!("request:{subdomain}:{id}");
-    let index = match state.cache.get(&index_key).await {
-        Ok(Some(idx)) => idx.parse::<isize>().unwrap_or(-1),
-        _ => -1,
+    // Find request by scanning the list (indices are not stable due to eviction)
+    let requests = match state
+        .cache
+        .lrange(&format!("requests:{subdomain}"), 0, -1)
+        .await
+    {
+        Ok(list) => list,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "Request not found",
+                    "code": "not_found"
+                })),
+            )
+                .into_response();
+        }
     };
 
-    if index < 0 {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "Request not found",
-                "code": "not_found"
-            })),
-        )
-            .into_response();
+    let mut found_index: Option<usize> = None;
+    for (i, req_str) in requests.iter().enumerate() {
+        if let Ok(req) = serde_json::from_str::<serde_json::Value>(req_str) {
+            if req.get("_id").and_then(|v| v.as_str()) == Some(&id) {
+                found_index = Some(i);
+                break;
+            }
+        }
     }
+
+    let index = match found_index {
+        Some(i) => i,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "Request not found",
+                    "code": "not_found"
+                })),
+            )
+                .into_response();
+        }
+    };
 
     // Set to empty object to mark as deleted
     let _ = state
         .cache
-        .lset(&format!("requests:{subdomain}"), index, "{}")
+        .lset(&format!("requests:{subdomain}"), index as isize, "{}")
         .await;
-    let _ = state.cache.delete(&index_key).await;
 
     // Broadcast deletion
     let message = crate::models::CacheMessage {
@@ -810,25 +860,6 @@ pub async fn delete_all_requests(
         Ok(s) => s,
         Err(e) => return e.into_response(),
     };
-
-    // Get all request IDs first
-    let requests = state
-        .cache
-        .lrange(&format!("requests:{subdomain}"), 0, -1)
-        .await
-        .unwrap_or_default();
-
-    // Delete index keys
-    for request_json in &requests {
-        if let Ok(request) = serde_json::from_str::<serde_json::Value>(request_json) {
-            if let Some(id) = request.get("_id").and_then(|v| v.as_str()) {
-                let _ = state
-                    .cache
-                    .delete(&format!("request:{subdomain}:{id}"))
-                    .await;
-            }
-        }
-    }
 
     // Delete the requests list
     let _ = state.cache.delete(&format!("requests:{subdomain}")).await;
@@ -860,10 +891,18 @@ pub struct ShareResponse {
 /// POST /api/v2/requests/:id/share - Create a share token for a request
 pub async fn share_request(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(id): Path<String>,
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    let client_ip = addr.ip().to_string();
+
+    // Check rate limit (reuses session creation rate limiter)
+    if let Err(response) = check_share_rate_limit(&state, &client_ip).await {
+        return response.into_response();
+    }
+
     let subdomain = match verify_token_or_error(&query, &headers) {
         Ok(s) => s,
         Err(e) => return e.into_response(),
@@ -1117,5 +1156,9 @@ mod tests {
         // Empty values should fail
         assert!(validate_dns_value("CNAME", "").is_err());
         assert!(validate_dns_value("TXT", "").is_err());
+
+        // TXT length limit
+        assert!(validate_dns_value("TXT", &"a".repeat(512)).is_ok());
+        assert!(validate_dns_value("TXT", &"a".repeat(513)).is_err());
     }
 }

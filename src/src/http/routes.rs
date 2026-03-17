@@ -182,21 +182,9 @@ pub async fn catch_all(
 
         let request_json = serde_json::to_string(&request_log).unwrap_or_default();
 
-        // Push request to list and get the new length to calculate the correct index
+        // Push request to list
         let list_key = format!("requests:{subdomain}");
-        let index = match state.cache.rpush(&list_key, &request_json).await {
-            Ok(len) => len.saturating_sub(1), // Index is length - 1 (0-based)
-            Err(_) => 0,
-        };
-
-        // Store the index for this request ID (used by delete endpoint)
-        let _ = state
-            .cache
-            .set(
-                &format!("request:{subdomain}:{request_id}"),
-                &index.to_string(),
-            )
-            .await;
+        let _ = state.cache.rpush(&list_key, &request_json).await;
 
         let message = crate::models::CacheMessage {
             cmd: "new_request".to_string(),
@@ -367,6 +355,11 @@ async fn serve_file(
                 }
             }
         }
+
+        // Security headers: prevent XSS via served content
+        // Applied after user headers so they cannot be overridden
+        response = response.header("X-Content-Type-Options", "nosniff");
+        response = response.header("Content-Security-Policy", "sandbox allow-scripts");
 
         return response
             .body(Body::from(content))
