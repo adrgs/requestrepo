@@ -136,7 +136,12 @@ pub fn get_subdomain_from_hostname(host: &str) -> Option<String> {
         return None;
     }
 
-    let subdomain = &host[r_index - 1 - CONFIG.subdomain_length..r_index - 1];
+    let start = r_index.checked_sub(1 + CONFIG.subdomain_length)?;
+    let end = r_index.checked_sub(1)?;
+    if !host.is_char_boundary(start) || !host.is_char_boundary(end) {
+        return None;
+    }
+    let subdomain = &host[start..end];
 
     if subdomain.is_empty()
         || subdomain.len() != CONFIG.subdomain_length

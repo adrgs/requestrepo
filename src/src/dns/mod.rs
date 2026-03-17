@@ -1,12 +1,14 @@
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rand::seq::SliceRandom;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::net::UdpSocket;
 use tokio::sync::broadcast;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use trust_dns_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
 use trust_dns_proto::rr::rdata::{CNAME, MX, TXT};
 use trust_dns_proto::rr::{Name, RData, Record, RecordType};
@@ -17,6 +19,54 @@ use crate::ip2country::lookup_country;
 use crate::models::{CacheMessage, DnsRequestLog};
 use crate::utils::config::CONFIG;
 use crate::utils::{generate_request_id, get_current_timestamp, get_subdomain_from_hostname};
+
+/// Maximum UDP DNS response size (RFC 1035)
+const MAX_UDP_RESPONSE_SIZE: usize = 512;
+
+/// Maximum DNS queries per second per IP
+const DNS_RATE_LIMIT_PER_SECOND: u32 = 100;
+
+/// Rate limiter cleanup interval (number of queries between cleanups)
+const RATE_LIMITER_CLEANUP_INTERVAL: u64 = 1000;
+
+struct DnsRateLimiter {
+    limits: Mutex<HashMap<IpAddr, (Instant, u32)>>,
+    max_per_second: u32,
+}
+
+impl DnsRateLimiter {
+    fn new(max_per_second: u32) -> Self {
+        Self {
+            limits: Mutex::new(HashMap::new()),
+            max_per_second,
+        }
+    }
+
+    /// Returns true if the request should be allowed, false if rate-limited.
+    fn check(&self, ip: IpAddr) -> bool {
+        let mut limits = self.limits.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+
+        let entry = limits.entry(ip).or_insert((now, 0));
+
+        // If more than 1 second has passed, reset the counter
+        if now.duration_since(entry.0).as_secs() >= 1 {
+            entry.0 = now;
+            entry.1 = 1;
+            true
+        } else {
+            entry.1 += 1;
+            entry.1 <= self.max_per_second
+        }
+    }
+
+    /// Remove stale entries older than 10 seconds
+    fn cleanup(&self) {
+        let mut limits = self.limits.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        limits.retain(|_, (instant, _)| now.duration_since(*instant).as_secs() < 10);
+    }
+}
 
 pub struct Server {
     cache: Arc<Cache>,
@@ -33,10 +83,27 @@ impl Server {
 
         let socket = Arc::new(UdpSocket::bind(format!("0.0.0.0:{}", CONFIG.dns_port)).await?);
         let mut buf = vec![0u8; 512];
+        let rate_limiter = Arc::new(DnsRateLimiter::new(DNS_RATE_LIMIT_PER_SECOND));
+        let mut query_count: u64 = 0;
 
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
+                    // Rate limit check
+                    if !rate_limiter.check(addr.ip()) {
+                        warn!("DNS rate limit exceeded for {}", addr.ip());
+                        continue;
+                    }
+
+                    // Periodic cleanup of stale rate limiter entries
+                    query_count += 1;
+                    if query_count % RATE_LIMITER_CLEANUP_INTERVAL == 0 {
+                        let rl = rate_limiter.clone();
+                        tokio::spawn(async move {
+                            rl.cleanup();
+                        });
+                    }
+
                     let data = buf[..len].to_vec();
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
@@ -97,6 +164,22 @@ async fn handle_dns_request(
     let response_bytes = response
         .to_bytes()
         .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e))?;
+
+    // If UDP response exceeds 512 bytes, set TC (truncation) bit and strip answers
+    // This forces the client to retry via TCP (which is not spoofable)
+    let response_bytes = if response_bytes.len() > MAX_UDP_RESPONSE_SIZE {
+        let mut truncated = response.clone();
+        truncated.set_truncated(true);
+        // Remove all answers to fit within 512 bytes - keep only header + question
+        let empty_answers: Vec<Record> = Vec::new();
+        truncated.insert_answers(empty_answers);
+        truncated
+            .to_bytes()
+            .map_err(|e| anyhow!("Failed to serialize truncated DNS response: {}", e))?
+    } else {
+        response_bytes
+    };
+
     socket.send_to(&response_bytes, addr).await?;
 
     Ok(())

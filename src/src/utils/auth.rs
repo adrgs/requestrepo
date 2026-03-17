@@ -1,9 +1,19 @@
 use super::config::CONFIG;
 
+/// Constant-time string comparison to prevent timing attacks
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 /// Verify if the provided token is a valid admin token
 pub fn verify_admin_token(token: &str) -> bool {
     match &CONFIG.admin_token {
-        Some(admin_token) => token == admin_token,
+        Some(admin_token) => constant_time_eq(token, admin_token),
         None => false,
     }
 }

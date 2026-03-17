@@ -418,12 +418,12 @@ impl Cache {
         let mut empty_lists: Vec<String> = Vec::new();
 
         if let Ok(mut store) = self.request_store.write() {
+            // Collect keys ONCE outside the while loop to avoid O(N*M) re-cloning
+            let keys: Vec<String> = store.keys().cloned().collect();
+
             // Keep evicting until we've freed enough memory
             while freed < bytes_to_free {
                 let mut made_progress = false;
-
-                // Get all keys (we need to collect to avoid borrow issues)
-                let keys: Vec<String> = store.keys().cloned().collect();
 
                 // Round-robin: pop one oldest request from each list
                 for key in &keys {
@@ -490,8 +490,12 @@ impl Clone for Cache {
 /// Extract subdomain from cache key for size tracking
 fn extract_subdomain_from_key(key: &str) -> Option<String> {
     // files:{subdomain} -> subdomain
-    // dns:{subdomain} -> subdomain
+    // file:{subdomain}:{path} -> subdomain
     if key.starts_with("files:") || key.starts_with("file:") {
+        return Some(key.split(':').nth(1)?.to_string());
+    }
+    // request:{subdomain}:{id} -> subdomain
+    if key.starts_with("request:") {
         return Some(key.split(':').nth(1)?.to_string());
     }
     if key.starts_with("dns:") {
@@ -502,13 +506,17 @@ fn extract_subdomain_from_key(key: &str) -> Option<String> {
         }
         // dns:{type}:{domain} - extract subdomain from domain
         // e.g., dns:A:test.abc123.example.com. -> abc123
+        // Strip trailing dot and base domain, then take the last remaining label
         if parts.len() >= 3 {
-            let domain = parts[2];
-            // Try to extract subdomain from domain name
-            let domain_parts: Vec<&str> = domain.split('.').collect();
-            if domain_parts.len() >= 2 {
-                // Second-to-last part before the base domain might be the subdomain
-                return Some(domain_parts[1].to_string());
+            let domain = parts[2].trim_end_matches('.');
+            if let Some(stripped) = domain.strip_suffix(&CONFIG.server_domain) {
+                let stripped = stripped.trim_end_matches('.');
+                // The last label in the remaining string is the subdomain
+                if let Some(sub) = stripped.rsplit('.').next() {
+                    if sub.len() == CONFIG.subdomain_length {
+                        return Some(sub.to_string());
+                    }
+                }
             }
         }
     }
