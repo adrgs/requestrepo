@@ -16,7 +16,7 @@ async fn main() {
         sentry::ClientOptions {
             release: sentry::release_name!(),
             traces_sample_rate: 0.2, // 20% of requests for performance monitoring
-            send_default_pii: true,
+            send_default_pii: false,
             ..Default::default()
         },
     ));

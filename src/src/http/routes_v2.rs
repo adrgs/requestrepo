@@ -77,10 +77,7 @@ fn extract_admin_token(body_token: Option<&str>, cookies: &CookieJar) -> Option<
 /// Build the admin token cookie string with security settings
 fn build_admin_cookie(token: &str) -> String {
     let secure = if CONFIG.tls_enabled { "; Secure" } else { "" };
-    format!(
-        "admin_token={}; Path=/api/; Domain={}; HttpOnly; SameSite=Strict; Max-Age=2592000{}",
-        token, CONFIG.server_domain, secure
-    )
+    format!("admin_token={token}; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=2592000{secure}")
 }
 
 /// Extract token from query param or Authorization header
@@ -460,12 +457,14 @@ pub async fn update_dns(
             serde_json::from_str::<Vec<HashMap<String, String>>>(&old_records_json)
         {
             for old_record in old_records {
-                if let (Some(record_type), Some(domain)) =
+                if let (Some(record_type), Some(short_domain)) =
                     (old_record.get("type"), old_record.get("domain"))
                 {
+                    let old_fqdn =
+                        format!("{}.{}.{}.", short_domain, subdomain, CONFIG.server_domain);
                     let _ = state
                         .cache
-                        .delete(&format!("dns:{record_type}:{domain}"))
+                        .delete(&format!("dns:{record_type}:{old_fqdn}"))
                         .await;
                 }
             }
@@ -691,7 +690,7 @@ pub async fn list_requests(
     let total_raw = state.cache.llen(&key).await.unwrap_or(0);
 
     // Apply pagination limits
-    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = query.offset.unwrap_or(0);
 
     // Fetch paginated range

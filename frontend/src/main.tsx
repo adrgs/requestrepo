@@ -34,6 +34,18 @@ declare global {
 if (window.__CONFIG__?.SENTRY_DSN_FRONTEND) {
   Sentry.init({
     dsn: window.__CONFIG__.SENTRY_DSN_FRONTEND,
+    beforeBreadcrumb(breadcrumb) {
+      if (breadcrumb.category === "xhr" && breadcrumb.data?.url) {
+        try {
+          const url = new URL(breadcrumb.data.url, window.location.origin);
+          url.searchParams.delete("token");
+          breadcrumb.data.url = url.toString();
+        } catch {
+          /* ignore malformed URLs */
+        }
+      }
+      return breadcrumb;
+    },
     beforeSend(event, hint) {
       const error = hint.originalException;
       // Filter out Monaco editor cancellation errors (expected during navigation/disposal)
