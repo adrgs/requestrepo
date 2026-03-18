@@ -35,6 +35,13 @@ export interface DnsRequest extends BaseRequest {
   reply?: string; // Response (optional, added for display)
 }
 
+export interface SmtpAttachment {
+  filename: string;
+  content_type: string;
+  size: number;
+  content: string; // base64
+}
+
 export interface SmtpRequest extends BaseRequest {
   type: "smtp";
   command: string; // SMTP command (DATA, MAIL, RCPT, etc.)
@@ -45,6 +52,9 @@ export interface SmtpRequest extends BaseRequest {
   to: string | null;
   cc: string | null;
   bcc: string | null;
+  text_body?: string;
+  html_body?: string;
+  attachments?: SmtpAttachment[];
 }
 
 export type Request = HttpRequest | DnsRequest | SmtpRequest;

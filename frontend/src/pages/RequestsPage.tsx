@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, CardBody, Code, Button } from "@heroui/react";
+import { Card, CardBody, Code, Button, Tabs, Tab, Chip } from "@heroui/react";
 import { Share2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
@@ -8,10 +8,34 @@ import { useRequestStore } from "@/stores/requestStore";
 import { useUiStore } from "@/stores/uiStore";
 import { apiClient } from "@/api/client";
 import { useTheme } from "@/hooks/useTheme";
-import { isHttpRequest, isDnsRequest, isSmtpRequest } from "@/types";
+import {
+  isHttpRequest,
+  isDnsRequest,
+  isSmtpRequest,
+  type SmtpAttachment,
+} from "@/types";
 import { formatDate, copyToClipboard, getFlagClass } from "@/lib/utils";
 import { decodeBase64Safe } from "@/lib/base64";
 import { getBaseDomain, getDnsDomain } from "@/lib/config";
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function downloadAttachment(attachment: SmtpAttachment) {
+  const bytes = atob(attachment.content);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  const blob = new Blob([arr], { type: attachment.content_type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = attachment.filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const PYTHON_EXAMPLE = `from requestrepo import Requestrepo  # pip install requestrepo
 
@@ -623,14 +647,89 @@ export function RequestsPage() {
           )}
 
           {/* Email Body */}
-          {selectedRequest.data && (
+          {(selectedRequest.data ||
+            selectedRequest.text_body ||
+            selectedRequest.html_body) && (
             <>
               <h3 className="text-base font-semibold mb-2">Email Body</h3>
-              <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
-                {selectedRequest.data}
-              </Code>
+              <Tabs
+                aria-label="Email body views"
+                variant="underlined"
+                classNames={{ tabList: "mb-2" }}
+              >
+                <Tab key="text" title="Text">
+                  <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
+                    {selectedRequest.text_body || selectedRequest.data || ""}
+                  </Code>
+                </Tab>
+                <Tab key="html" title="HTML">
+                  {selectedRequest.html_body ? (
+                    <iframe
+                      sandbox=""
+                      srcDoc={selectedRequest.html_body}
+                      className="w-full min-h-[300px] border border-default-200 rounded-lg mb-4 bg-white"
+                      title="HTML email preview"
+                    />
+                  ) : (
+                    <p className="text-default-400 text-xs mb-4">
+                      No HTML body available
+                    </p>
+                  )}
+                </Tab>
+                <Tab key="raw" title="Raw">
+                  <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
+                    {selectedRequest.data || ""}
+                  </Code>
+                </Tab>
+              </Tabs>
             </>
           )}
+
+          {/* Attachments */}
+          {selectedRequest.attachments &&
+            selectedRequest.attachments.length > 0 && (
+              <>
+                <h3 className="text-base font-semibold mb-2">
+                  Attachments ({selectedRequest.attachments.length})
+                </h3>
+                <div className="space-y-2 mb-4">
+                  {selectedRequest.attachments.map((attachment, index) => (
+                    <Card key={index} className="shadow-sm">
+                      <CardBody className="p-3 flex flex-row items-center gap-3">
+                        {attachment.content_type.startsWith("image/") && (
+                          <img
+                            src={`data:${attachment.content_type};base64,${attachment.content}`}
+                            alt={attachment.filename}
+                            className="w-12 h-12 object-cover rounded border border-default-200"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {attachment.filename}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Chip size="sm" variant="flat">
+                              {attachment.content_type}
+                            </Chip>
+                            <span className="text-xs text-default-500">
+                              {formatFileSize(attachment.size)}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          color="primary"
+                          onPress={() => downloadAttachment(attachment)}
+                        >
+                          Download
+                        </Button>
+                      </CardBody>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
 
           {/* Raw SMTP Transaction */}
           <h3 className="text-base font-semibold mb-2">Raw SMTP Transaction</h3>

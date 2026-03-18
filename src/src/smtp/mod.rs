@@ -1,6 +1,6 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use mail_parser::MessageParser;
+use mail_parser::{MessageParser, MimeHeaders};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,7 +12,7 @@ use tracing::{error, info, warn};
 
 use crate::cache::Cache;
 use crate::ip2country::lookup_country;
-use crate::models::{CacheMessage, SmtpRequestLog};
+use crate::models::{CacheMessage, SmtpAttachment, SmtpRequestLog};
 use crate::utils::config::CONFIG;
 use crate::utils::{generate_request_id, get_current_timestamp, get_subdomain_from_hostname};
 
@@ -392,6 +392,9 @@ struct ParsedEmail {
     to: Option<String>,
     cc: Option<String>,
     bcc: Option<String>,
+    text_body: Option<String>,
+    html_body: Option<String>,
+    attachments: Vec<SmtpAttachment>,
 }
 
 /// Parse email data using mail-parser to extract headers
@@ -444,12 +447,40 @@ fn parse_email_headers(email_data: &str) -> ParsedEmail {
                 .join(", ")
         });
 
+        let text_body = message.body_text(0).map(|s| s.to_string());
+        let html_body = message.body_html(0).map(|s| s.to_string());
+
+        let attachments: Vec<SmtpAttachment> = message
+            .attachments()
+            .map(|part| {
+                let content_type = part
+                    .content_type()
+                    .map(|ct| {
+                        if let Some(subtype) = ct.subtype() {
+                            format!("{}/{}", ct.ctype(), subtype)
+                        } else {
+                            ct.ctype().to_string()
+                        }
+                    })
+                    .unwrap_or_else(|| "application/octet-stream".to_string());
+                SmtpAttachment {
+                    filename: part.attachment_name().unwrap_or("unnamed").to_string(),
+                    content_type,
+                    size: part.contents().len(),
+                    content: BASE64.encode(part.contents()),
+                }
+            })
+            .collect();
+
         ParsedEmail {
             subject,
             from,
             to,
             cc,
             bcc,
+            text_body,
+            html_body,
+            attachments,
         }
     } else {
         // Fallback if parsing fails
@@ -459,6 +490,9 @@ fn parse_email_headers(email_data: &str) -> ParsedEmail {
             to: None,
             cc: None,
             bcc: None,
+            text_body: None,
+            html_body: None,
+            attachments: Vec::new(),
         }
     }
 }
@@ -522,6 +556,9 @@ async fn log_smtp_request(
         to: None,
         cc: None,
         bcc: None,
+        text_body: None,
+        html_body: None,
+        attachments: Vec::new(),
     });
 
     // Use the full transaction log as raw content
@@ -553,6 +590,9 @@ async fn log_smtp_request(
         to,
         cc: parsed.cc,
         bcc: parsed.bcc,
+        text_body: parsed.text_body,
+        html_body: parsed.html_body,
+        attachments: parsed.attachments,
     };
 
     let request_json = serde_json::to_string(&request_log)?;

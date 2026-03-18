@@ -36,6 +36,14 @@ pub struct DnsRequestLog {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmtpAttachment {
+    pub filename: String,
+    pub content_type: String,
+    pub size: usize,
+    pub content: String, // base64 encoded
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmtpRequestLog {
     pub _id: String,
     pub r#type: String,
@@ -52,6 +60,9 @@ pub struct SmtpRequestLog {
     pub to: Option<String>,
     pub cc: Option<String>,
     pub bcc: Option<String>,
+    pub text_body: Option<String>,
+    pub html_body: Option<String>,
+    pub attachments: Vec<SmtpAttachment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
