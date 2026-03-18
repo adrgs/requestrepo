@@ -356,11 +356,6 @@ async fn serve_file(
             }
         }
 
-        // Security headers: prevent XSS via served content
-        // Applied after user headers so they cannot be overridden
-        response = response.header("X-Content-Type-Options", "nosniff");
-        response = response.header("Content-Security-Policy", "sandbox allow-scripts");
-
         return response
             .body(Body::from(content))
             .unwrap_or_else(|_| {
