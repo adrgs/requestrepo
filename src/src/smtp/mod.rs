@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 
@@ -51,14 +51,20 @@ impl Server {
         info!("Starting SMTP server on port {}", CONFIG.smtp_port);
 
         let listener = TcpListener::bind(format!("0.0.0.0:{}", CONFIG.smtp_port)).await?;
+        let semaphore = Arc::new(Semaphore::new(100));
 
         loop {
             match listener.accept().await {
                 Ok((socket, addr)) => {
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
+                    let semaphore = semaphore.clone();
 
                     tokio::spawn(async move {
+                        let _permit = match semaphore.acquire().await {
+                            Ok(permit) => permit,
+                            Err(_) => return,
+                        };
                         // Apply overall connection timeout
                         match timeout(
                             CONNECTION_TIMEOUT,
