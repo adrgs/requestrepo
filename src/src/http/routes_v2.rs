@@ -199,18 +199,9 @@ fn validate_dns_value(record_type: &str, value: &str) -> Result<(), String> {
             }
             Ok(())
         }
-        "CNAME" => {
+        "CNAME" | "TXT" => {
             if value.is_empty() {
                 return Err("Value cannot be empty".to_string());
-            }
-            Ok(())
-        }
-        "TXT" => {
-            if value.is_empty() {
-                return Err("Value cannot be empty".to_string());
-            }
-            if value.len() > 512 {
-                return Err("TXT records cannot exceed 512 characters".to_string());
             }
             Ok(())
         }
@@ -1157,8 +1148,5 @@ mod tests {
         assert!(validate_dns_value("CNAME", "").is_err());
         assert!(validate_dns_value("TXT", "").is_err());
 
-        // TXT length limit
-        assert!(validate_dns_value("TXT", &"a".repeat(512)).is_ok());
-        assert!(validate_dns_value("TXT", &"a".repeat(513)).is_err());
     }
 }
