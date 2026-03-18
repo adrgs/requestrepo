@@ -77,9 +77,7 @@ fn extract_admin_token(body_token: Option<&str>, cookies: &CookieJar) -> Option<
 /// Build the admin token cookie string with security settings
 fn build_admin_cookie(token: &str) -> String {
     let secure = if CONFIG.tls_enabled { "; Secure" } else { "" };
-    format!(
-        "admin_token={token}; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=2592000{secure}"
-    )
+    format!("admin_token={token}; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=2592000{secure}")
 }
 
 /// Extract token from query param or Authorization header
@@ -462,10 +460,8 @@ pub async fn update_dns(
                 if let (Some(record_type), Some(short_domain)) =
                     (old_record.get("type"), old_record.get("domain"))
                 {
-                    let old_fqdn = format!(
-                        "{}.{}.{}.",
-                        short_domain, subdomain, CONFIG.server_domain
-                    );
+                    let old_fqdn =
+                        format!("{}.{}.{}.", short_domain, subdomain, CONFIG.server_domain);
                     let _ = state
                         .cache
                         .delete(&format!("dns:{record_type}:{old_fqdn}"))
