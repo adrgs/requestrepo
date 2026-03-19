@@ -236,9 +236,10 @@ async fn handle_smtp_connection(
                 }
 
                 // Handle dot-stuffing (lines starting with . have the . removed)
+                // Preserve \r\n line endings for correct MIME parsing
                 let content = line_trimmed.strip_prefix('.').unwrap_or(line_trimmed);
                 email_data.push_str(content);
-                email_data.push('\n');
+                email_data.push_str("\r\n");
             }
         } else {
             if line_trimmed.is_empty() {
@@ -452,6 +453,19 @@ fn parse_email_headers(email_data: &str) -> ParsedEmail {
 
         let attachments: Vec<SmtpAttachment> = message
             .attachments()
+            .filter(|part| {
+                // Skip MIME container types — they're structure, not real attachments
+                let ctype = part
+                    .content_type()
+                    .map(|ct| ct.ctype().to_string())
+                    .unwrap_or_default();
+                ctype != "multipart" && ctype != "message"
+            })
+            .filter(|part| {
+                // Skip text/plain and text/html body parts (already in text_body/html_body)
+                let is_inline_body = part.is_text() && part.attachment_name().is_none();
+                !is_inline_body
+            })
             .map(|part| {
                 let content_type = part
                     .content_type()
