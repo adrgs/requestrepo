@@ -336,6 +336,13 @@ Installed via `make install-hooks`:
 3. Verify JWT token is valid and not expired
 4. Check WebSocket store in React DevTools (Zustand)
 
+### Common CI/CD gotchas
+
+- **Docker build runs `tsc -b` (strict)** — the Docker `bun run build` step runs TypeScript compilation before Vite build. Local `bun run lint` may pass but Docker build fails on type errors. Always run `bun run tsc --noEmit` locally before pushing.
+- **React doesn't type non-standard HTML attributes** — e.g., `csp` on `<iframe>` is valid HTML but not in React's type definitions. Use `<meta http-equiv="Content-Security-Policy">` inside `srcDoc` instead.
+- **CI rustfmt may differ from local** — CI uses the latest stable rustfmt. If formatting fails in CI but passes locally, the pre-commit hook may have reformatted differently. Check `git show HEAD:<file>` to see what was actually committed.
+- **CI clippy may have newer lints** — e.g., `manual_is_multiple_of` was added in a newer Rust. Use `is_multiple_of()` instead of `% X == 0`.
+
 ## Testing
 
 ### Backend Tests
