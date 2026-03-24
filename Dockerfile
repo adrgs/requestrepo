@@ -32,7 +32,7 @@ FROM oven/bun:1.2-slim AS frontend-builder
 WORKDIR /app
 
 # Copy package files
-COPY frontend/package.json frontend/bun.lockb* ./
+COPY frontend/package.json frontend/bun.lock* ./
 
 # Install dependencies
 RUN bun install

@@ -142,20 +142,27 @@ impl Server {
                         let cache = cache.clone();
                         let tx = tx.clone();
                         let subdomain = subdomain_clone.clone();
-                        let semaphore = semaphore.clone();
 
-                        tokio::spawn(async move {
-                            let _permit = match semaphore.acquire().await {
-                                Ok(permit) => permit,
-                                Err(_) => return,
-                            };
-                            if let Err(e) =
-                                handle_tcp_connection(socket, addr, port, &subdomain, cache, tx)
+                        match semaphore.clone().try_acquire_owned() {
+                            Ok(permit) => {
+                                tokio::spawn(async move {
+                                    let _permit = permit;
+                                    if let Err(e) = handle_tcp_connection(
+                                        socket, addr, port, &subdomain, cache, tx,
+                                    )
                                     .await
-                            {
-                                error!("Error handling TCP connection: {}", e);
+                                    {
+                                        error!("Error handling TCP connection: {}", e);
+                                    }
+                                });
                             }
-                        });
+                            Err(_) => {
+                                tracing::warn!(
+                                    "TCP port {port} at capacity, rejecting connection from {addr}"
+                                );
+                                drop(socket);
+                            }
+                        }
                     }
                     Err(e) => {
                         error!("Error accepting TCP connection: {}", e);

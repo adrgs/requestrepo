@@ -54,34 +54,43 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
 
     // Task to handle broadcast messages
     let broadcast_task = tokio::spawn(async move {
-        while let Ok(msg) = broadcast_rx.recv().await {
-            let subdomain = msg.subdomain.clone();
-            let is_subscribed = {
-                let sessions = sessions_for_broadcast.lock().await;
-                sessions.contains(&subdomain)
-            };
+        loop {
+            match broadcast_rx.recv().await {
+                Ok(msg) => {
+                    let subdomain = msg.subdomain.clone();
+                    let is_subscribed = {
+                        let sessions = sessions_for_broadcast.lock().await;
+                        sessions.contains(&subdomain)
+                    };
 
-            if is_subscribed {
-                // Parse data from string to JSON object (fix double-encoding)
-                let data = serde_json::from_str::<Value>(&msg.data).unwrap_or(Value::Null);
+                    if is_subscribed {
+                        // Parse data from string to JSON object (fix double-encoding)
+                        let data = serde_json::from_str::<Value>(&msg.data).unwrap_or(Value::Null);
 
-                // Map cmd names: new_request -> request, delete_request -> deleted
-                let cmd = match msg.cmd.as_str() {
-                    "new_request" => "request",
-                    "delete_request" => "deleted",
-                    "delete_all" => "cleared",
-                    other => other,
-                };
+                        // Map cmd names: new_request -> request, delete_request -> deleted
+                        let cmd = match msg.cmd.as_str() {
+                            "new_request" => "request",
+                            "delete_request" => "deleted",
+                            "delete_all" => "cleared",
+                            other => other,
+                        };
 
-                let ws_msg = json!({
-                    "cmd": cmd,
-                    "subdomain": subdomain,
-                    "data": data
-                });
+                        let ws_msg = json!({
+                            "cmd": cmd,
+                            "subdomain": subdomain,
+                            "data": data
+                        });
 
-                if tx_for_broadcast.send(ws_msg.to_string()).await.is_err() {
-                    break;
+                        if tx_for_broadcast.send(ws_msg.to_string()).await.is_err() {
+                            break;
+                        }
+                    }
                 }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("WebSocket broadcast lagged, missed {n} messages");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
         }
     });

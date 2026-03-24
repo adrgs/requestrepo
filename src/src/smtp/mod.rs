@@ -58,29 +58,36 @@ impl Server {
                 Ok((socket, addr)) => {
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
-                    let semaphore = semaphore.clone();
 
-                    tokio::spawn(async move {
-                        let _permit = match semaphore.acquire().await {
-                            Ok(permit) => permit,
-                            Err(_) => return,
-                        };
-                        // Apply overall connection timeout
-                        match timeout(
-                            CONNECTION_TIMEOUT,
-                            handle_smtp_connection(socket, addr, cache, tx),
-                        )
-                        .await
-                        {
-                            Ok(Ok(())) => {}
-                            Ok(Err(e)) => {
-                                warn!("SMTP connection error from {}: {}", addr, e);
-                            }
-                            Err(_) => {
-                                warn!("SMTP connection timeout from {}", addr);
-                            }
+                    match semaphore.clone().try_acquire_owned() {
+                        Ok(permit) => {
+                            tokio::spawn(async move {
+                                let _permit = permit;
+                                // Apply overall connection timeout
+                                match timeout(
+                                    CONNECTION_TIMEOUT,
+                                    handle_smtp_connection(socket, addr, cache, tx),
+                                )
+                                .await
+                                {
+                                    Ok(Ok(())) => {}
+                                    Ok(Err(e)) => {
+                                        warn!("SMTP connection error from {}: {}", addr, e);
+                                    }
+                                    Err(_) => {
+                                        warn!("SMTP connection timeout from {}", addr);
+                                    }
+                                }
+                            });
                         }
-                    });
+                        Err(_) => {
+                            warn!(
+                                "SMTP server at capacity, rejecting connection from {}",
+                                addr
+                            );
+                            drop(socket);
+                        }
+                    }
                 }
                 Err(e) => {
                     error!("Error accepting SMTP connection: {}", e);

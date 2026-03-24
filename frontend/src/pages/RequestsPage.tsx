@@ -666,6 +666,7 @@ export function RequestsPage() {
                   {selectedRequest.html_body ? (
                     <iframe
                       sandbox=""
+                      csp="default-src 'none'; style-src 'unsafe-inline'; img-src data:"
                       srcDoc={selectedRequest.html_body}
                       className="w-full min-h-[300px] border border-default-200 rounded-lg mb-4 bg-white"
                       title="HTML email preview"

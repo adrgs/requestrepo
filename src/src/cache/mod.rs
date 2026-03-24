@@ -529,7 +529,7 @@ fn get_memory_limit() -> usize {
     if let Ok(content) = std::fs::read_to_string("/sys/fs/cgroup/memory.max") {
         if let Ok(limit) = content.trim().parse::<usize>() {
             if limit < usize::MAX / 2 {
-                return ((limit as f64) * CONFIG.cache_max_memory_pct) as usize;
+                return limit;
             }
         }
     }
@@ -538,7 +538,7 @@ fn get_memory_limit() -> usize {
     if let Ok(content) = std::fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes") {
         if let Ok(limit) = content.trim().parse::<usize>() {
             if limit < usize::MAX / 2 {
-                return ((limit as f64) * CONFIG.cache_max_memory_pct) as usize;
+                return limit;
             }
         }
     }

@@ -493,13 +493,20 @@ pub async fn update_dns(
         }));
     }
 
-    let _ = state
+    if let Err(e) = state
         .cache
         .set(
             &format!("dns:{subdomain}"),
             &serde_json::to_string(&final_records).unwrap_or_default(),
         )
-        .await;
+        .await
+    {
+        return (
+            StatusCode::INSUFFICIENT_STORAGE,
+            Json(json!({"error": format!("Storage limit exceeded: {e}"), "code": "storage_error"})),
+        )
+            .into_response();
+    }
 
     (StatusCode::OK, Json(json!({ "records": final_records }))).into_response()
 }
@@ -581,13 +588,20 @@ pub async fn update_files(
             .into_response();
     }
 
-    let _ = state
+    if let Err(e) = state
         .cache
         .set(
             &format!("files:{subdomain}"),
             &serde_json::to_string(&files).unwrap_or_default(),
         )
-        .await;
+        .await
+    {
+        return (
+            StatusCode::INSUFFICIENT_STORAGE,
+            Json(json!({"error": format!("Storage limit exceeded: {e}"), "code": "storage_error"})),
+        )
+            .into_response();
+    }
 
     (StatusCode::OK, Json(json!({ "message": "Files updated" }))).into_response()
 }
