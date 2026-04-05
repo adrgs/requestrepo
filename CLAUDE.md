@@ -269,7 +269,7 @@ interface Request {
 
 | Variable | Description |
 |----------|-------------|
-| `JWT_SECRET` | **Required.** Secret key for JWT signing (min 32 chars recommended). Server will fail to start if not set. |
+| `JWT_SECRET` | **Required.** Secret key for JWT signing (min 32 chars enforced). Server panics if <32 chars or a known placeholder. |
 | `DOMAIN` | Base domain (e.g., `requestrepo.com`) |
 | `SERVER_IP` | Public IP for DNS responses |
 

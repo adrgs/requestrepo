@@ -285,7 +285,14 @@ fn resolve_file_path<'a>(
 
 /// Headers that are blocked on main domain path-based routing for security
 /// Service-Worker-Allowed: Can be abused to register a SW controlling the entire domain
-const BLOCKED_HEADERS_ON_MAIN_DOMAIN: &[&str] = &["service-worker-allowed"];
+const BLOCKED_HEADERS_ON_MAIN_DOMAIN: &[&str] = &[
+    "service-worker-allowed",
+    "set-cookie",
+    "set-cookie2",
+    "location",
+    "content-security-policy",
+    "content-security-policy-report-only",
+];
 
 /// Serve a file from the subdomain's file tree
 /// `on_main_domain`: true when using path-based routing (/r/subdomain/), false for subdomain routing

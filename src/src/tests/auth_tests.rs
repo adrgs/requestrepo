@@ -9,7 +9,7 @@ mod tests {
         // Skip if the env var is not configured
         if std::env::var("JWT_SECRET").is_err() {
             // Set a test secret temporarily
-            std::env::set_var("JWT_SECRET", "test_secret_for_testing_only");
+            std::env::set_var("JWT_SECRET", "test_secret_for_testing_only_min32");
         }
 
         let subdomain = "testsubdomain";

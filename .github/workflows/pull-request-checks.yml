@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: src
     env:
-      JWT_SECRET: test_secret_for_ci
+      JWT_SECRET: test_secret_for_ci_minimum_32_characters
     steps:
       - uses: actions/checkout@v4
 

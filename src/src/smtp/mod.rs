@@ -4,7 +4,7 @@ use mail_parser::{MessageParser, MimeHeaders};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Semaphore};
 use tokio::time::timeout;
@@ -97,6 +97,38 @@ impl Server {
     }
 }
 
+/// Read a line from the reader with a maximum length limit.
+/// Unlike `read_line()`, this enforces the limit DURING the read,
+/// preventing unbounded memory allocation from newline-free input.
+async fn read_line_limited<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut String,
+    max_len: usize,
+) -> std::io::Result<usize> {
+    let mut total = 0;
+    loop {
+        let available = reader.fill_buf().await?;
+        if available.is_empty() {
+            return Ok(total); // EOF
+        }
+        let remaining = max_len + 1 - total;
+        let to_scan = available.len().min(remaining);
+        if let Some(pos) = available[..to_scan].iter().position(|&b| b == b'\n') {
+            let to_consume = pos + 1;
+            buf.push_str(&String::from_utf8_lossy(&available[..to_consume]));
+            reader.consume(to_consume);
+            total += to_consume;
+            return Ok(total);
+        }
+        buf.push_str(&String::from_utf8_lossy(&available[..to_scan]));
+        reader.consume(to_scan);
+        total += to_scan;
+        if total > max_len {
+            return Ok(total); // Hit limit, caller will disconnect
+        }
+    }
+}
+
 /// Extract subdomain from an email address like "user@subdomain.domain.com"
 fn extract_subdomain_from_email(email: &str) -> Option<String> {
     // Remove angle brackets if present: <user@domain> -> user@domain
@@ -147,8 +179,9 @@ async fn handle_smtp_connection(
     loop {
         line.clear();
 
-        // Read with timeout
-        let read_result = timeout(READ_TIMEOUT, reader.read_line(&mut line)).await;
+        // Read with timeout, enforcing max line length during the read
+        let read_result =
+            timeout(READ_TIMEOUT, read_line_limited(&mut reader, &mut line, MAX_LINE_LENGTH)).await;
 
         let bytes_read = match read_result {
             Ok(Ok(n)) => n,
@@ -167,7 +200,7 @@ async fn handle_smtp_connection(
             break;
         }
 
-        // Check line length
+        // Line length is bounded by read_line_limited, but check for overlength
         if line.len() > MAX_LINE_LENGTH {
             let _ = writer.write_all(b"500 Line too long\r\n").await;
             break;
@@ -193,7 +226,10 @@ async fn handle_smtp_connection(
         }
 
         if data_mode {
-            if line_trimmed == "." {
+            // In data mode, only strip trailing whitespace to preserve leading
+            // whitespace needed for MIME header folding (RFC 2822 continuation lines)
+            let data_line = line.trim_end();
+            if data_line == "." {
                 data_mode = false;
                 transaction_log.push_str("C: .\n");
                 transaction_log.push_str("S: 250 OK: Message received\n");
@@ -233,7 +269,7 @@ async fn handle_smtp_connection(
                 writer.write_all(b"250 OK: Message received\r\n").await?;
             } else {
                 // Check message size
-                if email_data.len() + line.len() > MAX_MESSAGE_SIZE {
+                if email_data.len() + data_line.len() > MAX_MESSAGE_SIZE {
                     data_mode = false;
                     transaction_log.push_str("S: 552 Message size exceeds maximum\n");
                     writer
@@ -244,7 +280,7 @@ async fn handle_smtp_connection(
 
                 // Handle dot-stuffing (lines starting with . have the . removed)
                 // Preserve \r\n line endings for correct MIME parsing
-                let content = line_trimmed.strip_prefix('.').unwrap_or(line_trimmed);
+                let content = data_line.strip_prefix('.').unwrap_or(data_line);
                 email_data.push_str(content);
                 email_data.push_str("\r\n");
             }

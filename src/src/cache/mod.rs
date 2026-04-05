@@ -122,7 +122,16 @@ impl Cache {
         // Check per-subdomain limit for session data (files:*, dns:*)
         if let Some(subdomain) = extract_subdomain_from_key(key) {
             let current_size = self.get_subdomain_size(&subdomain);
-            if current_size + uncompressed_size > CONFIG.max_subdomain_size_bytes {
+            // Subtract old entry size if replacing an existing key
+            let old_size = self
+                .kv_store
+                .read()
+                .ok()
+                .and_then(|s| s.get(key).map(|e| e.uncompressed_size))
+                .unwrap_or(0);
+            if current_size.saturating_sub(old_size) + uncompressed_size
+                > CONFIG.max_subdomain_size_bytes
+            {
                 return Err(anyhow!(
                     "Subdomain {} storage limit exceeded ({} bytes max)",
                     subdomain,

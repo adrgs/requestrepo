@@ -35,15 +35,22 @@ if (window.__CONFIG__?.SENTRY_DSN_FRONTEND) {
   Sentry.init({
     dsn: window.__CONFIG__.SENTRY_DSN_FRONTEND,
     beforeBreadcrumb(breadcrumb) {
-      if (breadcrumb.category === "xhr" && breadcrumb.data?.url) {
+      const scrub = (url: string) => {
         try {
-          const url = new URL(breadcrumb.data.url, window.location.origin);
-          url.searchParams.delete("token");
-          breadcrumb.data.url = url.toString();
+          const u = new URL(url, window.location.origin);
+          u.searchParams.delete("token");
+          u.searchParams.delete("share");
+          return u.toString();
         } catch {
-          /* ignore malformed URLs */
+          return url;
         }
-      }
+      };
+      if (breadcrumb.data?.url)
+        breadcrumb.data.url = scrub(breadcrumb.data.url);
+      if (breadcrumb.data?.from)
+        breadcrumb.data.from = scrub(breadcrumb.data.from);
+      if (breadcrumb.data?.to)
+        breadcrumb.data.to = scrub(breadcrumb.data.to);
       return breadcrumb;
     },
     beforeSend(event, hint) {
@@ -61,6 +68,17 @@ if (window.__CONFIG__?.SENTRY_DSN_FRONTEND) {
         (error instanceof Event && error.type === "error")
       ) {
         return null;
+      }
+      // Scrub sensitive params from event URL
+      if (event.request?.url) {
+        try {
+          const u = new URL(event.request.url);
+          u.searchParams.delete("token");
+          u.searchParams.delete("share");
+          event.request.url = u.toString();
+        } catch {
+          /* ignore */
+        }
       }
       return event;
     },

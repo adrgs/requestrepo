@@ -659,7 +659,7 @@ export function RequestsPage() {
               >
                 <Tab key="text" title="Text">
                   <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
-                    {selectedRequest.text_body || selectedRequest.data || ""}
+                    {selectedRequest.text_body || "No text body available"}
                   </Code>
                 </Tab>
                 <Tab key="html" title="HTML">
@@ -733,9 +733,6 @@ export function RequestsPage() {
 
           {/* Raw SMTP Transaction */}
           <h3 className="text-base font-semibold mb-2">Raw SMTP Transaction</h3>
-          <Code className="block p-3 text-xs mb-2 overflow-x-auto break-all">
-            {selectedRequest.raw}
-          </Code>
           <Code className="block whitespace-pre-wrap p-2 text-xs font-mono overflow-x-auto">
             {rawDecoded.text}
           </Code>

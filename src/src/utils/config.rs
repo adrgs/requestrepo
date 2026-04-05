@@ -69,6 +69,16 @@ impl Config {
             "JWT_SECRET environment variable is required. \
              Generate a secure random string (32+ chars) and set it before starting the server.",
         );
+        const KNOWN_PLACEHOLDERS: &[&str] = &[
+            "your-super-secret-jwt-key-change-this-min-32-chars",
+            "your-secret-key-min-32-chars",
+        ];
+        if jwt_secret.len() < 32 || KNOWN_PLACEHOLDERS.contains(&jwt_secret.as_str()) {
+            panic!(
+                "JWT_SECRET is insecure! It must be at least 32 characters and not a known placeholder.\n\
+                 Generate one with: openssl rand -base64 48"
+            );
+        }
         let txt_record = env::var("TXT").unwrap_or_else(|_| "Hello!".to_string());
         let http_port = env::var("HTTP_PORT")
             .unwrap_or_else(|_| "21337".to_string())
