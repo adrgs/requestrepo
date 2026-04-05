@@ -180,8 +180,11 @@ async fn handle_smtp_connection(
         line.clear();
 
         // Read with timeout, enforcing max line length during the read
-        let read_result =
-            timeout(READ_TIMEOUT, read_line_limited(&mut reader, &mut line, MAX_LINE_LENGTH)).await;
+        let read_result = timeout(
+            READ_TIMEOUT,
+            read_line_limited(&mut reader, &mut line, MAX_LINE_LENGTH),
+        )
+        .await;
 
         let bytes_read = match read_result {
             Ok(Ok(n)) => n,

@@ -49,8 +49,7 @@ if (window.__CONFIG__?.SENTRY_DSN_FRONTEND) {
         breadcrumb.data.url = scrub(breadcrumb.data.url);
       if (breadcrumb.data?.from)
         breadcrumb.data.from = scrub(breadcrumb.data.from);
-      if (breadcrumb.data?.to)
-        breadcrumb.data.to = scrub(breadcrumb.data.to);
+      if (breadcrumb.data?.to) breadcrumb.data.to = scrub(breadcrumb.data.to);
       return breadcrumb;
     },
     beforeSend(event, hint) {
