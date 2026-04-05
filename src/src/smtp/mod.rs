@@ -111,7 +111,10 @@ async fn read_line_limited<R: AsyncBufRead + Unpin>(
         if available.is_empty() {
             return Ok(total); // EOF
         }
-        let remaining = max_len + 1 - total;
+        let remaining = (max_len + 1).saturating_sub(total);
+        if remaining == 0 {
+            return Ok(total);
+        }
         let to_scan = available.len().min(remaining);
         if let Some(pos) = available[..to_scan].iter().position(|&b| b == b'\n') {
             let to_consume = pos + 1;

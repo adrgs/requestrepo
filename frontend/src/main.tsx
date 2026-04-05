@@ -31,25 +31,27 @@ declare global {
   }
 }
 
+const scrubSensitiveParams = (url: string): string => {
+  try {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.delete("token");
+    u.searchParams.delete("share");
+    return u.toString();
+  } catch {
+    return url;
+  }
+};
+
 if (window.__CONFIG__?.SENTRY_DSN_FRONTEND) {
   Sentry.init({
     dsn: window.__CONFIG__.SENTRY_DSN_FRONTEND,
     beforeBreadcrumb(breadcrumb) {
-      const scrub = (url: string) => {
-        try {
-          const u = new URL(url, window.location.origin);
-          u.searchParams.delete("token");
-          u.searchParams.delete("share");
-          return u.toString();
-        } catch {
-          return url;
-        }
-      };
       if (breadcrumb.data?.url)
-        breadcrumb.data.url = scrub(breadcrumb.data.url);
+        breadcrumb.data.url = scrubSensitiveParams(breadcrumb.data.url);
       if (breadcrumb.data?.from)
-        breadcrumb.data.from = scrub(breadcrumb.data.from);
-      if (breadcrumb.data?.to) breadcrumb.data.to = scrub(breadcrumb.data.to);
+        breadcrumb.data.from = scrubSensitiveParams(breadcrumb.data.from);
+      if (breadcrumb.data?.to)
+        breadcrumb.data.to = scrubSensitiveParams(breadcrumb.data.to);
       return breadcrumb;
     },
     beforeSend(event, hint) {
@@ -68,16 +70,8 @@ if (window.__CONFIG__?.SENTRY_DSN_FRONTEND) {
       ) {
         return null;
       }
-      // Scrub sensitive params from event URL
       if (event.request?.url) {
-        try {
-          const u = new URL(event.request.url);
-          u.searchParams.delete("token");
-          u.searchParams.delete("share");
-          event.request.url = u.toString();
-        } catch {
-          /* ignore */
-        }
+        event.request.url = scrubSensitiveParams(event.request.url);
       }
       return event;
     },
