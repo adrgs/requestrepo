@@ -5,12 +5,13 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
-use tokio::net::UdpSocket;
+use std::time::{Duration, Instant};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 use trust_dns_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
-use trust_dns_proto::rr::rdata::{CNAME, MX, TXT};
+use trust_dns_proto::rr::rdata::{CNAME, MX, NS, SOA, TXT};
 use trust_dns_proto::rr::{Name, RData, Record, RecordType};
 use trust_dns_proto::serialize::binary::{BinDecodable, BinEncodable};
 
@@ -29,13 +30,16 @@ const DNS_RATE_LIMIT_PER_SECOND: u32 = 100;
 /// Rate limiter cleanup interval (number of queries between cleanups)
 const RATE_LIMITER_CLEANUP_INTERVAL: u64 = 1000;
 
-struct DnsRateLimiter {
+/// Idle timeout for a DNS-over-TCP connection while waiting for the next query
+const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub(crate) struct DnsRateLimiter {
     limits: Mutex<HashMap<IpAddr, (Instant, u32)>>,
     max_per_second: u32,
 }
 
 impl DnsRateLimiter {
-    fn new(max_per_second: u32) -> Self {
+    pub(crate) fn new(max_per_second: u32) -> Self {
         Self {
             limits: Mutex::new(HashMap::new()),
             max_per_second,
@@ -79,11 +83,26 @@ impl Server {
     }
 
     pub async fn run(&self) -> Result<()> {
-        info!("Starting DNS server on port {}", CONFIG.dns_port);
+        info!(
+            "Starting DNS server on port {} (UDP + TCP)",
+            CONFIG.dns_port
+        );
 
+        // Rate limiter is shared between the UDP and TCP listeners
+        let rate_limiter = Arc::new(DnsRateLimiter::new(DNS_RATE_LIMIT_PER_SECOND));
+
+        let udp = self.run_udp(rate_limiter.clone());
+        let tcp = self.run_tcp(rate_limiter);
+
+        // Drive both listeners concurrently; if either fails, propagate the error
+        tokio::try_join!(udp, tcp)?;
+        Ok(())
+    }
+
+    /// UDP listener loop (RFC 1035 datagram transport).
+    async fn run_udp(&self, rate_limiter: Arc<DnsRateLimiter>) -> Result<()> {
         let socket = Arc::new(UdpSocket::bind(format!("0.0.0.0:{}", CONFIG.dns_port)).await?);
         let mut buf = vec![0u8; 512];
-        let rate_limiter = Arc::new(DnsRateLimiter::new(DNS_RATE_LIMIT_PER_SECOND));
         let mut query_count: u64 = 0;
 
         loop {
@@ -108,10 +127,13 @@ impl Server {
 
                     // Spawn a task to handle the request
                     tokio::spawn(async move {
-                        if let Err(e) =
-                            handle_dns_request(&data, addr, cache, tx, socket_clone).await
-                        {
-                            error!("Error handling DNS request: {}", e);
+                        match process_dns_query(&data, addr, cache, tx, true).await {
+                            Ok(response_bytes) => {
+                                if let Err(e) = socket_clone.send_to(&response_bytes, addr).await {
+                                    error!("Error sending UDP DNS response: {}", e);
+                                }
+                            }
+                            Err(e) => error!("Error handling DNS request: {}", e),
                         }
                     });
                 }
@@ -121,21 +143,109 @@ impl Server {
             }
         }
     }
+
+    /// TCP listener loop (RFC 1035 §4.2.2 / RFC 7766 message framing).
+    async fn run_tcp(&self, rate_limiter: Arc<DnsRateLimiter>) -> Result<()> {
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", CONFIG.dns_port)).await?;
+
+        loop {
+            match listener.accept().await {
+                Ok((stream, addr)) => {
+                    let cache = self.cache.clone();
+                    let tx = self.tx.clone();
+                    let rate_limiter = rate_limiter.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) =
+                            handle_tcp_connection(stream, addr, cache, tx, rate_limiter).await
+                        {
+                            // Connection-level errors (resets, timeouts) are expected; log at debug
+                            tracing::debug!("DNS TCP connection from {} ended: {}", addr, e);
+                        }
+                    });
+                }
+                Err(e) => {
+                    error!("Error accepting DNS TCP connection: {}", e);
+                }
+            }
+        }
+    }
 }
 
-async fn handle_dns_request(
+/// Handle a single DNS-over-TCP connection, servicing one or more queries
+/// (RFC 7766 connection reuse). Each message is framed by a 2-byte big-endian
+/// length prefix.
+pub(crate) async fn handle_tcp_connection(
+    mut stream: TcpStream,
+    addr: SocketAddr,
+    cache: Arc<Cache>,
+    tx: Arc<broadcast::Sender<CacheMessage>>,
+    rate_limiter: Arc<DnsRateLimiter>,
+) -> Result<()> {
+    loop {
+        // Read the 2-byte length prefix, bounded by an idle timeout so half-open
+        // connections don't leak tasks. A clean EOF here ends the connection.
+        let mut len_buf = [0u8; 2];
+        match tokio::time::timeout(TCP_IDLE_TIMEOUT, stream.read_exact(&mut len_buf)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(()),
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => return Ok(()), // idle timeout
+        }
+
+        let msg_len = u16::from_be_bytes(len_buf) as usize;
+        if msg_len == 0 {
+            continue;
+        }
+
+        // Read the full message body
+        let mut msg = vec![0u8; msg_len];
+        stream.read_exact(&mut msg).await?;
+
+        // Rate limit check (shared limiter with UDP)
+        if !rate_limiter.check(addr.ip()) {
+            warn!("DNS rate limit exceeded for {} (TCP)", addr.ip());
+            return Ok(());
+        }
+
+        // No 512-byte truncation over TCP
+        let response_bytes =
+            process_dns_query(&msg, addr, cache.clone(), tx.clone(), false).await?;
+
+        // Write the 2-byte length prefix followed by the response
+        let out_len = u16::try_from(response_bytes.len())
+            .map_err(|_| anyhow!("DNS TCP response exceeds 65535 bytes"))?;
+        stream.write_all(&out_len.to_be_bytes()).await?;
+        stream.write_all(&response_bytes).await?;
+        stream.flush().await?;
+    }
+}
+
+/// Parse a raw DNS query, build and log the response, and return the serialized
+/// response bytes. Transport-agnostic: `truncate_udp` applies the 512-byte TC-bit
+/// truncation used by UDP; TCP passes `false` since it has no size limit.
+pub(crate) async fn process_dns_query(
     data: &[u8],
     addr: SocketAddr,
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
-    socket: Arc<UdpSocket>,
-) -> Result<()> {
+    truncate_udp: bool,
+) -> Result<Vec<u8>> {
     let request =
         Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {}", e))?;
 
     let query = match request.queries().first() {
         Some(q) => q,
-        None => return Ok(()), // No query to process
+        None => {
+            // No query to process: reply with an empty FormErr so the caller has
+            // something to send back rather than dropping the connection.
+            let mut response = Message::new();
+            response.set_id(request.id());
+            response.set_message_type(MessageType::Response);
+            response.set_response_code(ResponseCode::FormErr);
+            return response
+                .to_bytes()
+                .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e));
+        }
     };
 
     let name = query.name().to_string();
@@ -162,9 +272,10 @@ async fn handle_dns_request(
         .to_bytes()
         .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e))?;
 
-    // If UDP response exceeds 512 bytes, set TC (truncation) bit and strip answers
-    // This forces the client to retry via TCP (which is not spoofable)
-    let response_bytes = if response_bytes.len() > MAX_UDP_RESPONSE_SIZE {
+    // On UDP, if the response exceeds 512 bytes set the TC (truncation) bit and
+    // strip answers so the client retries via TCP (which is not spoofable). TCP
+    // has no such limit, so callers there pass `truncate_udp = false`.
+    let response_bytes = if truncate_udp && response_bytes.len() > MAX_UDP_RESPONSE_SIZE {
         let mut truncated = response.clone();
         truncated.set_truncated(true);
         // Remove all answers to fit within 512 bytes - keep only header + question
@@ -177,9 +288,7 @@ async fn handle_dns_request(
         response_bytes
     };
 
-    socket.send_to(&response_bytes, addr).await?;
-
-    Ok(())
+    Ok(response_bytes)
 }
 
 /// Format a DNS response message for human-readable display
@@ -311,6 +420,34 @@ fn get_wildcard_key(name_lower: &str, subdomain: &Option<String>) -> Option<Stri
     }
 }
 
+/// The zone apex name (base domain) with a trailing dot, e.g. `example.com.`
+fn zone_apex() -> String {
+    let domain = CONFIG.server_domain.trim_end_matches('.');
+    format!("{domain}.")
+}
+
+/// The primary nameserver hostname for the zone, e.g. `ns1.example.com.`
+fn primary_ns() -> String {
+    let domain = CONFIG.server_domain.trim_end_matches('.');
+    format!("ns1.{domain}.")
+}
+
+/// Build the SOA record for the zone apex. Used both to answer SOA queries and
+/// to populate the authority section of negative (NODATA / NXDOMAIN) responses so
+/// resolvers get a proper negative-cache TTL instead of hammering us.
+fn build_soa() -> Option<Record> {
+    let mname = Name::from_str(&primary_ns()).ok()?;
+    let rname = Name::from_str(&format!(
+        "hostmaster.{}",
+        CONFIG.server_domain.trim_end_matches('.')
+    ))
+    .ok()?;
+    let apex = Name::from_str(&zone_apex()).ok()?;
+    // serial, refresh, retry, expire, minimum(=negative-cache TTL)
+    let soa = SOA::new(mname, rname, 1, 3600, 600, 604_800, 60);
+    Some(Record::from_rdata(apex, 60, RData::SOA(soa)))
+}
+
 /// Check if the query is for our domain (including base domain and subdomains)
 fn is_our_domain(name_str: &str) -> bool {
     let name_lower = name_str.to_lowercase();
@@ -412,10 +549,9 @@ async fn build_dns_response(
                 if let Ok(ip) = selected_ip.parse::<Ipv6Addr>() {
                     let record = Record::from_rdata(name.clone(), 1, RData::AAAA(ip.into()));
                     response.add_answer(record);
-                    response.set_response_code(ResponseCode::NoError);
-                } else {
-                    response.set_response_code(ResponseCode::NXDomain);
                 }
+                // Malformed record → NODATA (name exists, just no valid AAAA)
+                response.set_response_code(ResponseCode::NoError);
             } else {
                 // Default: try to parse server_ip as IPv6, otherwise return NXDomain
                 if let Ok(ip) = CONFIG.server_ip.parse::<Ipv6Addr>() {
@@ -456,10 +592,9 @@ async fn build_dns_response(
             if let Ok(target) = Name::from_str(&cname_value) {
                 let record = Record::from_rdata(name.clone(), 1, RData::CNAME(CNAME(target)));
                 response.add_answer(record);
-                response.set_response_code(ResponseCode::NoError);
-            } else {
-                response.set_response_code(ResponseCode::NXDomain);
             }
+            // Unparseable target → NODATA (name exists, just no valid CNAME)
+            response.set_response_code(ResponseCode::NoError);
         }
         RecordType::TXT => {
             // Try exact match first
@@ -504,8 +639,40 @@ async fn build_dns_response(
                 response.set_response_code(ResponseCode::ServFail);
             }
         }
+        RecordType::SOA => {
+            // Answer SOA for the zone apex authoritatively
+            if let Some(soa) = build_soa() {
+                response.add_answer(soa);
+            }
+            response.set_response_code(ResponseCode::NoError);
+        }
+        RecordType::NS => {
+            // Answer NS for our zone so resolvers stop re-probing for delegation
+            if let Ok(ns_name) = Name::from_str(&primary_ns()) {
+                let record = Record::from_rdata(name.clone(), 300, RData::NS(NS(ns_name)));
+                response.add_answer(record);
+            }
+            response.set_response_code(ResponseCode::NoError);
+        }
         _ => {
-            response.set_response_code(ResponseCode::NXDomain);
+            // Name exists in our zone but we serve no record of this type → NODATA
+            // (NOERROR with no answers), not NXDOMAIN. Returning NXDOMAIN for an
+            // existing name violates RFC 2308 and triggers resolver retry storms.
+            response.set_response_code(ResponseCode::NoError);
+        }
+    }
+
+    // For negative answers (no records to return) on our own zone, include the
+    // SOA in the authority section so resolvers can negatively cache the result
+    // with a sane TTL instead of hammering us.
+    if response.answers().is_empty()
+        && matches!(
+            response.response_code(),
+            ResponseCode::NoError | ResponseCode::NXDomain
+        )
+    {
+        if let Some(soa) = build_soa() {
+            response.add_name_server(soa);
         }
     }
 
