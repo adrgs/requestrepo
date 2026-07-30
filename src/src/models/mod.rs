@@ -124,6 +124,14 @@ pub struct ShareClaims {
     pub subdomain: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NotificationSettings {
+    pub discord_webhook_url: String,
+    pub mattermost_webhook_url: String,
+    pub telegram_bot_token: String,
+    pub telegram_chat_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheMessage {
     pub cmd: String,

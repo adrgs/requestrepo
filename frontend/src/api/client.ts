@@ -3,6 +3,7 @@ import type {
   SessionCreateResponse,
   DnsRecord,
   FileTree,
+  NotificationSettings,
   PaginatedResponse,
   Request,
 } from "@/types";
@@ -172,6 +173,64 @@ export async function getSharedRequest(
   }
 }
 
+// Notification Settings API
+export async function getNotificationSettings(
+  token: string,
+): Promise<NotificationSettings> {
+  try {
+    const { data } = await api.get<NotificationSettings>(
+      "/notifications/settings",
+      { params: { token } },
+    );
+    return data;
+  } catch (error) {
+    if (isNetworkError(error)) {
+      return {
+        discord_webhook_url: "",
+        mattermost_webhook_url: "",
+        telegram_bot_token: "",
+        telegram_chat_id: "",
+      };
+    }
+    throw error;
+  }
+}
+
+export async function updateNotificationSettings(
+  token: string,
+  settings: NotificationSettings,
+): Promise<void> {
+  await api.put("/notifications/settings", settings, { params: { token } });
+}
+
+export async function sendTestNotification(
+  token: string,
+  service: string,
+): Promise<void> {
+  await api.post(
+    "/notifications/test",
+    {
+      message: "This is a test notification from RequestRepo",
+      title: "RequestRepo Test Notification",
+    },
+    { params: { token, service } },
+  );
+}
+
+export async function sendRequestNotification(
+  token: string,
+  service: string,
+  log: Record<string, unknown>,
+  message?: string,
+  title?: string,
+): Promise<void> {
+  await api.post(
+    "/notifications/send",
+    { log, message, title },
+    { params: { token, service } },
+  );
+}
+
 export const apiClient = {
   createSession,
   getDnsRecords,
@@ -184,4 +243,8 @@ export const apiClient = {
   getSharedRequest,
   deleteRequest,
   deleteAllRequests,
+  getNotificationSettings,
+  updateNotificationSettings,
+  sendTestNotification,
+  sendRequestNotification,
 };

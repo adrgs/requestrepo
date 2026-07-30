@@ -135,6 +135,18 @@ fn create_router(state: AppState) -> Router {
             "/api/v2/requests/:id",
             get(routes_v2::get_request).delete(routes_v2::delete_request),
         )
+        .route(
+            "/api/v2/notifications/settings",
+            get(routes_v2::get_notification_settings).put(routes_v2::update_notification_settings),
+        )
+        .route(
+            "/api/v2/notifications/test",
+            post(routes_v2::test_notification),
+        )
+        .route(
+            "/api/v2/notifications/send",
+            post(routes_v2::send_notification),
+        )
         .route("/api/v2/ws", get(websocket::websocket_handler_v2))
         .layer(cors);
 

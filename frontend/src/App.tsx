@@ -9,6 +9,7 @@ import { BackendOfflineOverlay } from "@/components/auth/BackendOfflineOverlay";
 import { RequestsPage } from "@/pages/RequestsPage";
 import { ResponseEditorPage } from "@/pages/ResponseEditorPage";
 import { DnsSettingsPage } from "@/pages/DnsSettingsPage";
+import { NotificationsPage } from "@/pages/NotificationsPage";
 
 // Redirect that preserves query params (for share links)
 function RedirectWithParams() {
@@ -57,6 +58,7 @@ function App() {
           <Route path="requests" element={<RequestsPage />} />
           <Route path="response" element={<ResponseEditorPage />} />
           <Route path="dns" element={<DnsSettingsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           {/* Catch-all: redirect unknown routes to /requests */}
           <Route path="*" element={<Navigate to="/requests" replace />} />
         </Route>

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use crate::http::AppState;
-use crate::models::{DnsRecord, DnsRecords, FileTree};
+use crate::models::{DnsRecord, DnsRecords, FileTree, NotificationSettings};
 use crate::utils::config::CONFIG;
 use crate::utils::{
     auth::{can_create_session, is_admin_token_required},
@@ -1036,6 +1036,153 @@ pub async fn get_shared_request(
         })),
     )
         .into_response()
+}
+
+// ============================================================================
+// Notification Routes
+// ============================================================================
+
+/// GET /api/v2/notifications/settings - Get notification settings
+pub async fn get_notification_settings(
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let subdomain = match verify_token_or_error(&query, &headers) {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
+
+    let settings = crate::notifications::get_settings(&state.cache, &subdomain).await;
+    (StatusCode::OK, Json(settings)).into_response()
+}
+
+/// PUT /api/v2/notifications/settings - Update notification settings
+pub async fn update_notification_settings(
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+    headers: axum::http::HeaderMap,
+    Json(settings): Json<NotificationSettings>,
+) -> impl IntoResponse {
+    let subdomain = match verify_token_or_error(&query, &headers) {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
+
+    match crate::notifications::save_settings(&state.cache, &subdomain, &settings).await {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({ "message": "Notification settings updated" })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": e,
+                "code": "storage_error"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TestNotificationQuery {
+    pub token: Option<String>,
+    pub service: String,
+}
+
+/// POST /api/v2/notifications/test - Send a test notification
+pub async fn test_notification(
+    State(state): State<AppState>,
+    Query(query): Query<TestNotificationQuery>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let token_query = TokenQuery {
+        token: query.token.clone(),
+    };
+    let subdomain = match verify_token_or_error(&token_query, &headers) {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
+
+    match crate::notifications::send_test(&state.cache, &subdomain, &query.service).await {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({ "message": format!("Test {} notification sent", query.service) })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": e,
+                "code": "notification_error"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendNotificationQuery {
+    pub token: Option<String>,
+    pub service: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendNotificationBody {
+    pub log: Option<serde_json::Value>,
+    pub message: Option<String>,
+    pub title: Option<String>,
+}
+
+/// POST /api/v2/notifications/send - Send a request log as notification
+pub async fn send_notification(
+    State(state): State<AppState>,
+    Query(query): Query<SendNotificationQuery>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<SendNotificationBody>,
+) -> impl IntoResponse {
+    let token_query = TokenQuery {
+        token: query.token.clone(),
+    };
+    let subdomain = match verify_token_or_error(&token_query, &headers) {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
+
+    let log = body.log.unwrap_or_default();
+    let message = body
+        .message
+        .unwrap_or_else(|| "Notification from RequestRepo".to_string());
+    let title = body
+        .title
+        .unwrap_or_else(|| "RequestRepo Notification".to_string());
+
+    match crate::notifications::send_request_notification(
+        &state.cache,
+        &subdomain,
+        &query.service,
+        &log,
+        &message,
+        &title,
+    )
+    .await
+    {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({ "message": format!("{} notification sent", query.service) })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": e,
+                "code": "notification_error"
+            })),
+        )
+            .into_response(),
+    }
 }
 
 // ============================================================================

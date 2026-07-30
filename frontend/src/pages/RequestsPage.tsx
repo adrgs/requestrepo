@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { Card, CardBody, Code, Button, Tabs, Tab, Chip } from "@heroui/react";
-import { Share2, Copy, Check } from "lucide-react";
+import {
+  Share2,
+  Copy,
+  Check,
+  MessageCircle,
+  MessageSquare,
+  Send,
+} from "lucide-react";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -124,6 +131,56 @@ export function RequestsPage() {
     }
   };
 
+  const sendToService = async (service: string) => {
+    if (!selectedRequest || !session?.token || isSharedRequestView) return;
+    try {
+      await apiClient.sendRequestNotification(
+        session.token,
+        service,
+        selectedRequest as unknown as Record<string, unknown>,
+      );
+      toast.success(`Sent to ${service}`);
+    } catch (error) {
+      console.error(`Failed to send to ${service}:`, error);
+      const msg =
+        error instanceof Error ? error.message : `Failed to send to ${service}`;
+      toast.error(msg);
+    }
+  };
+
+  const notificationButtons =
+    !isSharedRequestView && selectedRequest ? (
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => sendToService("discord")}
+          className="h-7 w-7 rounded-full border-0 flex items-center justify-center cursor-pointer"
+          style={{ backgroundColor: "#5865F2" }}
+          title="Send to Discord"
+          type="button"
+        >
+          <MessageCircle className="h-3.5 w-3.5 text-white" />
+        </button>
+        <button
+          onClick={() => sendToService("mattermost")}
+          className="h-7 w-7 rounded-full border-0 flex items-center justify-center cursor-pointer"
+          style={{ backgroundColor: "#1E325C" }}
+          title="Send to Mattermost"
+          type="button"
+        >
+          <MessageSquare className="h-3.5 w-3.5 text-white" />
+        </button>
+        <button
+          onClick={() => sendToService("telegram")}
+          className="h-7 w-7 rounded-full border-0 flex items-center justify-center cursor-pointer"
+          style={{ backgroundColor: "#229ED9" }}
+          title="Send to Telegram"
+          type="button"
+        >
+          <Send className="h-3.5 w-3.5 text-white" />
+        </button>
+      </div>
+    ) : null;
+
   // Show "Awaiting requests" when no request selected
   if (!selectedRequest) {
     return (
@@ -242,18 +299,20 @@ export function RequestsPage() {
     return (
       <Card className="h-full overflow-auto">
         <CardBody className="p-4 relative">
-          {/* Share button - only show if user has the session */}
+          {/* Share + Notification buttons */}
           {!isSharedRequestView && (
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              onPress={handleShareRequest}
-              className="absolute right-4 top-4"
-              title="Share request"
-            >
-              <Share2 className="h-4 w-4" />
-            </Button>
+            <div className="absolute right-4 top-4 flex items-center gap-1">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={handleShareRequest}
+                title="Share request"
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
+              {notificationButtons}
+            </div>
           )}
 
           {/* Shared request banner */}
@@ -411,18 +470,20 @@ export function RequestsPage() {
     return (
       <Card className="h-full overflow-auto">
         <CardBody className="p-4 relative">
-          {/* Share button - only show if user has the session */}
+          {/* Share + Notification buttons */}
           {!isSharedRequestView && (
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              onPress={handleShareRequest}
-              className="absolute right-4 top-4"
-              title="Share request"
-            >
-              <Share2 className="h-4 w-4" />
-            </Button>
+            <div className="absolute right-4 top-4 flex items-center gap-1">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={handleShareRequest}
+                title="Share request"
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
+              {notificationButtons}
+            </div>
           )}
 
           {/* Shared request banner */}
@@ -531,18 +592,20 @@ export function RequestsPage() {
     return (
       <Card className="h-full overflow-auto">
         <CardBody className="p-4 relative">
-          {/* Share button - only show if user has the session */}
+          {/* Share + Notification buttons */}
           {!isSharedRequestView && (
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              onPress={handleShareRequest}
-              className="absolute right-4 top-4"
-              title="Share request"
-            >
-              <Share2 className="h-4 w-4" />
-            </Button>
+            <div className="absolute right-4 top-4 flex items-center gap-1">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={handleShareRequest}
+                title="Share request"
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
+              {notificationButtons}
+            </div>
           )}
 
           {/* Shared request banner */}

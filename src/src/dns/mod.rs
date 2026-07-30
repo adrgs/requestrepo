@@ -394,6 +394,18 @@ async fn log_dns_request(
     let list_key = format!("requests:{subdomain}");
     cache.rpush(&list_key, &request_json).await?;
 
+    // Send notifications asynchronously
+    {
+        let cache = cache.clone();
+        let sub = subdomain.to_string();
+        let req_json = request_json.clone();
+        tokio::spawn(async move {
+            if let Ok(log) = serde_json::from_str::<serde_json::Value>(&req_json) {
+                crate::notifications::notify_all(cache, sub, log).await;
+            }
+        });
+    }
+
     let message = CacheMessage {
         cmd: "new_request".to_string(),
         subdomain: subdomain.to_string(),
