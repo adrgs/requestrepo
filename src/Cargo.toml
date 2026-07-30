@@ -71,7 +71,7 @@ sentry = "0.46"
 sentry-tower = { version = "0.46", features = ["http"] }
 
 # HTTP client (for outbound notifications to Discord/Telegram/Mattermost)
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13.4", features = ["json"] }
 
 # Utilities
 rand = "0.8.5"
