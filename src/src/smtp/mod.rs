@@ -606,7 +606,7 @@ async fn log_smtp_request(
     mail_from: Option<&str>,
     rcpt_to: &[String],
     transaction_log: &str,
-    cache: &Cache,
+    cache: &Arc<Cache>,
     tx: &broadcast::Sender<CacheMessage>,
 ) -> Result<()> {
     let request_id = generate_request_id();
@@ -663,6 +663,18 @@ async fn log_smtp_request(
     // Push request to list
     let list_key = format!("requests:{subdomain}");
     cache.rpush(&list_key, &request_json).await?;
+
+    // Send notifications asynchronously
+    {
+        let cache = cache.clone();
+        let sub = subdomain.to_string();
+        let req_json = request_json.clone();
+        tokio::spawn(async move {
+            if let Ok(log) = serde_json::from_str::<serde_json::Value>(&req_json) {
+                crate::notifications::notify_all(cache, sub, log).await;
+            }
+        });
+    }
 
     let message = CacheMessage {
         cmd: "new_request".to_string(),

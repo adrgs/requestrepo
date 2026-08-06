@@ -294,3 +294,7 @@ backend/ip2country
 dns/ip2country
 
 pyrightconfig.json
+
+
+.DS_Store
+**/.DS_Store

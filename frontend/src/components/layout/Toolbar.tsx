@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button, Input } from "@heroui/react";
-import { Download, FileEdit, Network, Copy, Shuffle } from "lucide-react";
+import { Download, FileEdit, Network, Bell, Copy, Shuffle } from "lucide-react";
 import { toast } from "sonner";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -53,6 +53,7 @@ export function Toolbar() {
     { key: "requests", label: "Requests", icon: Download },
     { key: "response", label: "Response", icon: FileEdit },
     { key: "dns", label: "DNS", icon: Network },
+    { key: "notifications", label: "Notifications", icon: Bell },
   ];
 
   return (

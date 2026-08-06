@@ -186,6 +186,18 @@ pub async fn catch_all(
         let list_key = format!("requests:{subdomain}");
         let _ = state.cache.rpush(&list_key, &request_json).await;
 
+        // Send notifications asynchronously
+        {
+            let cache = state.cache.clone();
+            let sub = subdomain.clone();
+            let req_json = request_json.clone();
+            tokio::spawn(async move {
+                if let Ok(log) = serde_json::from_str::<serde_json::Value>(&req_json) {
+                    crate::notifications::notify_all(cache, sub, log).await;
+                }
+            });
+        }
+
         let message = crate::models::CacheMessage {
             cmd: "new_request".to_string(),
             subdomain: subdomain.clone(),

@@ -111,6 +111,14 @@ export interface PaginatedResponse<T> {
   };
 }
 
+// Notification settings
+export interface NotificationSettings {
+  discord_webhook_url: string;
+  mattermost_webhook_url: string;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
+}
+
 // WebSocket types
 export type WebSocketClientMessage =
   | { cmd: "connect"; token: string }
