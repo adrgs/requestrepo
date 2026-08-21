@@ -119,18 +119,15 @@ mod tests {
 
     // --- Transport / response-code behavior -------------------------------
 
+    use hickory_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
+    use hickory_proto::rr::{Name, RecordType};
+    use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
     use std::net::SocketAddr;
     use std::str::FromStr;
-    use trust_dns_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
-    use trust_dns_proto::rr::{Name, RecordType};
-    use trust_dns_proto::serialize::binary::{BinDecodable, BinEncodable};
 
     fn build_query(name: &str, rtype: RecordType) -> Vec<u8> {
-        let mut msg = Message::new();
-        msg.set_id(0x1234);
-        msg.set_message_type(MessageType::Query);
-        msg.set_op_code(OpCode::Query);
-        msg.set_recursion_desired(true);
+        let mut msg = Message::new(0x1234, MessageType::Query, OpCode::Query);
+        msg.metadata.recursion_desired = true;
         let mut q = Query::new();
         q.set_name(Name::from_str(name).unwrap());
         q.set_query_type(rtype);
@@ -156,10 +153,10 @@ mod tests {
             .unwrap();
 
         let resp = Message::from_bytes(&bytes).unwrap();
-        assert_eq!(resp.response_code(), ResponseCode::NoError);
-        assert_eq!(resp.answers().len(), 0);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
+        assert_eq!(resp.answers.len(), 0);
         // SOA present in the authority section for negative caching
-        assert_eq!(resp.name_server_count(), 1);
+        assert_eq!(resp.authorities.len(), 1);
     }
 
     /// SOA and NS queries for the apex must be answered authoritatively.
@@ -180,8 +177,12 @@ mod tests {
             .await
             .unwrap();
             let resp = Message::from_bytes(&bytes).unwrap();
-            assert_eq!(resp.response_code(), ResponseCode::NoError, "{rtype:?}");
-            assert_eq!(resp.answers().len(), 1, "{rtype:?} should have 1 answer");
+            assert_eq!(
+                resp.metadata.response_code,
+                ResponseCode::NoError,
+                "{rtype:?}"
+            );
+            assert_eq!(resp.answers.len(), 1, "{rtype:?} should have 1 answer");
         }
     }
 
@@ -224,9 +225,12 @@ mod tests {
         client.read_exact(&mut resp_bytes).await.unwrap();
 
         let resp = Message::from_bytes(&resp_bytes).unwrap();
-        assert_eq!(resp.id(), 0x1234);
-        assert_eq!(resp.message_type(), MessageType::Response);
-        assert!(!resp.truncated(), "TCP responses must never be truncated");
-        assert_eq!(resp.answers().len(), 1); // default A -> server_ip
+        assert_eq!(resp.metadata.id, 0x1234);
+        assert_eq!(resp.metadata.message_type, MessageType::Response);
+        assert!(
+            !resp.metadata.truncation,
+            "TCP responses must never be truncated"
+        );
+        assert_eq!(resp.answers.len(), 1); // default A -> server_ip
     }
 }

@@ -27,6 +27,7 @@ declare global {
     __CONFIG__?: {
       DOMAIN?: string;
       SENTRY_DSN_FRONTEND?: string;
+      DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT?: boolean;
     };
   }
 }
@@ -36,6 +37,11 @@ const scrubSensitiveParams = (url: string): string => {
     const u = new URL(url, window.location.origin);
     u.searchParams.delete("token");
     u.searchParams.delete("share");
+    u.searchParams.delete("request");
+    u.pathname = u.pathname.replace(
+      /\/api\/v2\/requests\/shared\/[^/]+$/,
+      "/api/v2/requests/shared/<redacted>",
+    );
     return u.toString();
   } catch {
     return url;

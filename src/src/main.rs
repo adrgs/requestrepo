@@ -8,7 +8,7 @@ async fn main() {
         .install_default()
         .expect("Failed to install crypto provider");
 
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     // Initialize Sentry for error tracking and performance monitoring
     let _sentry_guard = sentry::init((

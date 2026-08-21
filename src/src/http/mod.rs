@@ -12,20 +12,23 @@ pub struct TlsConnectInfo;
 
 use anyhow::{anyhow, Result};
 use axum::{
-    extract::{ConnectInfo, DefaultBodyLimit, Path, State},
-    http::{Method, StatusCode},
-    response::IntoResponse,
+    extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State},
+    http::{header, Method, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
 use sentry_tower::{NewSentryLayer, SentryHttpLayer};
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 use tower::{Layer, Service};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
@@ -34,6 +37,62 @@ use crate::cache::Cache;
 use crate::certs::{HttpChallengeHandler, TlsManager};
 use crate::models::CacheMessage;
 use crate::utils::config::CONFIG;
+
+const HTTPS_MAX_CONCURRENT_CONNECTIONS: usize = 1024;
+const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn sanitized_sentry_path(path: &str) -> Cow<'_, str> {
+    const SHARED_REQUEST_PREFIX: &str = "/api/v2/requests/shared/";
+    if path.strip_prefix(SHARED_REQUEST_PREFIX).is_some() {
+        Cow::Borrowed("/api/v2/requests/shared/<redacted>")
+    } else {
+        Cow::Borrowed(path)
+    }
+}
+
+fn sanitized_sentry_request(request: &Request) -> sentry::protocol::Request {
+    let path = sanitized_sentry_path(request.uri().path());
+    let url = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|host| host.to_str().ok())
+        .and_then(|host| format!("http://{host}{path}").parse().ok());
+
+    sentry::protocol::Request {
+        method: Some(request.method().to_string()),
+        url,
+        // Deliberately omit query strings and headers. Both can contain credentials,
+        // and route/method data is sufficient for grouping and diagnostics.
+        ..Default::default()
+    }
+}
+
+/// Replace the request context initially captured by sentry-tower. This runs inside
+/// SentryHttpLayer, so it sanitizes both error events and performance transactions.
+async fn sanitize_sentry_context(request: Request, next: Next) -> Response {
+    let sentry_request = sanitized_sentry_request(&request);
+    let transaction_path = request
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|matched| Cow::Owned(matched.as_str().to_string()))
+        .unwrap_or_else(|| sanitized_sentry_path(request.uri().path()));
+    let transaction_name = format!("{} {transaction_path}", request.method());
+
+    sentry::configure_scope(|scope| {
+        let event_request = sentry_request.clone();
+        scope.add_event_processor(move |mut event| {
+            event.request = Some(event_request.clone());
+            Some(event)
+        });
+
+        if let Some(span) = scope.get_span() {
+            span.set_name(&transaction_name);
+            span.set_request(sentry_request);
+        }
+    });
+
+    next.run(request).await
+}
 
 pub struct Server {
     cache: Arc<Cache>,
@@ -148,6 +207,7 @@ fn create_router(state: AppState) -> Router {
         )
         .fallback(routes::catch_all)
         .layer(DefaultBodyLimit::max(CONFIG.max_request_body_bytes))
+        .layer(middleware::from_fn(sanitize_sentry_context))
         .layer(SentryHttpLayer::new().enable_transaction())
         .layer(NewSentryLayer::new_from_top())
         .with_state(state)
@@ -202,6 +262,7 @@ impl HttpsServer {
         info!("Starting HTTPS server on port {}", CONFIG.https_port);
 
         let listener = TcpListener::bind(addr).await?;
+        let connection_limit = Arc::new(Semaphore::new(HTTPS_MAX_CONCURRENT_CONNECTIONS));
 
         loop {
             let (stream, remote_addr) = match listener.accept().await {
@@ -221,6 +282,13 @@ impl HttpsServer {
                 }
             };
 
+            // Refuse excess connections before allocating a TLS task. The permit is
+            // held for the entire HTTP connection, including keep-alive time.
+            let connection_permit = match connection_limit.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => continue,
+            };
+
             // Clone state for the spawned task
             let state = AppState {
                 cache: self.cache.clone(),
@@ -230,11 +298,22 @@ impl HttpsServer {
             };
 
             tokio::spawn(async move {
+                let _connection_permit = connection_permit;
+
                 // Perform TLS handshake
-                let tls_stream = match acceptor.accept(stream).await {
-                    Ok(s) => s,
-                    Err(e) => {
+                let tls_stream = match tokio::time::timeout(
+                    TLS_HANDSHAKE_TIMEOUT,
+                    acceptor.accept(stream),
+                )
+                .await
+                {
+                    Ok(Ok(stream)) => stream,
+                    Ok(Err(e)) => {
                         error!("TLS handshake failed from {}: {}", remote_addr, e);
+                        return;
+                    }
+                    Err(_) => {
+                        tracing::debug!("TLS handshake timed out from {}", remote_addr);
                         return;
                     }
                 };
@@ -258,6 +337,23 @@ impl HttpsServer {
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitized_sentry_path;
+
+    #[test]
+    fn sentry_path_redacts_share_tokens() {
+        assert_eq!(
+            sanitized_sentry_path("/api/v2/requests/shared/secret.jwt"),
+            "/api/v2/requests/shared/<redacted>"
+        );
+        assert_eq!(
+            sanitized_sentry_path("/api/v2/requests/123"),
+            "/api/v2/requests/123"
+        );
     }
 }
 

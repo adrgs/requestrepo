@@ -41,9 +41,12 @@ pub struct Config {
     pub session_rate_window_secs: u64,
     // Sentry DSN for frontend error tracking (injected at runtime)
     pub sentry_dsn_frontend: Option<String>,
-    // Security: Allow all response headers including dangerous ones like Service-Worker-Allowed
-    // Default: false (blocked on main domain path-based routing)
-    pub allow_all_headers: bool,
+    // Security: Enable same-origin path routing for installations without a usable domain.
+    // Default: false because user-controlled content shares the dashboard's origin.
+    pub dangerously_allow_same_origin_user_content: bool,
+    // Security: Allow origin-scoped response headers on same-origin path routing.
+    // Default: false.
+    pub dangerously_allow_all_headers: bool,
     // Max requests per session (FIFO eviction when exceeded)
     pub max_requests_per_session: usize,
 }
@@ -188,13 +191,17 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty());
 
-        // Security: Allow all response headers (default: false)
-        // When false, dangerous headers like Service-Worker-Allowed are blocked
-        // on main domain path-based routing (/r/subdomain/) to prevent SW scope attacks
-        let allow_all_headers = env::var("ALLOW_ALL_HEADERS")
+        // Security: Same-origin /r/subdomain routing is opt-in because uploaded content
+        // can otherwise act with the dashboard origin's authority.
+        let dangerously_allow_same_origin_user_content =
+            env::var("DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT")
+                .unwrap_or_else(|_| "false".to_string())
+                .eq_ignore_ascii_case("true");
+
+        // Security: Origin-scoped response headers require a second explicit opt-in.
+        let dangerously_allow_all_headers = env::var("DANGEROUSLY_ALLOW_ALL_HEADERS")
             .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase()
-            == "true";
+            .eq_ignore_ascii_case("true");
 
         // Max requests per session: default 10000, FIFO eviction when exceeded
         let max_requests_per_session = env::var("MAX_REQUESTS_PER_SESSION")
@@ -233,7 +240,8 @@ impl Config {
             session_rate_limit,
             session_rate_window_secs,
             sentry_dsn_frontend,
-            allow_all_headers,
+            dangerously_allow_same_origin_user_content,
+            dangerously_allow_all_headers,
             max_requests_per_session,
         }
     }

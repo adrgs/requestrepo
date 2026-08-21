@@ -84,6 +84,8 @@ export function RequestsPage() {
   const subdomain = session?.subdomain || "xxxxxxxx";
   const fullHttpDomain = `${subdomain}.${httpDomain}`;
   const fullDnsDomain = `${subdomain}.${dnsDomain}`;
+  const allowSameOriginUserContent =
+    window.__CONFIG__?.DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT === true;
 
   // Mark as visited when selected (only for non-shared requests)
   useEffect(() => {
@@ -134,9 +136,11 @@ export function RequestsPage() {
 
           <div className="space-y-2 font-mono text-sm">
             <Code className="block p-2">curl http://{fullHttpDomain}</Code>
-            <Code className="block p-2">
-              curl http://{httpDomain}/r/{subdomain}/
-            </Code>
+            {allowSameOriginUserContent && (
+              <Code className="block p-2">
+                curl http://{httpDomain}/r/{subdomain}/
+              </Code>
+            )}
             <Code className="block p-2">
               curl -X POST --data hello http://{fullHttpDomain}
             </Code>
