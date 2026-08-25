@@ -105,7 +105,7 @@ impl AcmeClient {
 
                 let mut challenge = authz
                     .challenge(ChallengeType::Dns01)
-                    .ok_or_else(|| anyhow!("No DNS-01 challenge found for {}", ident_str))?;
+                    .ok_or_else(|| anyhow!("No DNS-01 challenge found for {ident_str}"))?;
 
                 let key_auth = challenge.key_authorization();
                 let txt_value = key_auth.dns_value();
@@ -201,7 +201,7 @@ impl AcmeClient {
 
                 let mut challenge = authz
                     .challenge(ChallengeType::Http01)
-                    .ok_or_else(|| anyhow!("No HTTP-01 challenge for IP {}", ip))?;
+                    .ok_or_else(|| anyhow!("No HTTP-01 challenge for IP {ip}"))?;
 
                 let key_auth = challenge.key_authorization();
                 let token = challenge.token.clone();

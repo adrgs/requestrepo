@@ -253,7 +253,7 @@ pub(crate) async fn process_dns_query(
     truncate_udp: bool,
 ) -> Result<Vec<u8>> {
     let request =
-        Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {}", e))?;
+        Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {e}"))?;
 
     let query = match request.queries.first() {
         Some(q) => q,
@@ -267,7 +267,7 @@ pub(crate) async fn process_dns_query(
             );
             return response
                 .to_bytes()
-                .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e));
+                .map_err(|e| anyhow!("Failed to serialize DNS response: {e}"));
         }
     };
 
@@ -293,7 +293,7 @@ pub(crate) async fn process_dns_query(
     // Serialize and send response
     let response_bytes = response
         .to_bytes()
-        .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e))?;
+        .map_err(|e| anyhow!("Failed to serialize DNS response: {e}"))?;
 
     // On UDP, if the response exceeds 512 bytes set the TC (truncation) bit and
     // strip answers so the client retries via TCP (which is not spoofable). TCP
@@ -303,7 +303,7 @@ pub(crate) async fn process_dns_query(
         let truncated = response.truncate();
         truncated
             .to_bytes()
-            .map_err(|e| anyhow!("Failed to serialize truncated DNS response: {}", e))?
+            .map_err(|e| anyhow!("Failed to serialize truncated DNS response: {e}"))?
     } else {
         response_bytes
     };

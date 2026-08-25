@@ -127,9 +127,7 @@ impl DnsChallengeHandler {
         loop {
             if start.elapsed() >= timeout {
                 return Err(anyhow!(
-                    "DNS propagation timeout after {}s for {}",
-                    timeout_secs,
-                    domain
+                    "DNS propagation timeout after {timeout_secs}s for {domain}"
                 ));
             }
 

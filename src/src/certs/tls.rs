@@ -145,7 +145,7 @@ fn build_certified_key(chain_pem: &[u8], key_pem: &[u8]) -> Result<CertifiedKey>
 
     let key_der = parse_private_key(key_pem)?;
     let signing_key = rustls::crypto::aws_lc_rs::sign::any_supported_type(&key_der)
-        .map_err(|e| anyhow!("Failed to create signing key: {:?}", e))?;
+        .map_err(|e| anyhow!("Failed to create signing key: {e:?}"))?;
 
     Ok(CertifiedKey::new(certs, signing_key))
 }
