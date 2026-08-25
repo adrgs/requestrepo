@@ -172,6 +172,7 @@ See [.env.example](.env.example) for all available options.
 | `JWT_SECRET` | Yes | - | Secret key for JWT signing (min 32 chars) |
 | `DOMAIN` | Yes | - | Base domain (e.g., `requestrepo.com`) |
 | `SERVER_IP` | Yes | - | Public IP for DNS responses |
+| `SERVER_IPV6` | No | - | Public IPv6 address for AAAA responses (IPv4-only when unset) |
 | `ADMIN_TOKEN` | No | - | Password for session creation |
 | `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
 | `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |

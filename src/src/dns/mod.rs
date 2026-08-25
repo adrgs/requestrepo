@@ -388,6 +388,15 @@ fn format_dns_response(response: &Message) -> String {
     output.join("\n")
 }
 
+/// Address used for AAAA queries that have no user-defined record.
+///
+/// `SERVER_IPV6` wins when set. Otherwise `SERVER_IP` is reused if it is itself an IPv6
+/// literal, which keeps single-stack IPv6 deployments working without a second variable.
+/// `None` means the zone is IPv4-only and AAAA queries answer NODATA.
+pub(crate) fn default_aaaa(server_ipv6: Option<Ipv6Addr>, server_ip: &str) -> Option<Ipv6Addr> {
+    server_ipv6.or_else(|| server_ip.parse::<Ipv6Addr>().ok())
+}
+
 async fn log_dns_request(
     request: &Message,
     raw_data: &[u8],
@@ -584,15 +593,15 @@ async fn build_dns_response(
                 // Malformed record → NODATA (name exists, just no valid AAAA)
                 response.metadata.response_code = ResponseCode::NoError;
             } else {
-                // Default: try to parse server_ip as IPv6, otherwise return NXDomain
-                if let Ok(ip) = CONFIG.server_ip.parse::<Ipv6Addr>() {
+                // Default to the server's own IPv6 address: SERVER_IPV6 when configured,
+                // falling back to SERVER_IP if that is itself an IPv6 literal. With
+                // neither, the zone is IPv4-only and this is NODATA rather than NXDomain
+                // — the name exists, it just has no address of this family.
+                if let Some(ip) = default_aaaa(CONFIG.server_ipv6, &CONFIG.server_ip) {
                     let record = Record::from_rdata(name.clone(), 1, RData::AAAA(ip.into()));
                     response.add_answer(record);
-                    response.metadata.response_code = ResponseCode::NoError;
-                } else {
-                    // server_ip is IPv4, no default AAAA available
-                    response.metadata.response_code = ResponseCode::NoError;
                 }
+                response.metadata.response_code = ResponseCode::NoError;
             }
         }
         RecordType::CNAME => {

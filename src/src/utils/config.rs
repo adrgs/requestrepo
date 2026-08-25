@@ -1,9 +1,13 @@
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::env;
+use std::net::Ipv6Addr;
 
 pub struct Config {
     pub server_ip: String,
+    /// Address returned for AAAA queries that have no user-defined record.
+    /// `None` leaves the zone IPv4-only, which is the behaviour when unset.
+    pub server_ipv6: Option<Ipv6Addr>,
     pub server_domain: String,
     pub include_server_domain: bool,
     pub subdomain_length: usize,
@@ -54,6 +58,17 @@ pub struct Config {
 impl Config {
     pub fn new() -> Self {
         let server_ip = env::var("SERVER_IP").unwrap_or_else(|_| "127.0.0.1".to_string());
+        // Optional, but a malformed value is a deployment mistake: silently serving no
+        // AAAA would look identical to IPv6 being unconfigured, so fail loudly instead.
+        let server_ipv6 = match env::var("SERVER_IPV6") {
+            Ok(value) if !value.trim().is_empty() => {
+                let value = value.trim();
+                Some(value.parse::<Ipv6Addr>().unwrap_or_else(|_| {
+                    panic!("SERVER_IPV6 is set to '{value}', which is not a valid IPv6 address")
+                }))
+            }
+            _ => None,
+        };
         let server_domain = env::var("DOMAIN")
             .unwrap_or_else(|_| "localhost".to_string())
             .to_lowercase();
@@ -211,6 +226,7 @@ impl Config {
 
         Self {
             server_ip,
+            server_ipv6,
             server_domain,
             include_server_domain,
             subdomain_length,

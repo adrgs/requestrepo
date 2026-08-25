@@ -277,6 +277,7 @@ interface Request {
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `SERVER_IPV6` | - | Public IPv6 address for AAAA queries with no user-defined record; unset leaves the zone IPv4-only |
 | `HTTP_PORT` | `80` | HTTP server port |
 | `HTTPS_PORT` | `443` | HTTPS server port |
 | `DNS_PORT` | `53` | DNS server port (UDP+TCP) |

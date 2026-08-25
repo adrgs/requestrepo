@@ -104,6 +104,7 @@ Key environment variables:
 - `JWT_SECRET`: Secret key for JWT tokens (required)
 - `DOMAIN`: Your domain name (required)
 - `SERVER_IP`: Your server's public IP address (required)
+- `SERVER_IPV6`: Your server's public IPv6 address (optional; AAAA records are only served when set)
 - `TLS_ENABLED`: Enable HTTPS with auto-TLS (optional)
 - `ADMIN_TOKEN`: Require password for session creation (optional)
 

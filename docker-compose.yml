@@ -33,6 +33,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - DOMAIN=${DOMAIN:-requestrepo.com}
       - SERVER_IP=${SERVER_IP:-127.0.0.1}
+      - SERVER_IPV6=${SERVER_IPV6:-}
       # Optional - Auth
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
       # Optional - Ports

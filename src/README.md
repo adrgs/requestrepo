@@ -41,6 +41,7 @@ The application uses the following environment variables:
 
 - `REDIS_HOST`: Redis host (for compatibility, not used)
 - `SERVER_IP`: Server IP address
+- `SERVER_IPV6`: Server IPv6 address (optional)
 - `DOMAIN`: Server domain
 - `INCLUDE_SERVER_DOMAIN`: Whether to include server domain in responses
 - `SUBDOMAIN_LENGTH`: Length of generated subdomains

@@ -1,8 +1,36 @@
 #[cfg(test)]
 mod tests {
     use crate::cache::Cache;
+    use crate::dns::default_aaaa;
+    use std::net::Ipv6Addr;
     use std::sync::Arc;
     use tokio::sync::broadcast;
+
+    #[test]
+    fn test_default_aaaa_prefers_server_ipv6() {
+        let configured: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        assert_eq!(
+            default_aaaa(Some(configured), "1.2.3.4"),
+            Some(configured),
+            "SERVER_IPV6 should be used even when SERVER_IP is set"
+        );
+    }
+
+    #[test]
+    fn test_default_aaaa_falls_back_to_ipv6_server_ip() {
+        // Single-stack IPv6 deployments set only SERVER_IP, to an IPv6 literal.
+        assert_eq!(
+            default_aaaa(None, "2001:db8::2"),
+            Some("2001:db8::2".parse::<Ipv6Addr>().unwrap())
+        );
+    }
+
+    #[test]
+    fn test_default_aaaa_none_for_ipv4_only() {
+        // IPv4-only zone: AAAA must answer NODATA rather than inventing an address.
+        assert_eq!(default_aaaa(None, "1.2.3.4"), None);
+        assert_eq!(default_aaaa(None, "not-an-ip"), None);
+    }
 
     // Note: Integration tests for DNS would require running a DNS server
     // and making actual DNS queries. These tests verify the cache integration.
