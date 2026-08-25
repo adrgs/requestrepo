@@ -36,6 +36,11 @@ const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Bound DNS-over-TCP tasks and their socket buffers under connection floods.
 const DNS_TCP_MAX_CONCURRENT_CONNECTIONS: usize = 256;
 
+/// Backoff applied after a resource-exhaustion `accept()` failure (EMFILE/ENFILE).
+/// Without it the failed connection stays queued and `accept()` fails again
+/// immediately, spinning the loop at 100% CPU and starving every other task.
+const TCP_ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
+
 pub(crate) struct DnsRateLimiter {
     limits: Mutex<HashMap<IpAddr, (Instant, u32)>>,
     max_per_second: u32,
@@ -173,7 +178,13 @@ impl Server {
                     });
                 }
                 Err(e) => {
-                    error!("Error accepting DNS TCP connection: {}", e);
+                    // Resource exhaustion (EMFILE/ENFILE) leaves the pending connection
+                    // queued, so returning straight to `accept()` fails on the same
+                    // connection immediately. That spins at 100% CPU and starves the
+                    // very tasks that would release descriptors. Backing off on every
+                    // accept error keeps a transient failure from becoming an outage.
+                    error!("Error accepting DNS TCP connection, backing off: {e}");
+                    tokio::time::sleep(TCP_ACCEPT_BACKOFF).await;
                 }
             }
         }
@@ -253,7 +264,7 @@ pub(crate) async fn process_dns_query(
     truncate_udp: bool,
 ) -> Result<Vec<u8>> {
     let request =
-        Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {}", e))?;
+        Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {e}"))?;
 
     let query = match request.queries.first() {
         Some(q) => q,
@@ -267,7 +278,7 @@ pub(crate) async fn process_dns_query(
             );
             return response
                 .to_bytes()
-                .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e));
+                .map_err(|e| anyhow!("Failed to serialize DNS response: {e}"));
         }
     };
 
@@ -293,7 +304,7 @@ pub(crate) async fn process_dns_query(
     // Serialize and send response
     let response_bytes = response
         .to_bytes()
-        .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e))?;
+        .map_err(|e| anyhow!("Failed to serialize DNS response: {e}"))?;
 
     // On UDP, if the response exceeds 512 bytes set the TC (truncation) bit and
     // strip answers so the client retries via TCP (which is not spoofable). TCP
@@ -303,7 +314,7 @@ pub(crate) async fn process_dns_query(
         let truncated = response.truncate();
         truncated
             .to_bytes()
-            .map_err(|e| anyhow!("Failed to serialize truncated DNS response: {}", e))?
+            .map_err(|e| anyhow!("Failed to serialize truncated DNS response: {e}"))?
     } else {
         response_bytes
     };

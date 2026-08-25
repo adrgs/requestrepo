@@ -124,7 +124,7 @@ impl Server {
 
                 self.release_port(&subdomain);
 
-                return Err(anyhow!("Failed to bind to port {}: {}", port, e));
+                return Err(anyhow!("Failed to bind to port {port}: {e}"));
             }
         };
 

@@ -149,7 +149,7 @@ impl Server {
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
         .await
-        .map_err(|e| anyhow!("HTTP server error: {}", e))?;
+        .map_err(|e| anyhow!("HTTP server error: {e}"))?;
 
         Ok(())
     }

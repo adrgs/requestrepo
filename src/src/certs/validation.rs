@@ -35,7 +35,7 @@ impl CertValidator {
 
         // Parse X.509 certificate
         let (_, cert) = X509Certificate::from_der(cert_der)
-            .map_err(|e| anyhow!("Failed to parse X.509 certificate: {:?}", e))?;
+            .map_err(|e| anyhow!("Failed to parse X.509 certificate: {e:?}"))?;
 
         // Extract domains from certificate
         let domains = self.extract_domains(&cert)?;
@@ -157,7 +157,7 @@ impl IpCertValidator {
         let pem_data = ::pem::parse(cert_pem).context("Failed to parse IP certificate PEM")?;
         let cert_der = pem_data.contents();
         let (_, cert) = X509Certificate::from_der(cert_der)
-            .map_err(|e| anyhow!("Failed to parse IP X.509 certificate: {:?}", e))?;
+            .map_err(|e| anyhow!("Failed to parse IP X.509 certificate: {e:?}"))?;
 
         // Check IP SAN match
         if !self.check_ip_match(&cert)? {
