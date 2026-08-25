@@ -36,6 +36,11 @@ const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Bound DNS-over-TCP tasks and their socket buffers under connection floods.
 const DNS_TCP_MAX_CONCURRENT_CONNECTIONS: usize = 256;
 
+/// Backoff applied after a resource-exhaustion `accept()` failure (EMFILE/ENFILE).
+/// Without it the failed connection stays queued and `accept()` fails again
+/// immediately, spinning the loop at 100% CPU and starving every other task.
+const TCP_ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
+
 pub(crate) struct DnsRateLimiter {
     limits: Mutex<HashMap<IpAddr, (Instant, u32)>>,
     max_per_second: u32,
@@ -173,7 +178,13 @@ impl Server {
                     });
                 }
                 Err(e) => {
-                    error!("Error accepting DNS TCP connection: {}", e);
+                    // Resource exhaustion (EMFILE/ENFILE) leaves the pending connection
+                    // queued, so returning straight to `accept()` fails on the same
+                    // connection immediately. That spins at 100% CPU and starves the
+                    // very tasks that would release descriptors. Backing off on every
+                    // accept error keeps a transient failure from becoming an outage.
+                    error!("Error accepting DNS TCP connection, backing off: {e}");
+                    tokio::time::sleep(TCP_ACCEPT_BACKOFF).await;
                 }
             }
         }
