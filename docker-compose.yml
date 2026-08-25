@@ -18,6 +18,14 @@ services:
       - "53:53/tcp"   # DNS TCP
       - "53:53/udp"   # DNS UDP
       - "25:25"       # SMTP
+    # The default soft RLIMIT_NOFILE of 1024 is exhausted quickly: requestrepo is
+    # internet-facing and every scanner probe, DNS query, and TLS session needs a
+    # descriptor. Once accept() starts returning EMFILE the server cannot recover on
+    # its own, so raise the limit rather than relying on the daemon default.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     env_file:
       - .env
     environment:
