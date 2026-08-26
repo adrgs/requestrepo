@@ -19,7 +19,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
 use sentry_tower::{NewSentryLayer, SentryHttpLayer};
 use std::borrow::Cow;
@@ -50,6 +50,20 @@ const HTTP_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// Minimum spacing between "connection pool exhausted" log lines, so a sustained flood
 /// cannot itself become a log flood while never letting the condition go silent.
 const PERMIT_EXHAUSTION_LOG_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Build the HTTP/1 connection builder used for every accepted HTTPS connection.
+///
+/// `header_read_timeout` needs a registered timer or hyper panics
+/// ("timeout `header_read_timeout` set, but no timer set") on the first connection it
+/// serves — a failure that unit tests miss because they never drive `serve_connection`.
+/// Constructing both together here keeps the two from drifting apart.
+fn https_connection_builder() -> hyper::server::conn::http1::Builder {
+    let mut builder = hyper::server::conn::http1::Builder::new();
+    builder
+        .timer(TokioTimer::new())
+        .header_read_timeout(HTTP_HEADER_READ_TIMEOUT);
+    builder
+}
 
 fn sanitized_sentry_path(path: &str) -> Cow<'_, str> {
     const SHARED_REQUEST_PREFIX: &str = "/api/v2/requests/shared/";
@@ -363,8 +377,7 @@ impl HttpsServer {
                 // http1 with upgrades enabled for WebSocket support. header_read_timeout
                 // bounds how long an idle or slow-loris connection can hold its permit
                 // between requests, which is what stops the pool from leaking to zero.
-                if let Err(e) = hyper::server::conn::http1::Builder::new()
-                    .header_read_timeout(HTTP_HEADER_READ_TIMEOUT)
+                if let Err(e) = https_connection_builder()
                     .serve_connection(io, service)
                     .with_upgrades()
                     .await
@@ -389,7 +402,48 @@ impl HttpsServer {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitized_sentry_path;
+    use super::{https_connection_builder, sanitized_sentry_path};
+    use hyper_util::rt::TokioIo;
+    use hyper_util::service::TowerToHyperService;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    /// Serving a connection through `https_connection_builder()` must not panic.
+    ///
+    /// `header_read_timeout` panics at serve time ("no timer set") unless a timer is
+    /// registered on the builder. Unit tests that never drive `serve_connection` miss
+    /// this, so exercise a real request/response round-trip through the actual builder.
+    #[tokio::test]
+    async fn https_connection_builder_serves_without_timer_panic() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let app = axum::Router::new().route("/", axum::routing::get(|| async { "ok" }));
+            let service = TowerToHyperService::new(app);
+            https_connection_builder()
+                .serve_connection(TokioIo::new(stream), service)
+                .await
+        });
+
+        let mut client = TcpStream::connect(addr).await.unwrap();
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        let mut resp = Vec::new();
+        client.read_to_end(&mut resp).await.unwrap();
+        let resp = String::from_utf8_lossy(&resp);
+
+        assert!(
+            resp.starts_with("HTTP/1.1 200"),
+            "unexpected response: {resp}"
+        );
+        assert!(resp.trim_end().ends_with("ok"), "unexpected body: {resp}");
+        // A panic in the server task surfaces here as a join error.
+        server.await.unwrap().unwrap();
+    }
 
     #[test]
     fn sentry_path_redacts_share_tokens() {
