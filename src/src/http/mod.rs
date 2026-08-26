@@ -26,7 +26,7 @@ use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, Semaphore};
 use tower::{Layer, Service};
@@ -40,6 +40,16 @@ use crate::utils::config::CONFIG;
 
 const HTTPS_MAX_CONCURRENT_CONNECTIONS: usize = 1024;
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum time a connection may spend waiting for request headers, applied to the first
+/// request and again between keep-alive requests. Without it an idle keep-alive or
+/// slow-loris connection pins its concurrency permit indefinitely; enough of them drain
+/// HTTPS_MAX_CONCURRENT_CONNECTIONS, after which every new connection is refused before the
+/// TLS handshake. That presents as a total HTTPS outage (resets, "no peer certificate")
+/// even though the process, HTTP, and DNS all stay healthy.
+const HTTP_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// Minimum spacing between "connection pool exhausted" log lines, so a sustained flood
+/// cannot itself become a log flood while never letting the condition go silent.
+const PERMIT_EXHAUSTION_LOG_INTERVAL: Duration = Duration::from_secs(5);
 
 fn sanitized_sentry_path(path: &str) -> Cow<'_, str> {
     const SHARED_REQUEST_PREFIX: &str = "/api/v2/requests/shared/";
@@ -264,6 +274,11 @@ impl HttpsServer {
         let listener = TcpListener::bind(addr).await?;
         let connection_limit = Arc::new(Semaphore::new(HTTPS_MAX_CONCURRENT_CONNECTIONS));
 
+        // Rate-limited reporting of pool-exhaustion drops. Both are only touched from this
+        // single accept loop, so plain locals suffice — no synchronization needed.
+        let mut permit_exhausted_drops: u64 = 0;
+        let mut last_exhaustion_log: Option<Instant> = None;
+
         loop {
             let (stream, remote_addr) = match listener.accept().await {
                 Ok(conn) => conn,
@@ -282,11 +297,31 @@ impl HttpsServer {
                 }
             };
 
-            // Refuse excess connections before allocating a TLS task. The permit is
-            // held for the entire HTTP connection, including keep-alive time.
+            // Refuse excess connections before allocating a TLS task. The permit is held
+            // through the TLS handshake and the HTTP-serving phase, then released (see the
+            // explicit drop after serve_connection). header_read_timeout caps idle
+            // keep-alive time so a permit can't be pinned indefinitely.
             let connection_permit = match connection_limit.clone().try_acquire_owned() {
                 Ok(permit) => permit,
-                Err(_) => continue,
+                Err(_) => {
+                    // Pool exhausted — refuse this connection. Log at most once per
+                    // PERMIT_EXHAUSTION_LOG_INTERVAL so the drop is never silent (an
+                    // exhausted pool means HTTPS is effectively down) without letting a
+                    // flood of refusals turn into a flood of log lines.
+                    permit_exhausted_drops += 1;
+                    let due = last_exhaustion_log
+                        .map(|t| t.elapsed() >= PERMIT_EXHAUSTION_LOG_INTERVAL)
+                        .unwrap_or(true);
+                    if due {
+                        warn!(
+                            "HTTPS connection pool exhausted ({} slots): refused {} connection(s) since last report",
+                            HTTPS_MAX_CONCURRENT_CONNECTIONS, permit_exhausted_drops
+                        );
+                        permit_exhausted_drops = 0;
+                        last_exhaustion_log = Some(Instant::now());
+                    }
+                    continue;
+                }
             };
 
             // Clone state for the spawned task
@@ -298,7 +333,8 @@ impl HttpsServer {
             };
 
             tokio::spawn(async move {
-                let _connection_permit = connection_permit;
+                // `connection_permit` (moved in above) is held for the HTTP-serving phase
+                // and released explicitly once serving/upgrade completes, below.
 
                 // Perform TLS handshake
                 let tls_stream = match tokio::time::timeout(
@@ -324,8 +360,11 @@ impl HttpsServer {
 
                 let io = TokioIo::new(tls_stream);
 
-                // Use http1 builder with upgrades enabled for WebSocket support
+                // http1 with upgrades enabled for WebSocket support. header_read_timeout
+                // bounds how long an idle or slow-loris connection can hold its permit
+                // between requests, which is what stops the pool from leaking to zero.
                 if let Err(e) = hyper::server::conn::http1::Builder::new()
+                    .header_read_timeout(HTTP_HEADER_READ_TIMEOUT)
                     .serve_connection(io, service)
                     .with_upgrades()
                     .await
@@ -335,6 +374,14 @@ impl HttpsServer {
                         error!("Error serving HTTPS connection: {}", e);
                     }
                 }
+
+                // Free the connection slot the instant the HTTP phase ends. For a WebSocket
+                // this future resolves at the `with_upgrades()` handoff, after which the
+                // socket lives in its own task (see websocket handler) — so an established
+                // WebSocket does not occupy one of the HTTPS_MAX_CONCURRENT_CONNECTIONS
+                // slots for its lifetime. Dropping explicitly keeps that guarantee from
+                // depending on where the enclosing scope happens to end.
+                drop(connection_permit);
             });
         }
     }
