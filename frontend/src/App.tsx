@@ -4,12 +4,16 @@ import { useAuthStore } from "@/stores/authStore";
 import { useSessionStore } from "@/stores/sessionStore";
 import { apiClient, isAdminRequiredError } from "@/api/client";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { FullWidthLayout } from "@/components/layout/FullWidthLayout";
 import { AdminAuthOverlay } from "@/components/auth/AdminAuthOverlay";
 import { BackendOfflineOverlay } from "@/components/auth/BackendOfflineOverlay";
 import { RequestsPage } from "@/pages/RequestsPage";
 import { ResponseEditorPage } from "@/pages/ResponseEditorPage";
 import { DnsSettingsPage } from "@/pages/DnsSettingsPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { ProfilePage } from "@/pages/ProfilePage";
+import { AdminPage } from "@/pages/AdminPage";
 
 // Redirect that preserves query params (for share links)
 function RedirectWithParams() {
@@ -53,6 +57,13 @@ function App() {
       {backendOffline && <BackendOfflineOverlay />}
       {showAuthOverlay && <AdminAuthOverlay onSubmit={handleAuthSubmit} />}
       <Routes>
+        {/* Login page - no auth required */}
+        <Route path="/login" element={<LoginPage />} />
+
+        {/* Auth routes (OAuth callbacks) - handled by backend */}
+        {/* /auth/* routes are handled server-side */}
+
+        {/* Main app - with sidebar */}
         <Route path="/" element={<AppLayout />}>
           <Route index element={<RedirectWithParams />} />
           <Route path="requests" element={<RequestsPage />} />
@@ -61,6 +72,14 @@ function App() {
           <Route path="notifications" element={<NotificationsPage />} />
           {/* Catch-all: redirect unknown routes to /requests */}
           <Route path="*" element={<Navigate to="/requests" replace />} />
+        </Route>
+
+        {/* Full-width pages (no sidebar) */}
+        <Route path="/profile" element={<FullWidthLayout />}>
+          <Route index element={<ProfilePage />} />
+        </Route>
+        <Route path="/admin" element={<FullWidthLayout />}>
+          <Route index element={<AdminPage />} />
         </Route>
       </Routes>
     </main>

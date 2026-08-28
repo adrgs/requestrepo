@@ -1,13 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Card,
-  CardBody,
-  CardHeader,
   Button,
   Input,
   Select,
-  SelectItem,
-  Divider,
+  ListBox,
   Chip,
 } from "@heroui/react";
 import { Plus, Trash2, Network } from "lucide-react";
@@ -102,7 +99,7 @@ export function DnsSettingsPage() {
     <div className="flex flex-col gap-4">
       {/* Info */}
       <Card>
-        <CardBody className="gap-2">
+        <Card.Content className="gap-2 flex flex-col">
           <div className="flex items-center gap-2">
             <Network className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-semibold">DNS Settings</h2>
@@ -114,68 +111,75 @@ export function DnsSettingsPage() {
             </code>{" "}
             will return these records.
           </p>
-        </CardBody>
+        </Card.Content>
       </Card>
 
       {/* Add new record */}
       <Card>
-        <CardHeader>
+        <Card.Header>
           <h3 className="text-base font-semibold">Add New Record</h3>
-        </CardHeader>
-        <Divider />
-        <CardBody className="gap-4">
+        </Card.Header>
+        <div className="border-b border-default-200" />
+        <Card.Content className="gap-4 flex flex-col">
           {/* Domain - full width on mobile */}
-          <Input
-            label="Domain"
-            placeholder="subdomain"
-            value={newRecord.domain}
-            onValueChange={(v) => setNewRecord((r) => ({ ...r, domain: v }))}
-          />
+          <div>
+            <label className="text-sm text-default-500 block mb-1">Domain</label>
+            <Input
+              placeholder="subdomain"
+              value={newRecord.domain}
+              onChange={(e) => setNewRecord((r) => ({ ...r, domain: e.target.value }))}
+            />
+          </div>
 
           {/* Type + Value row */}
           <div className="flex flex-col gap-4 md:flex-row">
-            <Select
-              label="Type"
-              selectedKeys={newRecord.type ? [newRecord.type] : []}
-              onSelectionChange={(keys) => {
-                const key = Array.from(keys)[0];
-                if (key)
-                  setNewRecord((r) => ({
-                    ...r,
-                    type: String(key) as DnsRecordType,
-                  }));
-              }}
-              className="w-full md:w-32"
-            >
-              {DNS_TYPES.map((type) => (
-                <SelectItem key={type}>{type}</SelectItem>
-              ))}
-            </Select>
-            <Input
-              label="Value"
-              placeholder={
-                newRecord.type === "A"
-                  ? "1.2.3.4"
-                  : newRecord.type === "AAAA"
-                    ? "2001:db8::1"
-                    : newRecord.type === "CNAME"
-                      ? "example.com"
-                      : "txt value"
-              }
-              value={newRecord.value}
-              onValueChange={(v) => setNewRecord((r) => ({ ...r, value: v }))}
-              className="flex-1"
-            />
+            <div className="w-full md:w-32">
+              <label className="text-sm text-default-500 block mb-1">Type</label>
+              <Select
+                selectedKey={newRecord.type || "A"}
+                onSelectionChange={(key) => {
+                  if (key)
+                    setNewRecord((r) => ({
+                      ...r,
+                      type: String(key) as DnsRecordType,
+                    }));
+                }}
+              >
+                <Select.Trigger className="w-full" />
+                <Select.Popover>
+                  <ListBox>
+                    {DNS_TYPES.map((type) => (
+                      <ListBox.Item key={type}>{type}</ListBox.Item>
+                    ))}
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <label className="text-sm text-default-500 block mb-1">Value</label>
+              <Input
+                placeholder={
+                  newRecord.type === "A"
+                    ? "1.2.3.4"
+                    : newRecord.type === "AAAA"
+                      ? "2001:db8::1"
+                      : newRecord.type === "CNAME"
+                        ? "example.com"
+                        : "txt value"
+                }
+                value={newRecord.value}
+                onChange={(e) => setNewRecord((r) => ({ ...r, value: e.target.value }))}
+              />
+            </div>
           </div>
 
           {/* Add button - full width on mobile */}
           <Button
-            color="primary"
-            startContent={<Plus className="h-4 w-4" />}
+            variant="primary"
             onPress={handleAddRecord}
-            isLoading={updateDnsMutation.isPending}
             className="w-full md:w-auto md:self-start"
           >
+            <Plus className="h-4 w-4" />
             Add Record
           </Button>
 
@@ -187,16 +191,16 @@ export function DnsSettingsPage() {
             {newRecord.type === "A" &&
               " • Use % to separate multiple IPs for random selection"}
           </p>
-        </CardBody>
+        </Card.Content>
       </Card>
 
       {/* Existing records */}
       <Card>
-        <CardHeader>
+        <Card.Header>
           <h3 className="text-base font-semibold">Current Records</h3>
-        </CardHeader>
-        <Divider />
-        <CardBody className="gap-2">
+        </Card.Header>
+        <div className="border-b border-default-200" />
+        <Card.Content className="gap-2 flex flex-col">
           {isLoading ? (
             <p className="text-default-400">Loading...</p>
           ) : records.length === 0 ? (
@@ -210,16 +214,8 @@ export function DnsSettingsPage() {
                 {/* Type badge + domain */}
                 <div className="flex items-center gap-2 md:flex-1">
                   <Chip
-                    color={
-                      getDnsTypeColor(record.type) as
-                        | "success"
-                        | "primary"
-                        | "warning"
-                        | "danger"
-                        | "secondary"
-                        | "default"
-                    }
-                    variant="flat"
+                    color={getDnsTypeColor(record.type) as "success" | "warning" | "danger" | "default" | "accent"}
+                    variant="soft"
                     size="sm"
                     className="min-w-[50px]"
                   >
@@ -241,8 +237,7 @@ export function DnsSettingsPage() {
                   <Button
                     isIconOnly
                     size="sm"
-                    variant="light"
-                    color="danger"
+                    variant="danger"
                     onPress={() => handleDeleteRecord(index)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -251,7 +246,7 @@ export function DnsSettingsPage() {
               </div>
             ))
           )}
-        </CardBody>
+        </Card.Content>
       </Card>
     </div>
   );

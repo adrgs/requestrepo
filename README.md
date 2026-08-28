@@ -189,7 +189,8 @@ See [.env.example](.env.example) for all available options.
 | `MAX_REQUEST_BODY_MB` | No | `10` | Max HTTP request body size |
 | `SESSION_RATE_LIMIT` | No | `10` | Max sessions per IP per window |
 | `SESSION_RATE_WINDOW_SECS` | No | `60` | Rate limit window in seconds |
-| `ALLOW_ALL_HEADERS` | No | `false` | Allow dangerous headers (e.g., Service-Worker-Allowed) |
+| `DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT` | No | `false` | Enable `/r/<subdomain>` user content on the dashboard origin (for domainless/IP deployments) |
+| `DANGEROUSLY_ALLOW_ALL_HEADERS` | No | `false` | Allow origin-scoped headers such as `Service-Worker-Allowed` and `Alt-Svc` on `/r/` routes |
 | `RUST_LOG` | No | `info` | Log level (trace, debug, info, warn, error) |
 
 ## Interface

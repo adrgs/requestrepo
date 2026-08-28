@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Card, CardBody, Chip } from "@heroui/react";
+import { Card, Chip } from "@heroui/react";
 import { cn, formatRelativeTime, getMethodColor } from "@/lib/utils";
 import type { Request } from "@/types";
 import { isHttpRequest, isDnsRequest, isSmtpRequest } from "@/types";
@@ -21,16 +21,14 @@ export const RequestCard = memo(function RequestCard({
 
   return (
     <Card
-      isPressable
-      onPress={onSelect}
       className={cn(
-        "w-full transition-all",
+        "w-full transition-all cursor-pointer",
         isActive && "ring-2 ring-primary",
         isVisited && "opacity-60",
       )}
-      shadow="sm"
+      onClick={onSelect}
     >
-      <CardBody className="flex flex-row items-center gap-3 p-3">
+      <Card.Content className="flex flex-row items-center gap-3 p-3">
         {!isVisited && <span className="h-2 w-2 rounded-full bg-primary" />}
 
         <Chip
@@ -38,17 +36,16 @@ export const RequestCard = memo(function RequestCard({
             isHttp
               ? (getMethodColor(request.method) as
                   | "success"
-                  | "primary"
                   | "warning"
                   | "danger"
-                  | "secondary"
-                  | "default")
+                  | "default"
+                  | "accent")
               : isSmtpRequest(request)
                 ? "danger"
-                : "secondary"
+                : "default"
           }
           size="sm"
-          variant="flat"
+          variant="soft"
           className="min-w-[60px] text-center"
         >
           {isHttp ? request.method : isSmtpRequest(request) ? "SMTP" : "DNS"}
@@ -72,11 +69,11 @@ export const RequestCard = memo(function RequestCard({
         </div>
 
         {isHttp && request.method !== "GET" && (
-          <Chip size="sm" variant="bordered" className="text-xs">
+          <Chip size="sm" variant="secondary" className="text-xs">
             {request.protocol}
           </Chip>
         )}
-      </CardBody>
+      </Card.Content>
     </Card>
   );
 });

@@ -1,11 +1,10 @@
 use anyhow::{anyhow, Context, Result};
 use arc_swap::ArcSwap;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use rustls::server::{ClientHello, ResolvesServerCert};
 use rustls::sign::CertifiedKey;
 use rustls::ServerConfig;
 use std::fmt;
-use std::io::BufReader;
 use std::sync::Arc;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info};
@@ -175,8 +174,7 @@ fn build_server_config(chain_pem: &[u8], key_pem: &[u8]) -> Result<ServerConfig>
 
 /// Parse PEM-encoded certificates
 fn parse_certificates(pem: &[u8]) -> Result<Vec<CertificateDer<'static>>> {
-    let mut reader = BufReader::new(pem);
-    let certs = rustls_pemfile::certs(&mut reader)
+    let certs = CertificateDer::pem_slice_iter(pem)
         .collect::<Result<Vec<_>, _>>()
         .context("Failed to parse certificates")?;
 
@@ -185,40 +183,8 @@ fn parse_certificates(pem: &[u8]) -> Result<Vec<CertificateDer<'static>>> {
 
 /// Parse a PEM-encoded private key (supports RSA, PKCS8, EC)
 fn parse_private_key(pem: &[u8]) -> Result<PrivateKeyDer<'static>> {
-    let mut reader = BufReader::new(pem);
-
-    // Try parsing as PKCS8
-    let pkcs8_keys: Vec<_> = rustls_pemfile::pkcs8_private_keys(&mut reader)
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap_or_default();
-
-    if let Some(key) = pkcs8_keys.into_iter().next() {
-        return Ok(PrivateKeyDer::Pkcs8(key));
-    }
-
-    // Reset reader and try RSA
-    let mut reader = BufReader::new(pem);
-    let rsa_keys: Vec<_> = rustls_pemfile::rsa_private_keys(&mut reader)
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap_or_default();
-
-    if let Some(key) = rsa_keys.into_iter().next() {
-        return Ok(PrivateKeyDer::Pkcs1(key));
-    }
-
-    // Reset reader and try EC
-    let mut reader = BufReader::new(pem);
-    let ec_keys: Vec<_> = rustls_pemfile::ec_private_keys(&mut reader)
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap_or_default();
-
-    if let Some(key) = ec_keys.into_iter().next() {
-        return Ok(PrivateKeyDer::Sec1(key));
-    }
-
-    Err(anyhow!(
-        "No private key found (tried PKCS8, RSA, and EC formats)"
-    ))
+    PrivateKeyDer::from_pem_slice(pem)
+        .context("No supported private key found (expected PKCS8, RSA, or EC PEM)")
 }
 
 #[cfg(test)]

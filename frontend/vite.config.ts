@@ -8,21 +8,20 @@ const monacoEditorPlugin: any =
     : (monacoEditorPluginModule as any).default;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 import path from "path";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [
     react(),
+    tailwindcss(),
     monacoEditorPlugin({
-      // Only include the workers we need (editorWorkerService is required)
       languageWorkers: ["editorWorkerService", "json", "html", "css"],
     }),
   ],
-  // Load .env from parent directory (shared with backend for local dev)
-  // In Docker builds, parent has no .env - Vite handles this gracefully
-  envDir: path.resolve(__dirname, ".."),
+  envDir: path.resolve(import.meta.dirname, ".."),
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   server: {

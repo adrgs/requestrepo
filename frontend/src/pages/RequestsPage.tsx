@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, CardBody, Code, Button, Tabs, Tab, Chip } from "@heroui/react";
+import { Card, Button, Tabs, Chip } from "@heroui/react";
 import {
   Share2,
   Copy,
@@ -91,6 +91,8 @@ export function RequestsPage() {
   const subdomain = session?.subdomain || "xxxxxxxx";
   const fullHttpDomain = `${subdomain}.${httpDomain}`;
   const fullDnsDomain = `${subdomain}.${dnsDomain}`;
+  const allowSameOriginUserContent =
+    window.__CONFIG__?.DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT === true;
 
   // Mark as visited when selected (only for non-shared requests)
   useEffect(() => {
@@ -190,26 +192,28 @@ export function RequestsPage() {
           <p className="mb-4 text-default-500">How to make a request:</p>
 
           <div className="space-y-2 font-mono text-sm">
-            <Code className="block p-2">curl http://{fullHttpDomain}</Code>
-            <Code className="block p-2">
-              curl http://{httpDomain}/r/{subdomain}/
-            </Code>
-            <Code className="block p-2">
+            <pre className="block p-2">curl http://{fullHttpDomain}</pre>
+            {allowSameOriginUserContent && (
+              <pre className="block p-2">
+                curl http://{httpDomain}/r/{subdomain}/
+              </pre>
+            )}
+            <pre className="block p-2">
               curl -X POST --data hello http://{fullHttpDomain}
-            </Code>
-            <Code className="block p-2">
+            </pre>
+            <pre className="block p-2">
               nslookup your.data.here.{fullDnsDomain}
-            </Code>
-            <Code className="block p-2">
+            </pre>
+            <pre className="block p-2">
               echo RCE | curl -d @- {fullHttpDomain}
-            </Code>
-            <Code className="block p-2">
+            </pre>
+            <pre className="block p-2">
               wget --post-data "$(echo RCE)" -O- {fullHttpDomain}
-            </Code>
-            <Code className="block p-2">
+            </pre>
+            <pre className="block p-2">
               swaks --to user@{fullDnsDomain} --from test@example.com --server{" "}
               {dnsDomain} --port 25
-            </Code>
+            </pre>
           </div>
 
           <p className="mt-6 text-default-500">
@@ -226,14 +230,14 @@ export function RequestsPage() {
           </p>
 
           <Card className="relative">
-            <CardBody className="p-0">
+            <Card.Content className="p-0">
               <Button
                 isIconOnly
                 size="sm"
-                variant="flat"
+                variant="secondary"
                 className="absolute right-2 top-2 z-10"
                 onPress={handleCopyCode}
-                title="Copy code (with real token)"
+                aria-label="Copy code (with real token)"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-success" />
@@ -273,7 +277,7 @@ export function RequestsPage() {
                   lineDecorationsWidth: 16,
                 }}
               />
-            </CardBody>
+            </Card.Content>
           </Card>
         </div>
       </div>
@@ -298,16 +302,16 @@ export function RequestsPage() {
 
     return (
       <Card className="h-full overflow-auto">
-        <CardBody className="p-4 relative">
+        <Card.Content className="p-4 relative">
           {/* Share + Notification buttons */}
           {!isSharedRequestView && (
             <div className="absolute right-4 top-4 flex items-center gap-1">
               <Button
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="ghost"
                 onPress={handleShareRequest}
-                title="Share request"
+                aria-label="Share request"
               >
                 <Share2 className="h-4 w-4" />
               </Button>
@@ -331,7 +335,7 @@ export function RequestsPage() {
                   Request Type
                 </td>
                 <td className="py-1">
-                  <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-blue-500 rounded mr-1">
+                  <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-blue-500 rounded-sm mr-1">
                     HTTP/1.1
                   </span>
                   <span
@@ -442,43 +446,43 @@ export function RequestsPage() {
           {/* Form Data / Body */}
           <h3 className="text-base font-semibold mb-2">Form Data</h3>
           {selectedRequest.raw ? (
-            <Code className="block whitespace-pre-wrap p-2 text-xs mb-4">
+            <pre className="block whitespace-pre-wrap p-2 text-xs mb-4">
               {isPrintable
                 ? bodyText
                 : `[Binary data, ${selectedRequest.raw.length} bytes]`}
-            </Code>
+            </pre>
           ) : (
             <p className="text-default-400 text-xs mb-4">(empty)</p>
           )}
 
           {/* Raw request */}
           <h3 className="text-base font-semibold mb-2">Raw request</h3>
-          <Code className="block p-3 text-xs mb-2 overflow-x-auto break-all whitespace-pre-wrap min-h-[60px]">
+          <pre className="block p-3 text-xs mb-2 overflow-x-auto break-all whitespace-pre-wrap min-h-[60px]">
             {btoa(rawRequest)}
-          </Code>
-          <Code className="block whitespace-pre-wrap p-2 text-xs font-mono">
+          </pre>
+          <pre className="block whitespace-pre-wrap p-2 text-xs font-mono">
             {rawRequest}
-          </Code>
-        </CardBody>
-      </Card>
-    );
-  }
+          </pre>
+          </Card.Content>
+        </Card>
+      );
+    }
 
-  if (isDnsRequest(selectedRequest)) {
+    if (isDnsRequest(selectedRequest)) {
     const rawDecoded = decodeBase64Safe(selectedRequest.raw);
 
     return (
       <Card className="h-full overflow-auto">
-        <CardBody className="p-4 relative">
+        <Card.Content className="p-4 relative">
           {/* Share + Notification buttons */}
           {!isSharedRequestView && (
             <div className="absolute right-4 top-4 flex items-center gap-1">
               <Button
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="ghost"
                 onPress={handleShareRequest}
-                title="Share request"
+                aria-label="Share request"
               >
                 <Share2 className="h-4 w-4" />
               </Button>
@@ -502,7 +506,7 @@ export function RequestsPage() {
                   Request Type
                 </td>
                 <td className="py-1">
-                  <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-[#33daff] rounded">
+                  <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-[#33daff] rounded-sm">
                     DNS
                   </span>
                 </td>
@@ -569,38 +573,38 @@ export function RequestsPage() {
 
           {/* Reply */}
           <h3 className="text-base font-semibold mb-2">Reply</h3>
-          <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
+          <pre className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
             {selectedRequest.reply || "No response"}
-          </Code>
+          </pre>
 
           {/* Raw request */}
           <h3 className="text-base font-semibold mb-2">Raw request</h3>
-          <Code className="block p-3 text-xs mb-2 overflow-x-auto break-all">
+          <pre className="block p-3 text-xs mb-2 overflow-x-auto break-all">
             {selectedRequest.raw}
-          </Code>
-          <Code className="block whitespace-pre-wrap p-2 text-xs font-mono overflow-x-auto">
+          </pre>
+          <pre className="block whitespace-pre-wrap p-2 text-xs font-mono overflow-x-auto">
             {rawDecoded.text}
-          </Code>
-        </CardBody>
-      </Card>
-    );
-  }
+          </pre>
+          </Card.Content>
+        </Card>
+      );
+    }
 
-  if (isSmtpRequest(selectedRequest)) {
+    if (isSmtpRequest(selectedRequest)) {
     const rawDecoded = decodeBase64Safe(selectedRequest.raw);
 
     return (
       <Card className="h-full overflow-auto">
-        <CardBody className="p-4 relative">
+        <Card.Content className="p-4 relative">
           {/* Share + Notification buttons */}
           {!isSharedRequestView && (
             <div className="absolute right-4 top-4 flex items-center gap-1">
               <Button
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="ghost"
                 onPress={handleShareRequest}
-                title="Share request"
+                aria-label="Share request"
               >
                 <Share2 className="h-4 w-4" />
               </Button>
@@ -624,7 +628,7 @@ export function RequestsPage() {
                   Request Type
                 </td>
                 <td className="py-1">
-                  <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-[#e91e63] rounded">
+                  <span className="inline-block px-1 py-px text-[8px] font-semibold text-white bg-[#e91e63] rounded-sm">
                     SMTP
                   </span>
                 </td>
@@ -715,17 +719,18 @@ export function RequestsPage() {
             selectedRequest.html_body) && (
             <>
               <h3 className="text-base font-semibold mb-2">Email Body</h3>
-              <Tabs
-                aria-label="Email body views"
-                variant="underlined"
-                classNames={{ tabList: "mb-2" }}
-              >
-                <Tab key="text" title="Text">
-                  <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
+              <Tabs>
+                <Tabs.List className="mb-2">
+                  <Tabs.Tab id="text">Text</Tabs.Tab>
+                  <Tabs.Tab id="html">HTML</Tabs.Tab>
+                  <Tabs.Tab id="raw">Raw</Tabs.Tab>
+                </Tabs.List>
+                <Tabs.Panel id="text">
+                  <pre className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
                     {selectedRequest.text_body || "No text body available"}
-                  </Code>
-                </Tab>
-                <Tab key="html" title="HTML">
+                  </pre>
+                </Tabs.Panel>
+                <Tabs.Panel id="html">
                   {selectedRequest.html_body ? (
                     <iframe
                       sandbox=""
@@ -738,12 +743,12 @@ export function RequestsPage() {
                       No HTML body available
                     </p>
                   )}
-                </Tab>
-                <Tab key="raw" title="Raw">
-                  <Code className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
+                </Tabs.Panel>
+                <Tabs.Panel id="raw">
+                  <pre className="block whitespace-pre-wrap p-2 text-xs font-mono mb-4 overflow-x-auto">
                     {selectedRequest.data || ""}
-                  </Code>
-                </Tab>
+                  </pre>
+                </Tabs.Panel>
               </Tabs>
             </>
           )}
@@ -757,13 +762,13 @@ export function RequestsPage() {
                 </h3>
                 <div className="space-y-2 mb-4">
                   {selectedRequest.attachments.map((attachment, index) => (
-                    <Card key={index} className="shadow-sm">
-                      <CardBody className="p-3 flex flex-row items-center gap-3">
+                    <Card key={index} className="shadow-xs">
+                      <Card.Content className="p-3 flex flex-row items-center gap-3">
                         {attachment.content_type.startsWith("image/") && (
                           <img
                             src={`data:${attachment.content_type};base64,${attachment.content}`}
                             alt={attachment.filename}
-                            className="w-12 h-12 object-cover rounded border border-default-200"
+                            className="w-12 h-12 object-cover rounded-sm border border-default-200"
                           />
                         )}
                         <div className="flex-1 min-w-0">
@@ -771,7 +776,7 @@ export function RequestsPage() {
                             {attachment.filename}
                           </p>
                           <div className="flex items-center gap-2 mt-1">
-                            <Chip size="sm" variant="flat">
+                            <Chip size="sm" variant="secondary">
                               {attachment.content_type}
                             </Chip>
                             <span className="text-xs text-default-500">
@@ -781,13 +786,12 @@ export function RequestsPage() {
                         </div>
                         <Button
                           size="sm"
-                          variant="flat"
-                          color="primary"
+                          variant="primary"
                           onPress={() => downloadAttachment(attachment)}
                         >
                           Download
                         </Button>
-                      </CardBody>
+                      </Card.Content>
                     </Card>
                   ))}
                 </div>
@@ -796,13 +800,13 @@ export function RequestsPage() {
 
           {/* Raw SMTP Transaction */}
           <h3 className="text-base font-semibold mb-2">Raw SMTP Transaction</h3>
-          <Code className="block whitespace-pre-wrap p-3 text-sm font-mono overflow-auto min-h-[200px] max-h-[500px]">
+          <pre className="block whitespace-pre-wrap p-3 text-sm font-mono overflow-auto min-h-[200px] max-h-[500px]">
             {rawDecoded.text}
-          </Code>
-        </CardBody>
-      </Card>
-    );
-  }
+          </pre>
+          </Card.Content>
+        </Card>
+      );
+    }
 
-  return null;
+    return null;
 }

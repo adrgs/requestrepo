@@ -1,5 +1,9 @@
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use hickory_proto::op::{Message, Query, ResponseCode};
+use hickory_proto::rr::rdata::{CNAME, MX, NS, SOA, TXT};
+use hickory_proto::rr::{Name, RData, Record, RecordType};
+use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -8,12 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 use tracing::{error, info, warn};
-use trust_dns_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
-use trust_dns_proto::rr::rdata::{CNAME, MX, NS, SOA, TXT};
-use trust_dns_proto::rr::{Name, RData, Record, RecordType};
-use trust_dns_proto::serialize::binary::{BinDecodable, BinEncodable};
 
 use crate::cache::Cache;
 use crate::ip2country::lookup_country;
@@ -31,7 +31,10 @@ const DNS_RATE_LIMIT_PER_SECOND: u32 = 100;
 const RATE_LIMITER_CLEANUP_INTERVAL: u64 = 1000;
 
 /// Idle timeout for a DNS-over-TCP connection while waiting for the next query
-const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Bound DNS-over-TCP tasks and their socket buffers under connection floods.
+const DNS_TCP_MAX_CONCURRENT_CONNECTIONS: usize = 256;
 
 pub(crate) struct DnsRateLimiter {
     limits: Mutex<HashMap<IpAddr, (Instant, u32)>>,
@@ -147,14 +150,20 @@ impl Server {
     /// TCP listener loop (RFC 1035 §4.2.2 / RFC 7766 message framing).
     async fn run_tcp(&self, rate_limiter: Arc<DnsRateLimiter>) -> Result<()> {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", CONFIG.dns_port)).await?;
+        let connection_limit = Arc::new(Semaphore::new(DNS_TCP_MAX_CONCURRENT_CONNECTIONS));
 
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
+                    let connection_permit = match connection_limit.clone().try_acquire_owned() {
+                        Ok(permit) => permit,
+                        Err(_) => continue,
+                    };
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
                     let rate_limiter = rate_limiter.clone();
                     tokio::spawn(async move {
+                        let _connection_permit = connection_permit;
                         if let Err(e) =
                             handle_tcp_connection(stream, addr, cache, tx, rate_limiter).await
                         {
@@ -197,9 +206,14 @@ pub(crate) async fn handle_tcp_connection(
             continue;
         }
 
-        // Read the full message body
+        // Read the full message body under the same idle timeout. Timing out only
+        // the length prefix would let a client reserve a task indefinitely.
         let mut msg = vec![0u8; msg_len];
-        stream.read_exact(&mut msg).await?;
+        match tokio::time::timeout(TCP_IDLE_TIMEOUT, stream.read_exact(&mut msg)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => return Ok(()),
+        }
 
         // Rate limit check (shared limiter with UDP)
         if !rate_limiter.check(addr.ip()) {
@@ -214,9 +228,17 @@ pub(crate) async fn handle_tcp_connection(
         // Write the 2-byte length prefix followed by the response
         let out_len = u16::try_from(response_bytes.len())
             .map_err(|_| anyhow!("DNS TCP response exceeds 65535 bytes"))?;
-        stream.write_all(&out_len.to_be_bytes()).await?;
-        stream.write_all(&response_bytes).await?;
-        stream.flush().await?;
+        match tokio::time::timeout(TCP_IDLE_TIMEOUT, async {
+            stream.write_all(&out_len.to_be_bytes()).await?;
+            stream.write_all(&response_bytes).await?;
+            stream.flush().await
+        })
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => return Ok(()),
+        }
     }
 }
 
@@ -233,15 +255,16 @@ pub(crate) async fn process_dns_query(
     let request =
         Message::from_bytes(data).map_err(|e| anyhow!("Failed to parse DNS request: {}", e))?;
 
-    let query = match request.queries().first() {
+    let query = match request.queries.first() {
         Some(q) => q,
         None => {
             // No query to process: reply with an empty FormErr so the caller has
             // something to send back rather than dropping the connection.
-            let mut response = Message::new();
-            response.set_id(request.id());
-            response.set_message_type(MessageType::Response);
-            response.set_response_code(ResponseCode::FormErr);
+            let response = Message::error_msg(
+                request.metadata.id,
+                request.metadata.op_code,
+                ResponseCode::FormErr,
+            );
             return response
                 .to_bytes()
                 .map_err(|e| anyhow!("Failed to serialize DNS response: {}", e));
@@ -276,11 +299,8 @@ pub(crate) async fn process_dns_query(
     // strip answers so the client retries via TCP (which is not spoofable). TCP
     // has no such limit, so callers there pass `truncate_udp = false`.
     let response_bytes = if truncate_udp && response_bytes.len() > MAX_UDP_RESPONSE_SIZE {
-        let mut truncated = response.clone();
-        truncated.set_truncated(true);
-        // Remove all answers to fit within 512 bytes - keep only header + question
-        let empty_answers: Vec<Record> = Vec::new();
-        truncated.insert_answers(empty_answers);
+        // Remove all response sections and set TC, retaining the header and question.
+        let truncated = response.truncate();
         truncated
             .to_bytes()
             .map_err(|e| anyhow!("Failed to serialize truncated DNS response: {}", e))?
@@ -298,32 +318,38 @@ fn format_dns_response(response: &Message) -> String {
     // Header section
     output.push(format!(
         ";; ->>HEADER<<- opcode: {:?}, status: {:?}, id: {}",
-        response.op_code(),
-        response.response_code(),
-        response.id()
+        response.metadata.op_code, response.metadata.response_code, response.metadata.id
     ));
 
-    let answers: Vec<_> = response.answers().iter().collect();
-    let queries: Vec<_> = response.queries().iter().collect();
+    let answers: Vec<_> = response.answers.iter().collect();
+    let queries: Vec<_> = response.queries.iter().collect();
 
     let flags = format!(
         ";; flags: {}{}{}{}; QUERY: {}, ANSWER: {}, AUTHORITY: {}, ADDITIONAL: {}",
-        if response.recursion_desired() {
+        if response.metadata.recursion_desired {
             "qr "
         } else {
             ""
         },
-        if response.authoritative() { "aa " } else { "" },
-        if response.truncated() { "tc " } else { "" },
-        if response.recursion_available() {
+        if response.metadata.authoritative {
+            "aa "
+        } else {
+            ""
+        },
+        if response.metadata.truncation {
+            "tc "
+        } else {
+            ""
+        },
+        if response.metadata.recursion_available {
             "rd "
         } else {
             ""
         },
         queries.len(),
         answers.len(),
-        response.name_server_count(),
-        response.additional_count()
+        response.authorities.len(),
+        response.additionals.len()
     );
     output.push(flags);
 
@@ -337,14 +363,11 @@ fn format_dns_response(response: &Message) -> String {
     if !answers.is_empty() {
         output.push(";; ANSWER SECTION:".to_string());
         for answer in &answers {
-            let rdata = match answer.data() {
-                Some(data) => format!("{data}"),
-                None => "".to_string(),
-            };
+            let rdata = format!("{}", answer.data);
             output.push(format!(
                 "{} {} IN {:?} {}",
-                answer.name(),
-                answer.ttl(),
+                answer.name,
+                answer.ttl,
                 answer.record_type(),
                 rdata
             ));
@@ -364,7 +387,7 @@ async fn log_dns_request(
     tx: &Arc<broadcast::Sender<CacheMessage>>,
 ) -> Result<()> {
     let query = request
-        .queries()
+        .queries
         .first()
         .ok_or_else(|| anyhow!("No query in request"))?;
     let name = query.name().to_string();
@@ -483,18 +506,15 @@ async fn build_dns_response(
     let name_str = name.to_string();
     let query_type = query.query_type();
 
-    let mut response = Message::new();
-    response.set_id(request.id());
-    response.set_message_type(MessageType::Response);
-    response.set_op_code(OpCode::Query);
-    response.set_recursion_desired(request.recursion_desired());
-    response.set_recursion_available(true);
-    response.set_authoritative(true);
+    let mut response = Message::response(request.metadata.id, request.metadata.op_code);
+    response.metadata.recursion_desired = request.metadata.recursion_desired;
+    response.metadata.recursion_available = true;
+    response.metadata.authoritative = true;
     response.add_query(query.clone());
 
     // If query is not for our domain at all, return NXDOMAIN
     if !is_our_domain(&name_str) {
-        response.set_response_code(ResponseCode::NXDomain);
+        response.metadata.response_code = ResponseCode::NXDomain;
         return Ok(response);
     }
 
@@ -536,7 +556,7 @@ async fn build_dns_response(
                 let record = Record::from_rdata(name.clone(), 1, RData::A(ip.into()));
                 response.add_answer(record);
             }
-            response.set_response_code(ResponseCode::NoError);
+            response.metadata.response_code = ResponseCode::NoError;
         }
         RecordType::AAAA => {
             // Try exact match first
@@ -563,16 +583,16 @@ async fn build_dns_response(
                     response.add_answer(record);
                 }
                 // Malformed record → NODATA (name exists, just no valid AAAA)
-                response.set_response_code(ResponseCode::NoError);
+                response.metadata.response_code = ResponseCode::NoError;
             } else {
                 // Default: try to parse server_ip as IPv6, otherwise return NXDomain
                 if let Ok(ip) = CONFIG.server_ip.parse::<Ipv6Addr>() {
                     let record = Record::from_rdata(name.clone(), 1, RData::AAAA(ip.into()));
                     response.add_answer(record);
-                    response.set_response_code(ResponseCode::NoError);
+                    response.metadata.response_code = ResponseCode::NoError;
                 } else {
                     // server_ip is IPv4, no default AAAA available
-                    response.set_response_code(ResponseCode::NoError);
+                    response.metadata.response_code = ResponseCode::NoError;
                 }
             }
         }
@@ -606,7 +626,7 @@ async fn build_dns_response(
                 response.add_answer(record);
             }
             // Unparseable target → NODATA (name exists, just no valid CNAME)
-            response.set_response_code(ResponseCode::NoError);
+            response.metadata.response_code = ResponseCode::NoError;
         }
         RecordType::TXT => {
             // Try exact match first
@@ -631,7 +651,7 @@ async fn build_dns_response(
                 let record = Record::from_rdata(name.clone(), 1, RData::TXT(txt_data));
                 response.add_answer(record);
             }
-            response.set_response_code(ResponseCode::NoError);
+            response.metadata.response_code = ResponseCode::NoError;
         }
         RecordType::MX => {
             // Return the server domain as the mail exchange
@@ -646,9 +666,9 @@ async fn build_dns_response(
                 let mx_data = MX::new(10, exchange);
                 let record = Record::from_rdata(name.clone(), 300, RData::MX(mx_data));
                 response.add_answer(record);
-                response.set_response_code(ResponseCode::NoError);
+                response.metadata.response_code = ResponseCode::NoError;
             } else {
-                response.set_response_code(ResponseCode::ServFail);
+                response.metadata.response_code = ResponseCode::ServFail;
             }
         }
         RecordType::SOA => {
@@ -656,7 +676,7 @@ async fn build_dns_response(
             if let Some(soa) = build_soa() {
                 response.add_answer(soa);
             }
-            response.set_response_code(ResponseCode::NoError);
+            response.metadata.response_code = ResponseCode::NoError;
         }
         RecordType::NS => {
             // Answer NS for our zone so resolvers stop re-probing for delegation
@@ -664,27 +684,27 @@ async fn build_dns_response(
                 let record = Record::from_rdata(name.clone(), 300, RData::NS(NS(ns_name)));
                 response.add_answer(record);
             }
-            response.set_response_code(ResponseCode::NoError);
+            response.metadata.response_code = ResponseCode::NoError;
         }
         _ => {
             // Name exists in our zone but we serve no record of this type → NODATA
             // (NOERROR with no answers), not NXDOMAIN. Returning NXDOMAIN for an
             // existing name violates RFC 2308 and triggers resolver retry storms.
-            response.set_response_code(ResponseCode::NoError);
+            response.metadata.response_code = ResponseCode::NoError;
         }
     }
 
     // For negative answers (no records to return) on our own zone, include the
     // SOA in the authority section so resolvers can negatively cache the result
     // with a sane TTL instead of hammering us.
-    if response.answers().is_empty()
+    if response.answers.is_empty()
         && matches!(
-            response.response_code(),
+            response.metadata.response_code,
             ResponseCode::NoError | ResponseCode::NXDomain
         )
     {
         if let Some(soa) = build_soa() {
-            response.add_name_server(soa);
+            response.add_authority(soa);
         }
     }
 

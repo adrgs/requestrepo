@@ -1,12 +1,13 @@
 use anyhow::{anyhow, Context, Result};
+use hickory_resolver::config::{NameServerConfig, ResolverConfig, ResolverOpts};
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::TokioResolver;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, info};
-use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts};
-use trust_dns_resolver::TokioAsyncResolver;
 
 use crate::cache::Cache;
 
@@ -193,17 +194,17 @@ impl DnsChallengeHandler {
     async fn query_txt(&self, domain: &str, resolver_ip: &str) -> Result<Vec<String>> {
         let ip: Ipv4Addr = resolver_ip.parse().context("Invalid resolver IP address")?;
 
-        let socket = SocketAddr::new(IpAddr::V4(ip), 53);
-        let name_server = NameServerConfig::new(socket, Protocol::Udp);
-
-        let mut resolver_config = ResolverConfig::new();
-        resolver_config.add_name_server(name_server);
+        let name_server = NameServerConfig::udp(IpAddr::V4(ip));
+        let resolver_config = ResolverConfig::from_parts(None, vec![], vec![name_server]);
 
         let mut opts = ResolverOpts::default();
         opts.timeout = Duration::from_secs(5);
         opts.attempts = 1;
 
-        let resolver = TokioAsyncResolver::tokio(resolver_config, opts);
+        let resolver =
+            TokioResolver::builder_with_config(resolver_config, TokioRuntimeProvider::default())
+                .with_options(opts)
+                .build()?;
 
         // Query without trailing dot for the resolver
         let query_name = domain.trim_end_matches('.');
@@ -211,9 +212,20 @@ impl DnsChallengeHandler {
         let response = resolver.txt_lookup(query_name).await?;
 
         let mut values = Vec::new();
-        for txt in response.iter() {
+        for txt in response
+            .answers()
+            .iter()
+            .filter_map(|record| match &record.data {
+                hickory_proto::rr::RData::TXT(txt) => Some(txt),
+                _ => None,
+            })
+        {
             // TXT records can have multiple strings, concatenate them
-            let value: String = txt.iter().map(|s| String::from_utf8_lossy(s)).collect();
+            let value: String = txt
+                .txt_data
+                .iter()
+                .map(|s| String::from_utf8_lossy(s))
+                .collect();
             if !value.is_empty() {
                 values.push(value);
             }

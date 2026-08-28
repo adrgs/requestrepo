@@ -117,7 +117,7 @@ export function FileTreeItem({
         <span className="w-4 h-4 flex items-center justify-center shrink-0">
           {isFolder && (
             <button
-              className="hover:bg-default-200 rounded"
+              className="hover:bg-default-200 rounded-sm"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleFolder(node.name);
@@ -144,7 +144,7 @@ export function FileTreeItem({
             onChange={(e) => onRenameChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={onRenameSubmit}
-            className="flex-1 bg-default-100 px-1 py-0 text-sm rounded outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1 bg-default-100 px-1 py-0 text-sm rounded-sm outline-hidden focus:ring-1 focus:ring-primary"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
@@ -205,7 +205,7 @@ export function FileTreeItem({
                   placeholder={
                     creatingType === "folder" ? "folder name" : "file name"
                   }
-                  className="flex-1 bg-default-100 px-1 py-0 text-sm rounded outline-none focus:ring-1 focus:ring-primary"
+                  className="flex-1 bg-default-100 px-1 py-0 text-sm rounded-sm outline-hidden focus:ring-1 focus:ring-primary"
                 />
               </div>
             )}

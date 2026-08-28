@@ -2,6 +2,17 @@ use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::env;
 
+#[derive(Debug, Clone)]
+pub struct OidcProviderConfig {
+    pub name: String,
+    pub display_name: String,
+    pub client_id: String,
+    pub client_secret: String,
+    pub discover_url: String,
+    pub allowed_users: Vec<String>,
+    pub allowed_admins: Vec<String>,
+}
+
 pub struct Config {
     pub server_ip: String,
     pub server_domain: String,
@@ -41,11 +52,23 @@ pub struct Config {
     pub session_rate_window_secs: u64,
     // Sentry DSN for frontend error tracking (injected at runtime)
     pub sentry_dsn_frontend: Option<String>,
-    // Security: Allow all response headers including dangerous ones like Service-Worker-Allowed
-    // Default: false (blocked on main domain path-based routing)
-    pub allow_all_headers: bool,
+    // Security: Enable same-origin path routing for installations without a usable domain.
+    pub dangerously_allow_same_origin_user_content: bool,
+    // Security: Allow origin-scoped response headers on same-origin path routing.
+    pub dangerously_allow_all_headers: bool,
     // Max requests per session (FIFO eviction when exceeded)
     pub max_requests_per_session: usize,
+    // GitHub OAuth
+    pub github_enabled: bool,
+    pub github_client_id: String,
+    pub github_client_secret: String,
+    pub github_callback_url: String,
+    pub github_allowed_usernames: Vec<String>,
+    pub allowed_admins: Vec<String>,
+    // OIDC providers
+    pub oidc_providers: Vec<OidcProviderConfig>,
+    // Auth toggle
+    pub disable_auth: bool,
 }
 
 impl Config {
@@ -188,19 +211,93 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty());
 
-        // Security: Allow all response headers (default: false)
-        // When false, dangerous headers like Service-Worker-Allowed are blocked
-        // on main domain path-based routing (/r/subdomain/) to prevent SW scope attacks
-        let allow_all_headers = env::var("ALLOW_ALL_HEADERS")
+        // Security: Same-origin /r/subdomain routing is opt-in because uploaded content
+        // can otherwise act with the dashboard origin's authority.
+        let dangerously_allow_same_origin_user_content =
+            env::var("DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT")
+                .unwrap_or_else(|_| "false".to_string())
+                .eq_ignore_ascii_case("true");
+
+        // Security: Origin-scoped response headers require a second explicit opt-in.
+        let dangerously_allow_all_headers = env::var("DANGEROUSLY_ALLOW_ALL_HEADERS")
             .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase()
-            == "true";
+            .eq_ignore_ascii_case("true");
 
         // Max requests per session: default 10000, FIFO eviction when exceeded
         let max_requests_per_session = env::var("MAX_REQUESTS_PER_SESSION")
             .unwrap_or_else(|_| "10000".to_string())
             .parse()
             .unwrap_or(10000);
+
+        // GitHub OAuth configuration
+        let github_enabled = env::var("GITHUB_ENABLED")
+            .unwrap_or_else(|_| "true".to_string())
+            .to_lowercase()
+            == "true";
+        let github_client_id = env::var("GITHUB_CLIENT_ID")
+            .unwrap_or_default();
+        let github_client_secret = env::var("GITHUB_CLIENT_SECRET")
+            .unwrap_or_default();
+        let github_callback_url = env::var("GITHUB_CALLBACK_URL")
+            .unwrap_or_default();
+        let github_allowed_usernames: Vec<String> = env::var("GITHUB_ALLOWED_USERNAMES")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let allowed_admins: Vec<String> = env::var("ALLOWED_ADMINS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // OIDC providers
+        let oidc_providers_str = env::var("OIDC_PROVIDERS").unwrap_or_default();
+        let oidc_providers: Vec<OidcProviderConfig> = oidc_providers_str
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .filter_map(|name| {
+                let prefix = format!("OIDC_{}", name.to_uppercase());
+                let client_id = env::var(format!("{prefix}_CLIENT_ID")).unwrap_or_default();
+                let client_secret = env::var(format!("{prefix}_CLIENT_SECRET")).unwrap_or_default();
+                let discover_url = env::var(format!("{prefix}_DISCOVER_URL")).unwrap_or_default();
+                if client_id.is_empty() || client_secret.is_empty() || discover_url.is_empty() {
+                    return None;
+                }
+                let display_name = env::var(format!("{prefix}_DISPLAY_NAME"))
+                    .unwrap_or_else(|_| name.clone());
+                let allowed_users: Vec<String> = env::var(format!("{prefix}_ALLOWED_USERS"))
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                let allowed_admins: Vec<String> = env::var(format!("{prefix}_ALLOWED_ADMINS"))
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                Some(OidcProviderConfig {
+                    name,
+                    display_name,
+                    client_id,
+                    client_secret,
+                    discover_url,
+                    allowed_users,
+                    allowed_admins,
+                })
+            })
+            .collect();
+
+        // Disable auth: when true, anyone can create sessions without authentication
+        let disable_auth = env::var("DISABLE_AUTH")
+            .unwrap_or_else(|_| "false".to_string())
+            .to_lowercase()
+            == "true";
 
         Self {
             server_ip,
@@ -233,8 +330,17 @@ impl Config {
             session_rate_limit,
             session_rate_window_secs,
             sentry_dsn_frontend,
-            allow_all_headers,
+            dangerously_allow_same_origin_user_content,
+            dangerously_allow_all_headers,
             max_requests_per_session,
+            github_enabled,
+            github_client_id,
+            github_client_secret,
+            github_callback_url,
+            github_allowed_usernames,
+            allowed_admins,
+            oidc_providers,
+            disable_auth,
         }
     }
 }

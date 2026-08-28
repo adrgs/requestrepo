@@ -477,7 +477,7 @@ export function FileTree({
             placeholder={
               creatingType === "folder" ? "folder name" : "file name"
             }
-            className="flex-1 bg-default-100 px-1 py-0 text-sm rounded outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1 bg-default-100 px-1 py-0 text-sm rounded-sm outline-hidden focus:ring-1 focus:ring-primary"
           />
         </div>
       )}

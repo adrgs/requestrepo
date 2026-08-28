@@ -6,7 +6,7 @@ export function ThemeToggle() {
   const { resolvedTheme, toggleTheme } = useTheme();
 
   return (
-    <Button isIconOnly variant="light" size="sm" onPress={toggleTheme}>
+    <Button isIconOnly variant="ghost" size="sm" onPress={toggleTheme}>
       {resolvedTheme === "dark" ? (
         <Sun className="h-5 w-5" />
       ) : (

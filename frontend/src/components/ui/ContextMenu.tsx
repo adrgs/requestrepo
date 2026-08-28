@@ -98,7 +98,7 @@ export function ContextMenu({
   const menu = (
     <div
       ref={menuRef}
-      className="fixed z-[9999] min-w-[160px] rounded-lg bg-content1 p-1 shadow-lg border border-default-200 dark:border-default-100"
+      className="fixed z-9999 min-w-[160px] rounded-lg bg-content1 p-1 shadow-lg border border-default-200 dark:border-default-100"
       style={{ left: position.x, top: position.y }}
     >
       {items.map((item) => {

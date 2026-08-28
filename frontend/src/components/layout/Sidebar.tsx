@@ -205,9 +205,9 @@ export function Sidebar({ onClose }: SidebarProps) {
           <span className="text-sm font-semibold">Requests</span>
           <Button
             isIconOnly
-            variant="light"
+            variant="ghost"
             size="sm"
-            radius="full"
+            className="rounded-full"
             onPress={onClose}
           >
             <X className="h-5 w-5" />
@@ -218,15 +218,13 @@ export function Sidebar({ onClose }: SidebarProps) {
       {/* Delete all requests button - aligned with toolbar (h-12 = 48px) */}
       <div className="flex h-12 shrink-0 items-center px-3">
         <Button
-          color="danger"
-          variant="flat"
+          variant="danger"
           size="sm"
-          className="w-full"
-          startContent={<X className="h-4 w-4" />}
+          className="w-full rounded-lg"
           onPress={handleDeleteAll}
           isDisabled={requests.length === 0}
-          radius="lg"
         >
+          <X className="h-4 w-4" />
           Delete all requests
         </Button>
       </div>
@@ -239,31 +237,25 @@ export function Sidebar({ onClose }: SidebarProps) {
         <div className="flex items-center gap-3">
           <Checkbox
             isSelected={httpFilter}
-            onValueChange={(checked) =>
+            onChange={(checked) =>
               setFilters(checked, dnsFilter, smtpFilter)
             }
-            size="sm"
-            radius="full"
           >
             <span className="text-sm">HTTP</span>
           </Checkbox>
           <Checkbox
             isSelected={dnsFilter}
-            onValueChange={(checked) =>
+            onChange={(checked) =>
               setFilters(httpFilter, checked, smtpFilter)
             }
-            size="sm"
-            radius="full"
           >
             <span className="text-sm">DNS</span>
           </Checkbox>
           <Checkbox
             isSelected={smtpFilter}
-            onValueChange={(checked) =>
+            onChange={(checked) =>
               setFilters(httpFilter, dnsFilter, checked)
             }
-            size="sm"
-            radius="full"
           >
             <span className="text-sm">SMTP</span>
           </Checkbox>
@@ -355,12 +347,12 @@ export function Sidebar({ onClose }: SidebarProps) {
               >
                 <div className="flex items-center gap-1.5">
                   {!isVisited && (
-                    <span className="shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white bg-red-500 rounded">
+                    <span className="shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white bg-red-500 rounded-sm">
                       NEW
                     </span>
                   )}
                   <span
-                    className={`shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white rounded ${getBadgeColor()}`}
+                    className={`shrink-0 inline-block px-1 py-px text-[8px] font-semibold text-white rounded-sm ${getBadgeColor()}`}
                   >
                     {getBadgeText()}
                   </span>
@@ -373,7 +365,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                     {getDisplayText()}
                   </span>
                   <span
-                    className="ml-auto shrink-0 px-1 py-px text-[8px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="ml-auto shrink-0 px-1 py-px text-[8px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded-sm cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={(e) => handleDeleteRequest(e, request._id)}
                   >
                     X
@@ -397,15 +389,13 @@ export function Sidebar({ onClose }: SidebarProps) {
       {/* Mark all as read */}
       <div className="shrink-0 p-3">
         <Button
-          color="default"
-          variant="flat"
+          variant="secondary"
           size="sm"
-          className="w-full"
-          startContent={<CheckCheck className="h-4 w-4" />}
+          className="w-full rounded-lg"
           onPress={handleMarkAllRead}
           isDisabled={requests.length === 0 || allRead}
-          radius="lg"
         >
+          <CheckCheck className="h-4 w-4" />
           Mark all as read
         </Button>
       </div>

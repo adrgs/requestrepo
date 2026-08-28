@@ -17,6 +17,10 @@ const api = axios.create({
   withCredentials: true, // Send cookies with requests (for admin_token)
 });
 
+const authHeaders = (token: string) => ({
+  Authorization: `Bearer ${token}`,
+});
+
 // Helper to check if we're in offline mode
 function isNetworkError(error: unknown): boolean {
   if (error instanceof AxiosError) {
@@ -52,7 +56,7 @@ export async function createSession(
 export async function getDnsRecords(token: string): Promise<DnsRecord[]> {
   try {
     const { data } = await api.get<{ records: DnsRecord[] }>("/dns", {
-      params: { token },
+      headers: authHeaders(token),
     });
     return data.records || [];
   } catch (error) {
@@ -68,14 +72,14 @@ export async function updateDnsRecords(
   token: string,
   records: DnsRecord[],
 ): Promise<void> {
-  await api.put("/dns", { records }, { params: { token } });
+  await api.put("/dns", { records }, { headers: authHeaders(token) });
 }
 
 // Files API
 export async function getFiles(token: string): Promise<FileTree> {
   try {
     const { data } = await api.get<FileTree>("/files", {
-      params: { token },
+      headers: authHeaders(token),
     });
     return data;
   } catch (error) {
@@ -97,7 +101,7 @@ export async function updateFiles(
   token: string,
   files: FileTree,
 ): Promise<void> {
-  await api.put("/files", files, { params: { token } });
+  await api.put("/files", files, { headers: authHeaders(token) });
 }
 
 // Requests API
@@ -108,7 +112,8 @@ export async function getRequests(
 ): Promise<PaginatedResponse<Request>> {
   try {
     const { data } = await api.get<PaginatedResponse<Request>>("/requests", {
-      params: { token, limit, offset },
+      headers: authHeaders(token),
+      params: { limit, offset },
     });
     return data;
   } catch (error) {
@@ -128,7 +133,7 @@ export async function getRequest(
   requestId: string,
 ): Promise<Request> {
   const { data } = await api.get<Request>(`/requests/${requestId}`, {
-    params: { token },
+    headers: authHeaders(token),
   });
   return data;
 }
@@ -138,13 +143,13 @@ export async function deleteRequest(
   requestId: string,
 ): Promise<void> {
   await api.delete(`/requests/${requestId}`, {
-    params: { token },
+    headers: authHeaders(token),
   });
 }
 
 export async function deleteAllRequests(token: string): Promise<void> {
   await api.delete("/requests", {
-    params: { token },
+    headers: authHeaders(token),
   });
 }
 
@@ -156,7 +161,7 @@ export async function createShareToken(
   const { data } = await api.post<{ share_token: string }>(
     `/requests/${requestId}/share`,
     {},
-    { params: { token } },
+    { headers: authHeaders(token) },
   );
   return data.share_token;
 }
@@ -180,7 +185,7 @@ export async function getNotificationSettings(
   try {
     const { data } = await api.get<NotificationSettings>(
       "/notifications/settings",
-      { params: { token } },
+      { headers: authHeaders(token) },
     );
     return data;
   } catch (error) {
@@ -200,7 +205,7 @@ export async function updateNotificationSettings(
   token: string,
   settings: NotificationSettings,
 ): Promise<void> {
-  await api.put("/notifications/settings", settings, { params: { token } });
+  await api.put("/notifications/settings", settings, { headers: authHeaders(token) });
 }
 
 export async function sendTestNotification(
@@ -213,7 +218,7 @@ export async function sendTestNotification(
       message: "This is a test notification from RequestRepo",
       title: "RequestRepo Test Notification",
     },
-    { params: { token, service } },
+    { headers: authHeaders(token), params: { service } },
   );
 }
 
@@ -227,7 +232,7 @@ export async function sendRequestNotification(
   await api.post(
     "/notifications/send",
     { log, message, title },
-    { params: { token, service } },
+    { headers: authHeaders(token), params: { service } },
   );
 }
 

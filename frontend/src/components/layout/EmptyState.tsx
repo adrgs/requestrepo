@@ -1,4 +1,4 @@
-import { Button, Card, CardBody, CardHeader } from "@heroui/react";
+import { Button, Card } from "@heroui/react";
 import { Plus, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/api/client";
@@ -30,27 +30,27 @@ export function EmptyState() {
       className={`${resolvedTheme} flex h-full items-center justify-center bg-background p-8`}
     >
       <Card className="max-w-md">
-        <CardHeader className="flex flex-col items-center gap-2 pb-0">
+        <Card.Header className="flex flex-col items-center gap-2 pb-0">
           <Globe className="h-16 w-16 text-primary" />
           <h1 className="text-2xl font-bold">RequestRepo</h1>
           <p className="text-center text-default-500">
             Capture and inspect HTTP and DNS requests in real-time
           </p>
-        </CardHeader>
-        <CardBody className="items-center gap-4">
+        </Card.Header>
+        <Card.Content className="items-center gap-4 flex flex-col">
           <Button
-            color="primary"
+            variant="primary"
             size="lg"
-            startContent={<Plus className="h-5 w-5" />}
             onPress={handleCreateSession}
           >
+            <Plus className="h-5 w-5" />
             Create New Session
           </Button>
           <div className="flex items-center gap-2 text-sm text-default-400">
             <span>Theme:</span>
             <ThemeToggle />
           </div>
-        </CardBody>
+        </Card.Content>
       </Card>
     </div>
   );

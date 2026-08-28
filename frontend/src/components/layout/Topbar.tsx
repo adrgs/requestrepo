@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Input, Button, Tooltip } from "@heroui/react";
-import { Star, Plus, Share2, Search, X, Menu } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Input, Button, Tooltip, Dropdown, Avatar } from "@heroui/react";
+import { Star, Plus, Share2, Search, X, Menu, Shield, LogOut, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "./ThemeToggle";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -14,6 +15,7 @@ import { isProduction } from "@/lib/config";
 const MAX_SESSIONS = 5;
 
 export function Topbar() {
+  const navigate = useNavigate();
   const sessions = useSessionStore((s) => s.sessions);
   const activeSubdomain = useSessionStore((s) => s.activeSubdomain);
   const addSession = useSessionStore((s) => s.addSession);
@@ -31,6 +33,18 @@ export function Topbar() {
 
   // Mobile search toggle
   const [searchVisible, setSearchVisible] = useState(false);
+
+  // User profile for dropdown
+  const [userProfile, setUserProfile] = useState<{ username: string; name: string; avatar_url: string; is_admin: boolean } | null>(null);
+
+  useEffect(() => {
+    fetch("/auth/user")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated && data.user) setUserProfile(data.user);
+      })
+      .catch(() => {});
+  }, []);
 
   // GitHub stars count (only fetch in production)
   const [starsCount, setStarsCount] = useState<number | null>(null);
@@ -66,7 +80,6 @@ export function Topbar() {
       toast.success(`Session created: ${response.subdomain}`);
     } catch (error) {
       if (isAdminRequiredError(error)) {
-        // Show auth overlay - user needs to enter admin password
         setShowAuthOverlay(true);
       } else {
         toast.error("Failed to create session");
@@ -95,17 +108,16 @@ export function Topbar() {
   };
 
   return (
-    <div className="flex h-[50px] items-center justify-between bg-white px-3 shadow-sm dark:bg-zinc-800 md:px-5">
+    <div className="flex h-[50px] items-center justify-between bg-white px-3 shadow-xs dark:bg-zinc-800 md:px-5">
       {/* Left: Hamburger + Logo + Star + Badge */}
       <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-4">
         {/* Hamburger menu - mobile only */}
         <Button
           isIconOnly
-          variant="light"
+          variant="ghost"
           size="sm"
-          radius="full"
+          className="rounded-full"
           onPress={toggleSidebar}
-          className="shrink-0 lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </Button>
@@ -115,16 +127,19 @@ export function Topbar() {
         </a>
 
         {isProduction && (
-          <Tooltip content="Star on GitHub">
-            <a
-              href="https://github.com/adrgs/requestrepo"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden shrink-0 items-center gap-1.5 rounded-full bg-default-100 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-default-200 md:flex"
-            >
-              <Star className="h-3.5 w-3.5" />
-              {starsCount !== null && <span>{starsCount}</span>}
-            </a>
+          <Tooltip>
+            <Tooltip.Trigger>
+              <a
+                href="https://github.com/adrgs/requestrepo"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden shrink-0 items-center gap-1.5 rounded-full bg-default-100 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-default-200 md:flex"
+              >
+                <Star className="h-3.5 w-3.5" />
+                {starsCount !== null && <span>{starsCount}</span>}
+              </a>
+            </Tooltip.Trigger>
+            <Tooltip.Content>Star on GitHub</Tooltip.Content>
           </Tooltip>
         )}
 
@@ -164,91 +179,133 @@ export function Topbar() {
 
       {/* Right: Icons + Search */}
       <div className="flex shrink-0 items-center gap-1">
-        <Tooltip content="New session">
-          <Button
-            isIconOnly
-            variant="light"
-            size="sm"
-            radius="full"
-            onPress={handleCreateSession}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              isIconOnly
+              variant="ghost"
+              size="sm"
+              className="rounded-full"
+              onPress={handleCreateSession}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>New session</Tooltip.Content>
         </Tooltip>
 
-        <Tooltip content="Share session">
-          <Button
-            isIconOnly
-            variant="light"
-            size="sm"
-            radius="full"
-            onPress={handleShare}
-            className="hidden md:flex"
-          >
-            <Share2 className="h-4 w-4" />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              isIconOnly
+              variant="ghost"
+              size="sm"
+              className="rounded-full"
+              onPress={handleShare}
+            >
+              <Share2 className="h-4 w-4" />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content>Share session</Tooltip.Content>
         </Tooltip>
 
         <ThemeToggle />
 
+        {/* Profile dropdown */}
+        {userProfile && (
+          <Dropdown>
+            <Dropdown.Trigger>
+              <Button
+                isIconOnly
+                variant="ghost"
+                size="sm"
+                className="rounded-full overflow-hidden"
+              >
+                {userProfile.avatar_url ? (
+                  <Avatar size="sm" className="h-6 w-6">
+                    <Avatar.Image src={userProfile.avatar_url} />
+                    <Avatar.Fallback />
+                  </Avatar>
+                ) : (
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-black">
+                    {(userProfile.name || userProfile.username).charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </Button>
+            </Dropdown.Trigger>
+            <Dropdown.Popover>
+              <Dropdown.Menu aria-label="User menu">
+                <Dropdown.Item
+                  key="profile"
+                  onPress={() => navigate("/profile")}
+                >
+                  <UserIcon className="h-4 w-4" />
+                  Profile
+                </Dropdown.Item>
+                {userProfile.is_admin && (
+                  <Dropdown.Item
+                    key="admin"
+                    onPress={() => navigate("/admin")}
+                  >
+                    <Shield className="h-4 w-4" />
+                    Admin Dashboard
+                  </Dropdown.Item>
+                )}
+                <Dropdown.Item
+                  key="logout"
+                  onPress={() => { window.location.href = "/auth/logout"; }}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+        )}
+
         {/* Mobile search toggle */}
         <Button
           isIconOnly
-          variant="light"
+          variant="ghost"
           size="sm"
-          radius="full"
+          className="rounded-full"
           onPress={() => setSearchVisible(!searchVisible)}
-          className="md:hidden"
         >
           <Search className="h-4 w-4" />
         </Button>
 
         {/* Desktop search - always visible */}
-        <Input
-          placeholder="Search..."
-          size="sm"
-          variant="flat"
-          value={searchQuery}
-          onValueChange={setSearchQuery}
-          startContent={<Search className="h-4 w-4 text-default-400" />}
-          className="ml-2 hidden w-44 md:block"
-          radius="full"
-          classNames={{
-            input: "text-sm",
-            inputWrapper: "bg-default-100 shadow-none",
-          }}
-        />
+        <div className="ml-2 hidden w-44 md:block">
+          <Input
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="rounded-full"
+          />
+        </div>
       </div>
 
       {/* Mobile search bar - expandable */}
       {searchVisible && (
         <div className="absolute left-0 right-0 top-[50px] z-50 bg-white p-2 shadow-md dark:bg-zinc-800 md:hidden">
-          <Input
-            placeholder="Search requests..."
-            size="sm"
-            variant="flat"
-            value={searchQuery}
-            onValueChange={setSearchQuery}
-            startContent={<Search className="h-4 w-4 text-default-400" />}
-            endContent={
-              <Button
-                isIconOnly
-                variant="light"
-                size="sm"
-                radius="full"
-                onPress={() => setSearchVisible(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            }
-            className="w-full"
-            radius="full"
-            classNames={{
-              input: "text-sm",
-              inputWrapper: "bg-default-100 shadow-none",
-            }}
-            autoFocus
-          />
+          <div className="relative">
+            <Input
+              placeholder="Search requests..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-full"
+              autoFocus
+            />
+            <Button
+              isIconOnly
+              variant="ghost"
+              size="sm"
+              className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full"
+              onPress={() => setSearchVisible(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
     </div>

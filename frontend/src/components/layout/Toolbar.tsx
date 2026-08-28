@@ -66,14 +66,12 @@ export function Toolbar() {
           return (
             <Button
               key={tab.key}
-              variant={isActive ? "solid" : "light"}
-              color={isActive ? "primary" : "default"}
+              variant={isActive ? "primary" : "ghost"}
               size="sm"
-              radius="full"
-              startContent={<Icon className="h-4 w-4" />}
+              className={`rounded-full ${isActive ? "" : "bg-transparent"}`}
               onPress={() => navigate(`/${tab.key}`)}
-              className={isActive ? "" : "bg-transparent"}
             >
+              <Icon className="h-4 w-4" />
               <span className="hidden md:inline">{tab.label}</span>
             </Button>
           );
@@ -84,60 +82,47 @@ export function Toolbar() {
       <div className="flex items-center gap-2">
         <Input
           value={fullDomain}
-          isReadOnly
-          size="sm"
-          variant="flat"
-          radius="lg"
-          className="min-w-0 flex-1 cursor-pointer md:w-56 md:flex-none"
-          classNames={{
-            input: "text-sm font-mono cursor-pointer",
-            inputWrapper: "bg-default-100 shadow-none cursor-pointer",
-          }}
+          readOnly
+          className="min-w-0 flex-1 cursor-pointer md:w-56 md:flex-none rounded-lg"
           onClick={() => {
             copyToClipboard(fullDomain);
             toast.success("Domain copied to clipboard");
           }}
         />
         <Button
-          color="success"
-          variant="flat"
+          variant="primary"
           size="sm"
-          radius="lg"
+          className="rounded-lg md:hidden"
           isIconOnly
-          className="md:hidden"
           onPress={handleCopyUrl}
         >
           <Copy className="h-4 w-4" />
         </Button>
         <Button
-          color="success"
-          variant="flat"
+          variant="primary"
           size="sm"
-          radius="lg"
-          startContent={<Copy className="h-4 w-4" />}
+          className="rounded-lg hidden md:flex"
           onPress={handleCopyUrl}
-          className="hidden md:flex"
         >
+          <Copy className="h-4 w-4" />
           Copy URL
         </Button>
         <Button
-          color="primary"
+          variant="primary"
           size="sm"
-          radius="lg"
+          className="rounded-lg md:hidden"
           isIconOnly
-          className="md:hidden"
           onPress={handleNewUrl}
         >
           <Shuffle className="h-4 w-4" />
         </Button>
         <Button
-          color="primary"
+          variant="primary"
           size="sm"
-          radius="lg"
-          startContent={<Shuffle className="h-4 w-4" />}
+          className="rounded-lg hidden md:flex"
           onPress={handleNewUrl}
-          className="hidden md:flex"
         >
+          <Shuffle className="h-4 w-4" />
           New URL
         </Button>
       </div>

@@ -1,11 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   Card,
-  CardBody,
-  CardHeader,
   Button,
   Input,
-  Divider,
 } from "@heroui/react";
 import { Eye, EyeOff, Copy, X, Save, Bell } from "lucide-react";
 import { toast } from "sonner";
@@ -25,7 +22,7 @@ export function NotificationsPage() {
     telegram_bot_token: "",
     telegram_chat_id: "",
   });
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [showDiscord, setShowDiscord] = useState(false);
   const [showMattermost, setShowMattermost] = useState(false);
   const [showTelegramToken, setShowTelegramToken] = useState(false);
@@ -102,56 +99,55 @@ export function NotificationsPage() {
       <label htmlFor={id} className="text-sm font-medium text-default-700">
         {label}
       </label>
-      <Input
-        id={id}
-        type={show ? "text" : "password"}
-        value={value}
-        onValueChange={onChange}
-        placeholder={placeholder}
-        size="sm"
-        endContent={
-          <div className="flex items-center gap-1">
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              onPress={onToggle}
-              className="text-default-400"
-            >
-              {show ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              onPress={() => handleCopy(value)}
-              className="text-default-400"
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              onPress={() => onChange("")}
-              className="text-default-400"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        }
-      />
+      <div className="relative">
+        <Input
+          id={id}
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          <Button
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            onPress={onToggle}
+            className="text-default-400"
+          >
+            {show ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            onPress={() => handleCopy(value)}
+            className="text-default-400"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            onPress={() => onChange("")}
+            className="text-default-400"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardBody className="gap-2">
+        <Card.Content className="gap-2 flex flex-col">
           <div className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-semibold">Notification Settings</h2>
@@ -160,15 +156,15 @@ export function NotificationsPage() {
             Configure webhook URLs for Discord, Mattermost, and Telegram
             notifications.
           </p>
-        </CardBody>
+        </Card.Content>
       </Card>
 
       <Card>
-        <CardHeader>
+        <Card.Header>
           <h3 className="text-base font-semibold">Webhooks & Tokens</h3>
-        </CardHeader>
-        <Divider />
-        <CardBody className="flex flex-col gap-6">
+        </Card.Header>
+        <div className="border-b border-default-200" />
+        <Card.Content className="flex flex-col gap-6">
           {field(
             "Discord Webhook URL",
             "discord-webhook",
@@ -210,53 +206,49 @@ export function NotificationsPage() {
           )}
 
           <Button
-            color="primary"
-            startContent={<Save className="h-4 w-4" />}
+            variant="primary"
             onPress={handleSave}
-            isLoading={loading}
             className="w-full md:w-auto md:self-start"
           >
+            <Save className="h-4 w-4" />
             Save Settings
           </Button>
-        </CardBody>
+        </Card.Content>
       </Card>
 
       <Card>
-        <CardHeader>
+        <Card.Header>
           <h3 className="text-base font-semibold">Test Notifications</h3>
-        </CardHeader>
-        <Divider />
-        <CardBody>
+        </Card.Header>
+        <div className="border-b border-default-200" />
+        <Card.Content>
           <div className="flex flex-wrap gap-3">
             <Button
-              startContent={<Bell className="h-4 w-4" />}
               onPress={() => handleTest("discord")}
-              isLoading={loading}
               className="text-white"
               style={{ backgroundColor: "#5865F2" }}
             >
+              <Bell className="h-4 w-4" />
               Test Discord
             </Button>
             <Button
-              startContent={<Bell className="h-4 w-4" />}
               onPress={() => handleTest("mattermost")}
-              isLoading={loading}
               className="text-white"
               style={{ backgroundColor: "#1E325C" }}
             >
+              <Bell className="h-4 w-4" />
               Test Mattermost
             </Button>
             <Button
-              startContent={<Bell className="h-4 w-4" />}
               onPress={() => handleTest("telegram")}
-              isLoading={loading}
               className="text-white"
               style={{ backgroundColor: "#229ED9" }}
             >
+              <Bell className="h-4 w-4" />
               Test Telegram
             </Button>
           </div>
-        </CardBody>
+        </Card.Content>
       </Card>
     </div>
   );

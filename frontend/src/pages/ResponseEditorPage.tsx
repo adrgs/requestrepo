@@ -2,17 +2,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Button,
   Input,
-  Autocomplete,
-  AutocompleteItem,
-  Card,
-  CardBody,
   Select,
-  SelectItem,
+  ListBox,
+  Card,
   Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
 } from "@heroui/react";
 import {
   Plus,
@@ -33,7 +26,6 @@ import { encodeBase64, decodeBase64 } from "@/lib/base64";
 import { FileTree } from "@/components/file-tree";
 import type { FileTree as FileTreeType, ResponseHeader } from "@/types";
 
-// Common HTTP headers for autocomplete
 const HTTP_HEADERS = [
   "Accept",
   "Accept-CH",
@@ -117,7 +109,6 @@ const HTTP_HEADERS = [
   "X-XSS-Protection",
 ];
 
-// Get Monaco language from filename
 function getLanguage(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase();
   switch (ext) {
@@ -165,14 +156,11 @@ export function ResponseEditorPage() {
     enabled: Boolean(session?.token),
   });
 
-  // Track the last loaded file to avoid re-syncing unnecessarily
   const lastLoadedRef = useRef<{ file: string; raw: string } | null>(null);
 
-  // Initialize content when files load or selected file changes
   useEffect(() => {
     const fileData = files[selectedFile];
     if (fileData) {
-      // Only sync if file changed or content from server changed
       const shouldSync =
         !lastLoadedRef.current ||
         lastLoadedRef.current.file !== selectedFile ||
@@ -180,7 +168,6 @@ export function ResponseEditorPage() {
 
       if (shouldSync) {
         lastLoadedRef.current = { file: selectedFile, raw: fileData.raw };
-        // Use callback form to batch updates
         queueMicrotask(() => {
           setContent(decodeBase64(fileData.raw));
           setStatusCode(String(fileData.status_code));
@@ -219,12 +206,10 @@ export function ResponseEditorPage() {
     updateFilesMutation.mutate(newFiles);
   }, [files, selectedFile, content, statusCode, headers, updateFilesMutation]);
 
-  // Keep ref updated for keyboard shortcut
   useEffect(() => {
     handleSaveRef.current = handleSave;
   }, [handleSave]);
 
-  // Global Ctrl/Cmd+S handler (works everywhere on the page)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -233,13 +218,10 @@ export function ResponseEditorPage() {
         handleSaveRef.current();
       }
     };
-
-    // Use capture phase to intercept before browser handles it
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, []);
 
-  // Handle file tree changes from FileTree component
   const handleFilesChange = useCallback(
     (newFiles: FileTreeType) => {
       updateFilesMutation.mutate(newFiles);
@@ -305,53 +287,47 @@ export function ResponseEditorPage() {
 
   return (
     <Card className="h-full">
-      <CardBody className="flex h-full flex-col overflow-hidden p-0 md:flex-row">
+      <Card.Content className="flex h-full flex-col overflow-hidden p-0 md:flex-row">
         {/* Main Content: Editor + Settings */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* Mobile: Top bar with file selector and save */}
           <div className="flex shrink-0 items-center gap-2 border-b border-default-200 p-2 md:hidden">
             <FolderOpen className="h-4 w-4 shrink-0 text-default-400" />
             <Select
-              size="sm"
-              selectedKeys={[selectedFile]}
-              onSelectionChange={(keys) => {
-                const selected = Array.from(keys)[0] as string;
-                if (selected) setSelectedFile(selected);
+              selectedKey={selectedFile}
+              onSelectionChange={(key) => {
+                if (key) setSelectedFile(String(key));
               }}
-              className="flex-1"
-              classNames={{
-                trigger: "h-8 min-h-8",
-                value: "font-mono text-sm",
-              }}
-              aria-label="Select file"
             >
-              {fileList.map((file) => (
-                <SelectItem key={file} textValue={file}>
-                  <span className="font-mono text-sm">{file}</span>
-                </SelectItem>
-              ))}
+              <Select.Trigger className="flex-1 h-8" />
+              <Select.Popover>
+                <ListBox>
+                  {fileList.map((file) => (
+                    <ListBox.Item key={file}>{file}</ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
             </Select>
             <Button
               size="sm"
               isIconOnly
-              variant="flat"
+              variant="secondary"
               onPress={handleOpenNewFileModal}
             >
               <FilePlus className="h-4 w-4" />
             </Button>
             <Button
-              color="primary"
+              variant="primary"
               size="sm"
               isIconOnly
               onPress={handleSave}
-              isLoading={updateFilesMutation.isPending}
             >
               <Save className="h-4 w-4" />
             </Button>
           </div>
 
           {/* Editor */}
-          <div className="min-h-[200px] flex-[6] md:min-h-0">
+          <div className="min-h-[200px] flex-6 md:min-h-0">
             <Editor
               height="100%"
               language={getLanguage(selectedFile)}
@@ -374,7 +350,7 @@ export function ResponseEditorPage() {
           </div>
 
           {/* Response Settings */}
-          <div className="flex-[4] overflow-auto border-t border-default-200 md:border-t-0">
+          <div className="flex-4 overflow-auto border-t border-default-200 md:border-t-0">
             {/* Settings Header - collapsible on mobile */}
             <div
               className="flex cursor-pointer items-center justify-between p-3 md:cursor-default md:p-4"
@@ -392,13 +368,12 @@ export function ResponseEditorPage() {
               </div>
               {/* Desktop save button */}
               <Button
-                color="primary"
+                variant="primary"
                 size="sm"
-                startContent={<Save className="h-4 w-4" />}
                 onPress={handleSave}
-                isLoading={updateFilesMutation.isPending}
                 className="hidden md:flex"
               >
+                <Save className="h-4 w-4" />
                 Save
               </Button>
             </div>
@@ -416,15 +391,11 @@ export function ResponseEditorPage() {
                 </label>
                 <Input
                   type="number"
-                  size="sm"
                   value={statusCode}
-                  onValueChange={setStatusCode}
+                  onChange={(e) => setStatusCode(e.target.value)}
                   min={100}
                   max={599}
                   className="w-full md:w-32"
-                  classNames={{
-                    input: "font-mono",
-                  }}
                 />
               </div>
 
@@ -440,48 +411,34 @@ export function ResponseEditorPage() {
                         key={index}
                         className="flex flex-col gap-2 rounded-lg bg-default-50 p-2 md:flex-row md:items-center md:bg-transparent md:p-0"
                       >
-                        <Autocomplete
-                          size="sm"
-                          placeholder="Header name"
-                          defaultItems={HTTP_HEADERS.map((h) => ({ value: h }))}
-                          inputValue={header.header}
-                          onInputChange={(value) =>
-                            handleHeaderChange(index, "header", value)
-                          }
-                          onSelectionChange={(key) => {
-                            if (key)
-                              handleHeaderChange(index, "header", String(key));
-                          }}
-                          className="w-full md:w-64 lg:w-80"
-                          classNames={{
-                            base: "font-mono text-sm",
-                          }}
-                          allowsCustomValue
-                        >
-                          {(item) => (
-                            <AutocompleteItem key={item.value}>
-                              {item.value}
-                            </AutocompleteItem>
-                          )}
-                        </Autocomplete>
                         <div className="flex items-center gap-2">
+                          <input
+                            list={`header-${index}`}
+                            type="text"
+                            placeholder="Header name"
+                            value={header.header}
+                            onChange={(e) =>
+                              handleHeaderChange(index, "header", e.target.value)
+                            }
+                            className="w-full md:w-64 lg:w-80 rounded-lg border border-default-300 bg-transparent px-3 py-1.5 text-sm font-mono"
+                          />
+                          <datalist id={`header-${index}`}>
+                            {HTTP_HEADERS.map((h) => (
+                              <option key={h} value={h} />
+                            ))}
+                          </datalist>
                           <Input
-                            size="sm"
                             placeholder="Value"
                             value={header.value}
-                            onValueChange={(v) =>
-                              handleHeaderChange(index, "value", v)
+                            onChange={(e) =>
+                              handleHeaderChange(index, "value", e.target.value)
                             }
-                            className="flex-1"
-                            classNames={{
-                              input: "font-mono text-sm",
-                            }}
+                            className="flex-1 font-mono text-sm"
                           />
                           <Button
                             isIconOnly
                             size="sm"
-                            variant="light"
-                            color="danger"
+                            variant="danger"
                             onPress={() => handleRemoveHeader(index)}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -492,11 +449,11 @@ export function ResponseEditorPage() {
                   </div>
                   <Button
                     size="sm"
-                    variant="flat"
-                    startContent={<Plus className="h-4 w-4" />}
+                    variant="secondary"
                     onPress={handleAddHeader}
                     className="mt-3"
                   >
+                    <Plus className="h-4 w-4" />
                     Add Header
                   </Button>
                 </div>
@@ -524,52 +481,46 @@ export function ResponseEditorPage() {
             isLoading={isLoadingFiles}
           />
         </div>
-      </CardBody>
+      </Card.Content>
 
       {/* New File Modal */}
-      <Modal
-        isOpen={newFileModalOpen}
-        onOpenChange={setNewFileModalOpen}
-        size="sm"
-      >
-        <ModalContent>
-          {(onClose) => (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleCreateFile();
-              }}
-            >
-              <ModalHeader>Create New File</ModalHeader>
-              <ModalBody>
-                <Input
-                  label="Filename"
-                  placeholder="e.g., page.html, api.json"
-                  value={newFileName}
-                  onValueChange={setNewFileName}
-                  autoFocus
-                  classNames={{
-                    input: "font-mono",
-                  }}
-                />
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="flat" onPress={onClose}>
-                  Cancel
-                </Button>
-                <Button
-                  color="primary"
-                  type="submit"
-                  isDisabled={!newFileName.trim()}
-                  isLoading={updateFilesMutation.isPending}
-                  startContent={<FilePlus className="h-4 w-4" />}
-                >
-                  Create
-                </Button>
-              </ModalFooter>
-            </form>
-          )}
-        </ModalContent>
+      <Modal state={{ isOpen: newFileModalOpen, open: () => setNewFileModalOpen(true), close: () => setNewFileModalOpen(false), setOpen: (v: boolean) => setNewFileModalOpen(v), toggle: () => setNewFileModalOpen((v) => !v) }}>
+        <Modal.Backdrop>
+          <Modal.Container>
+            <Modal.Dialog>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreateFile();
+                }}
+              >
+                <Modal.Header>Create New File</Modal.Header>
+                <Modal.Body>
+                  <Input
+                    placeholder="e.g., page.html, api.json"
+                    value={newFileName}
+                    onChange={(e) => setNewFileName(e.target.value)}
+                    autoFocus
+                    className="font-mono"
+                  />
+                </Modal.Body>
+                <Modal.Footer>
+                  <Button variant="secondary" onPress={() => setNewFileModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    isDisabled={!newFileName.trim()}
+                  >
+                    <FilePlus className="h-4 w-4" />
+                    Create
+                  </Button>
+                </Modal.Footer>
+              </form>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </Card>
   );

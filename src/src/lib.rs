@@ -1,3 +1,4 @@
+mod auth;
 mod cache;
 pub(crate) mod certs;
 mod dns;

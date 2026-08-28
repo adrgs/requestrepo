@@ -352,8 +352,7 @@ impl Cache {
         Err(anyhow!("List or index not found"))
     }
 
-    /// Get keys matching pattern (used in tests)
-    #[allow(dead_code)]
+    /// Get keys matching pattern
     pub async fn keys(&self, pattern: &str) -> Result<Vec<String>> {
         let kv_store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
         let request_store = self

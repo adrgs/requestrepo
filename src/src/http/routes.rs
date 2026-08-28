@@ -97,7 +97,22 @@ pub async fn catch_all(
     // Check if subdomain comes from hostname (true subdomain) or path (main domain /r/ routing)
     let subdomain_from_host = get_subdomain_from_hostname(host);
     let on_main_domain = subdomain_from_host.is_none();
-    let subdomain = subdomain_from_host.or_else(|| get_subdomain_from_path(path));
+    let subdomain_from_path = on_main_domain
+        .then(|| get_subdomain_from_path(path))
+        .flatten();
+
+    if subdomain_from_path.is_some() && !CONFIG.dangerously_allow_same_origin_user_content {
+        return Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(Body::from(
+                "Path-based user content is disabled. Use a subdomain or explicitly enable it.",
+            ))
+            .unwrap()
+            .into_response();
+    }
+
+    let subdomain = subdomain_from_host.or(subdomain_from_path);
 
     // Handle OPTIONS preflight requests for CORS
     if method == axum::http::Method::OPTIONS {
@@ -295,9 +310,22 @@ fn resolve_file_path<'a>(
     files.get("index.html")
 }
 
-/// Headers that are blocked on main domain path-based routing for security
-/// Service-Worker-Allowed: Can be abused to register a SW controlling the entire domain
-const BLOCKED_HEADERS_ON_MAIN_DOMAIN: &[&str] = &["service-worker-allowed"];
+/// Headers with origin-wide or persistent effects that user content must not set while
+/// sharing the dashboard's origin. Subdomain routing remains unrestricted.
+const BLOCKED_HEADERS_ON_MAIN_DOMAIN: &[&str] = &[
+    "alt-svc",
+    "clear-site-data",
+    "nel",
+    "report-to",
+    "reporting-endpoints",
+    "service-worker-allowed",
+    "set-cookie",
+    "strict-transport-security",
+];
+
+fn should_block_header_on_main_domain(header_name: &str) -> bool {
+    BLOCKED_HEADERS_ON_MAIN_DOMAIN.contains(&header_name.to_ascii_lowercase().as_str())
+}
 
 /// Serve a file from the subdomain's file tree
 /// `on_main_domain`: true when using path-based routing (/r/subdomain/), false for subdomain routing
@@ -353,10 +381,10 @@ async fn serve_file(
         for file_header in &file.headers {
             let header_lower = file_header.header.to_lowercase();
 
-            // Block dangerous headers on main domain unless ALLOW_ALL_HEADERS is set
+            // Block origin-scoped headers on same-origin routing unless explicitly enabled.
             if on_main_domain
-                && !CONFIG.allow_all_headers
-                && BLOCKED_HEADERS_ON_MAIN_DOMAIN.contains(&header_lower.as_str())
+                && !CONFIG.dangerously_allow_all_headers
+                && should_block_header_on_main_domain(&header_lower)
             {
                 continue; // Skip this header for security
             }
@@ -385,4 +413,26 @@ async fn serve_file(
         .body(Body::from("Not found"))
         .unwrap()
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_block_header_on_main_domain;
+
+    #[test]
+    fn blocks_origin_scoped_headers_case_insensitively() {
+        for header in [
+            "Alt-Svc",
+            "Clear-Site-Data",
+            "NEL",
+            "Report-To",
+            "Reporting-Endpoints",
+            "Service-Worker-Allowed",
+            "Set-Cookie",
+            "Strict-Transport-Security",
+        ] {
+            assert!(should_block_header_on_main_domain(header), "{header}");
+        }
+        assert!(!should_block_header_on_main_domain("Content-Type"));
+    }
 }
