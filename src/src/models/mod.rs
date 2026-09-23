@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRequestLog {
@@ -124,9 +125,12 @@ pub struct ShareClaims {
     pub subdomain: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Message fanned out over the broadcast channel. Every subscriber (each open
+/// WebSocket, the TCP port allocator) receives its own clone, so the payload is
+/// reference-counted: a clone is a pointer copy rather than a copy of the request body.
+#[derive(Debug, Clone)]
 pub struct CacheMessage {
     pub cmd: String,
     pub subdomain: String,
-    pub data: String,
+    pub data: Arc<str>,
 }

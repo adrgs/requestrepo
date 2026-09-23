@@ -4,13 +4,17 @@
 
 use axum::{
     extract::{ConnectInfo, Path, Query, State},
-    http::{header::SET_COOKIE, HeaderValue, StatusCode},
+    http::{
+        header::{CONTENT_TYPE, SET_COOKIE},
+        HeaderValue, StatusCode,
+    },
     response::{IntoResponse, Response},
     Json,
 };
 use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, value::RawValue};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -652,6 +656,47 @@ pub async fn get_file(
 // Request Routes
 // ============================================================================
 
+/// Locate a stored request by `_id`, returning its list index and raw JSON.
+///
+/// Runs under the cache's read lock and deserializes only the `_id` field, and only for
+/// items that contain the id at all, instead of copying the whole list and parsing every
+/// request into a `serde_json::Value`.
+async fn find_request(state: &AppState, subdomain: &str, id: &str) -> Option<(usize, String)> {
+    #[derive(Deserialize)]
+    struct RequestId<'a> {
+        #[serde(borrow)]
+        _id: Cow<'a, str>,
+    }
+
+    state
+        .cache
+        .lfind(&format!("requests:{subdomain}"), |item| {
+            item.contains(id) && serde_json::from_str::<RequestId>(item).is_ok_and(|r| r._id == id)
+        })
+        .await
+        .ok()
+        .flatten()
+}
+
+/// A stored request's JSON, returned verbatim rather than parsed and re-serialized.
+fn raw_json_response(json: String) -> Response {
+    (StatusCode::OK, [(CONTENT_TYPE, "application/json")], json).into_response()
+}
+
+#[derive(Serialize)]
+struct Pagination {
+    total: usize,
+    limit: usize,
+    offset: usize,
+    has_more: bool,
+}
+
+#[derive(Serialize)]
+struct RequestsPage<'a> {
+    requests: Vec<&'a RawValue>,
+    pagination: Pagination,
+}
+
 /// GET /api/v2/requests - List requests with pagination
 ///
 /// Query params:
@@ -707,35 +752,29 @@ pub async fn list_requests(
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = query.offset.unwrap_or(0);
 
-    // Fetch paginated range
-    let requests = match state
+    // Fetch paginated range. Deleted requests are stored as "{}" and skipped; the rest
+    // are passed through as raw JSON rather than parsed and re-serialized.
+    let list = state
         .cache
         .lrange(&key, offset as isize, (offset + limit - 1) as isize)
         .await
-    {
-        Ok(list) => list
-            .into_iter()
-            .filter_map(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .filter(|v| !v.as_object().map(|o| o.is_empty()).unwrap_or(true))
-            .collect::<Vec<_>>(),
-        Err(_) => Vec::new(),
-    };
+        .unwrap_or_default();
+    let requests = list
+        .iter()
+        .filter(|s| s.as_str() != "{}")
+        .filter_map(|s| serde_json::from_str::<&RawValue>(s).ok())
+        .collect();
 
-    let has_more = offset + limit < total_raw;
-
-    (
-        StatusCode::OK,
-        Json(json!({
-            "requests": requests,
-            "pagination": {
-                "total": total_raw,
-                "limit": limit,
-                "offset": offset,
-                "has_more": has_more
-            }
-        })),
-    )
-        .into_response()
+    Json(RequestsPage {
+        requests,
+        pagination: Pagination {
+            total: total_raw,
+            limit,
+            offset,
+            has_more: offset + limit < total_raw,
+        },
+    })
+    .into_response()
 }
 
 /// GET /api/v2/requests/:id - Get single request
@@ -750,31 +789,8 @@ pub async fn get_request(
         Err(e) => return e.into_response(),
     };
 
-    // Find request by ID
-    let requests = match state
-        .cache
-        .lrange(&format!("requests:{subdomain}"), 0, -1)
-        .await
-    {
-        Ok(list) => list,
-        Err(_) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": "Request not found",
-                    "code": "not_found"
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    for request_json in requests {
-        if let Ok(request) = serde_json::from_str::<serde_json::Value>(&request_json) {
-            if request.get("_id").and_then(|v| v.as_str()) == Some(&id) {
-                return (StatusCode::OK, Json(request)).into_response();
-            }
-        }
+    if let Some((_, request_json)) = find_request(&state, &subdomain, &id).await {
+        return raw_json_response(request_json);
     }
 
     (
@@ -800,36 +816,8 @@ pub async fn delete_request(
     };
 
     // Find request by scanning the list (indices are not stable due to eviction)
-    let requests = match state
-        .cache
-        .lrange(&format!("requests:{subdomain}"), 0, -1)
-        .await
-    {
-        Ok(list) => list,
-        Err(_) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": "Request not found",
-                    "code": "not_found"
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    let mut found_index: Option<usize> = None;
-    for (i, req_str) in requests.iter().enumerate() {
-        if let Ok(req) = serde_json::from_str::<serde_json::Value>(req_str) {
-            if req.get("_id").and_then(|v| v.as_str()) == Some(&id) {
-                found_index = Some(i);
-                break;
-            }
-        }
-    }
-
-    let index = match found_index {
-        Some(i) => i,
+    let index = match find_request(&state, &subdomain, &id).await {
+        Some((i, _)) => i,
         None => {
             return (
                 StatusCode::NOT_FOUND,
@@ -852,7 +840,7 @@ pub async fn delete_request(
     let message = crate::models::CacheMessage {
         cmd: "delete_request".to_string(),
         subdomain: subdomain.clone(),
-        data: json!({ "id": id }).to_string(),
+        data: json!({ "id": id }).to_string().into(),
     };
     let _ = state.tx.send(message);
 
@@ -881,7 +869,7 @@ pub async fn delete_all_requests(
     let message = crate::models::CacheMessage {
         cmd: "delete_all".to_string(),
         subdomain: subdomain.clone(),
-        data: "{}".to_string(),
+        data: "{}".into(),
     };
     let _ = state.tx.send(message);
 
@@ -922,37 +910,7 @@ pub async fn share_request(
     };
 
     // Verify the request exists
-    let requests = match state
-        .cache
-        .lrange(&format!("requests:{subdomain}"), 0, -1)
-        .await
-    {
-        Ok(list) => list,
-        Err(_) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": "Request not found",
-                    "code": "not_found"
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    let mut found = false;
-    for request_json in &requests {
-        if let Ok(request) = serde_json::from_str::<serde_json::Value>(request_json) {
-            if let Some(req_id) = request.get("_id").and_then(|v| v.as_str()) {
-                if req_id == id.as_str() {
-                    found = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    if !found {
+    if find_request(&state, &subdomain, &id).await.is_none() {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({
@@ -1001,31 +959,10 @@ pub async fn get_shared_request(
         }
     };
 
-    // Find the request
-    let requests = match state
-        .cache
-        .lrange(&format!("requests:{}", claims.subdomain), 0, -1)
-        .await
+    if let Some((_, request_json)) =
+        find_request(&state, &claims.subdomain, &claims.request_id).await
     {
-        Ok(list) => list,
-        Err(_) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": "Request not found",
-                    "code": "not_found"
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    for request_json in requests {
-        if let Ok(request) = serde_json::from_str::<serde_json::Value>(&request_json) {
-            if request.get("_id").and_then(|v| v.as_str()) == Some(&claims.request_id) {
-                return (StatusCode::OK, Json(request)).into_response();
-            }
-        }
+        return raw_json_response(request_json);
     }
 
     (

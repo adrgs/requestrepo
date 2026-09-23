@@ -130,9 +130,7 @@ pub async fn catch_all(
             .into_response();
     }
 
-    if let Some(subdomain) = subdomain.clone() {
-        let body_bytes = body.to_vec();
-
+    if let Some(subdomain) = subdomain {
         let request_id = generate_request_id();
 
         // Use actual connection IP - cannot be spoofed
@@ -162,7 +160,7 @@ pub async fn catch_all(
         let request_log = HttpRequestLog {
             _id: request_id.clone(),
             r#type: "http".to_string(),
-            raw: BASE64.encode(&body_bytes),
+            raw: BASE64.encode(&body),
             uid: subdomain.clone(),
             method: method.to_string(),
             path: path.to_string(),
@@ -204,7 +202,7 @@ pub async fn catch_all(
         let message = crate::models::CacheMessage {
             cmd: "new_request".to_string(),
             subdomain: subdomain.clone(),
-            data: request_json,
+            data: request_json.into(),
         };
 
         let _ = state.tx.send(message);
@@ -242,7 +240,7 @@ fn serve_static_file(state: &AppState, path: &str) -> Response {
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, content_type)
             .header(header::CACHE_CONTROL, cache_control)
-            .body(Body::from(content.to_vec()))
+            .body(Body::from(content))
             .unwrap()
             .into_response(),
         None => Response::builder()

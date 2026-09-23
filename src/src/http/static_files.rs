@@ -5,6 +5,7 @@
 //! index.html so that environment variables can be read at runtime instead of
 //! build time.
 
+use axum::body::Bytes;
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
@@ -15,7 +16,8 @@ use crate::utils::config::CONFIG;
 /// Cached static file with content type
 #[derive(Clone)]
 pub struct CachedFile {
-    pub content: Vec<u8>,
+    /// `Bytes` so each response shares the loaded buffer instead of copying it.
+    pub content: Bytes,
     pub content_type: &'static str,
     pub cache_control: &'static str,
 }
@@ -24,14 +26,14 @@ pub struct CachedFile {
 #[derive(Clone)]
 pub struct StaticFiles {
     files: HashMap<String, CachedFile>,
-    index_html: Vec<u8>,
+    index_html: Bytes,
 }
 
 impl StaticFiles {
     /// Load all static files from the public directory into memory
     pub async fn load(public_dir: &str) -> Self {
         let mut files = HashMap::new();
-        let mut index_html = Vec::new();
+        let mut index_html = Bytes::new();
 
         let public_path = Path::new(public_dir);
         if !public_path.exists() {
@@ -46,7 +48,7 @@ impl StaticFiles {
 
         // Generate index.html with injected config
         if let Some(cached) = files.get("index.html") {
-            index_html = Self::inject_config(&cached.content);
+            index_html = Self::inject_config(&cached.content).into();
         }
 
         let total_size: usize = files.values().map(|f| f.content.len()).sum();
@@ -87,7 +89,7 @@ impl StaticFiles {
                     files.insert(
                         relative_path,
                         CachedFile {
-                            content,
+                            content: content.into(),
                             content_type,
                             cache_control,
                         },
@@ -188,21 +190,29 @@ impl StaticFiles {
     }
 
     /// Get a file by path, returns index.html for SPA routes
-    pub fn get(&self, path: &str) -> Option<(&[u8], &'static str, &'static str)> {
+    pub fn get(&self, path: &str) -> Option<(Bytes, &'static str, &'static str)> {
         let path = path.trim_start_matches('/');
 
         // Empty path or root -> index.html with injected config
         if path.is_empty() {
-            return Some((&self.index_html, "text/html; charset=utf-8", "no-cache"));
+            return Some((
+                self.index_html.clone(),
+                "text/html; charset=utf-8",
+                "no-cache",
+            ));
         }
 
         // Try exact match first
         if let Some(file) = self.files.get(path) {
             // For index.html, return the version with injected config
             if path == "index.html" {
-                return Some((&self.index_html, file.content_type, file.cache_control));
+                return Some((
+                    self.index_html.clone(),
+                    file.content_type,
+                    file.cache_control,
+                ));
             }
-            return Some((&file.content, file.content_type, file.cache_control));
+            return Some((file.content.clone(), file.content_type, file.cache_control));
         }
 
         // Check if it's an asset (has extension) - return 404 for missing assets
@@ -213,7 +223,11 @@ impl StaticFiles {
 
         // SPA route - return index.html with injected config
         if !self.index_html.is_empty() {
-            return Some((&self.index_html, "text/html; charset=utf-8", "no-cache"));
+            return Some((
+                self.index_html.clone(),
+                "text/html; charset=utf-8",
+                "no-cache",
+            ));
         }
 
         None

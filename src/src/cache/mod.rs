@@ -15,9 +15,15 @@ use tracing::info;
 use crate::models::CacheMessage;
 use crate::utils::config::CONFIG;
 
-/// Cache entry for key-value data (compressed)
+/// Values smaller than this are stored as-is. Gzip adds ~20 bytes of framing, so tiny
+/// values (DNS records, rate-limit counters) would grow, and every encode/decode allocates
+/// tens of KB of zlib state — a real cost on the per-DNS-query lookup path.
+const COMPRESS_MIN_BYTES: usize = 256;
+
+/// Cache entry for key-value data
 struct KvEntry {
-    data: Vec<u8>,            // Gzip compressed
+    data: Vec<u8>, // Gzip compressed when `compressed`, raw UTF-8 otherwise
+    compressed: bool,
     uncompressed_size: usize, // Original size for tracking
 }
 
@@ -140,11 +146,15 @@ impl Cache {
             }
         }
 
-        // Compress the data
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(value.as_bytes())?;
-        let compressed_data = encoder.finish()?;
-        let compressed_size = compressed_data.len();
+        let compressed = uncompressed_size >= COMPRESS_MIN_BYTES;
+        let data = if compressed {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(value.as_bytes())?;
+            encoder.finish()?
+        } else {
+            value.as_bytes().to_vec()
+        };
+        let stored_size = data.len();
 
         // Update memory tracking
         let mut store = self.kv_store.write().map_err(|_| anyhow!("Lock error"))?;
@@ -162,13 +172,14 @@ impl Cache {
         store.insert(
             key.to_string(),
             KvEntry {
-                data: compressed_data,
+                data,
+                compressed,
                 uncompressed_size,
             },
         );
 
         self.current_memory
-            .fetch_add(compressed_size, Ordering::Relaxed);
+            .fetch_add(stored_size, Ordering::Relaxed);
         if let Some(subdomain) = extract_subdomain_from_key(key) {
             self.update_subdomain_size(&subdomain, uncompressed_size as isize);
         }
@@ -181,8 +192,11 @@ impl Cache {
         let store = self.kv_store.read().map_err(|_| anyhow!("Lock error"))?;
 
         if let Some(entry) = store.get(key) {
+            if !entry.compressed {
+                return Ok(Some(String::from_utf8(entry.data.clone())?));
+            }
             let mut decoder = GzDecoder::new(&entry.data[..]);
-            let mut decompressed = String::new();
+            let mut decompressed = String::with_capacity(entry.uncompressed_size);
             decoder.read_to_string(&mut decompressed)?;
             return Ok(Some(decompressed));
         }
@@ -302,17 +316,35 @@ impl Cache {
             let stop = (stop as usize).min(entry.items.len().saturating_sub(1));
 
             if start <= stop && start < entry.items.len() {
-                return Ok(entry
-                    .items
-                    .iter()
-                    .skip(start)
-                    .take(stop - start + 1)
-                    .cloned()
-                    .collect());
+                return Ok(entry.items.range(start..=stop).cloned().collect());
             }
         }
 
         Ok(Vec::new())
+    }
+
+    /// Find the first list item matching `pred`, returning its index and a copy of it.
+    ///
+    /// Scans under the read lock so only the match is cloned, where `lrange(key, 0, -1)`
+    /// would copy every stored request just to look one up.
+    pub async fn lfind(
+        &self,
+        key: &str,
+        mut pred: impl FnMut(&str) -> bool,
+    ) -> Result<Option<(usize, String)>> {
+        let store = self
+            .request_store
+            .read()
+            .map_err(|_| anyhow!("Lock error"))?;
+
+        Ok(store.get(key).and_then(|entry| {
+            entry
+                .items
+                .iter()
+                .enumerate()
+                .find(|(_, item)| pred(item))
+                .map(|(i, item)| (i, item.clone()))
+        }))
     }
 
     /// Get length of list

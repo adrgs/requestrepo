@@ -667,7 +667,7 @@ async fn log_smtp_request(
     let message = CacheMessage {
         cmd: "new_request".to_string(),
         subdomain: subdomain.to_string(),
-        data: request_json,
+        data: request_json.into(),
     };
 
     let _ = tx.send(message);

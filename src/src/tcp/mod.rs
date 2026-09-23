@@ -56,7 +56,7 @@ impl Server {
                             let response = CacheMessage {
                                 cmd: "tcp_port_allocated".to_string(),
                                 subdomain: subdomain.clone(),
-                                data: port.to_string(),
+                                data: port.to_string().into(),
                             };
 
                             let _ = self.tx.send(response);
@@ -217,7 +217,7 @@ async fn handle_tcp_connection(
         let message = CacheMessage {
             cmd: "new_request".to_string(),
             subdomain: subdomain.to_string(),
-            data: request_json,
+            data: request_json.into(),
         };
 
         let _ = tx.send(message);

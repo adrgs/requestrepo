@@ -21,13 +21,24 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
-use serde_json::{json, Value};
+use serde::Serialize;
+use serde_json::{json, value::RawValue, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::http::AppState;
 use crate::utils::verify_jwt;
+
+/// A server → client message carrying request data. The stored request JSON is passed
+/// through as `RawValue`s; `json!` would instead parse it into a `Value` tree and
+/// re-serialize it for every subscriber.
+#[derive(Serialize)]
+struct DataMessage<'a, T: Serialize> {
+    cmd: &'a str,
+    subdomain: &'a str,
+    data: T,
+}
 
 /// V2 WebSocket endpoint handler
 pub async fn websocket_handler_v2(
@@ -57,15 +68,15 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
         loop {
             match broadcast_rx.recv().await {
                 Ok(msg) => {
-                    let subdomain = msg.subdomain.clone();
                     let is_subscribed = {
                         let sessions = sessions_for_broadcast.lock().await;
-                        sessions.contains(&subdomain)
+                        sessions.contains(&msg.subdomain)
                     };
 
                     if is_subscribed {
-                        // Parse data from string to JSON object (fix double-encoding)
-                        let data = serde_json::from_str::<Value>(&msg.data).unwrap_or(Value::Null);
+                        // Embed data as a JSON object rather than a string (no double-encoding).
+                        // RawValue validates it without building and re-serializing a tree.
+                        let data = serde_json::from_str::<&RawValue>(&msg.data).ok();
 
                         // Map cmd names: new_request -> request, delete_request -> deleted
                         let cmd = match msg.cmd.as_str() {
@@ -75,13 +86,14 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                             other => other,
                         };
 
-                        let ws_msg = json!({
-                            "cmd": cmd,
-                            "subdomain": subdomain,
-                            "data": data
-                        });
+                        let ws_msg = serde_json::to_string(&DataMessage {
+                            cmd,
+                            subdomain: &msg.subdomain,
+                            data,
+                        })
+                        .unwrap_or_default();
 
-                        if tx_for_broadcast.send(ws_msg.to_string()).await.is_err() {
+                        if tx_for_broadcast.send(ws_msg).await.is_err() {
                             break;
                         }
                     }
@@ -170,22 +182,22 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                             .lrange(&format!("requests:{subdomain}"), -100, -1)
                                             .await
                                         {
-                                            let requests: Vec<Value> = requests
-                                                .into_iter()
-                                                .filter(|r| r != "{}")
-                                                .filter_map(|r| {
-                                                    serde_json::from_str::<Value>(&r).ok()
-                                                })
+                                            let requests: Vec<&RawValue> = requests
+                                                .iter()
+                                                .filter(|r| r.as_str() != "{}")
+                                                .filter_map(|r| serde_json::from_str(r).ok())
                                                 .collect();
 
                                             if !requests.is_empty() {
-                                                let response = json!({
-                                                    "cmd": "requests",
-                                                    "subdomain": subdomain,
-                                                    "data": requests
-                                                });
+                                                let response =
+                                                    serde_json::to_string(&DataMessage {
+                                                        cmd: "requests",
+                                                        subdomain: &subdomain,
+                                                        data: requests,
+                                                    })
+                                                    .unwrap_or_default();
 
-                                                if tx.send(response.to_string()).await.is_err() {
+                                                if tx.send(response).await.is_err() {
                                                     break;
                                                 }
                                             }

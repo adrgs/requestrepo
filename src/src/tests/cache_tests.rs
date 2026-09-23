@@ -212,4 +212,45 @@ mod tests {
         let specific_keys = cache.keys("dns:subdomain1").await.unwrap();
         assert_eq!(specific_keys.len(), 1);
     }
+
+    #[tokio::test]
+    async fn test_set_get_small_and_large_values() {
+        let cache = Cache::new();
+
+        // Below the compression threshold: stored raw
+        cache.set("small", "1.2.3.4").await.unwrap();
+        assert_eq!(
+            cache.get("small").await.unwrap().as_deref(),
+            Some("1.2.3.4")
+        );
+
+        // Above it: stored gzip-compressed, must round-trip exactly
+        let large = "x".repeat(4096);
+        cache.set("large", &large).await.unwrap();
+        assert_eq!(cache.get("large").await.unwrap(), Some(large));
+
+        // Overwriting a compressed entry with a raw one (and vice versa) keeps working
+        cache.set("large", "tiny").await.unwrap();
+        assert_eq!(cache.get("large").await.unwrap().as_deref(), Some("tiny"));
+        let large = "y".repeat(1024);
+        cache.set("small", &large).await.unwrap();
+        assert_eq!(cache.get("small").await.unwrap(), Some(large));
+    }
+
+    #[tokio::test]
+    async fn test_lfind() {
+        let cache = Cache::new();
+
+        cache.rpush("list", "a").await.unwrap();
+        cache.rpush("list", "b").await.unwrap();
+        cache.rpush("list", "b2").await.unwrap();
+
+        // Returns the first match with its index
+        assert_eq!(
+            cache.lfind("list", |s| s.starts_with('b')).await.unwrap(),
+            Some((1, "b".to_string()))
+        );
+        assert_eq!(cache.lfind("list", |s| s == "zzz").await.unwrap(), None);
+        assert_eq!(cache.lfind("missing", |_| true).await.unwrap(), None);
+    }
 }

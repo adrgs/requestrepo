@@ -286,6 +286,17 @@ impl HttpsServer {
         info!("Starting HTTPS server on port {}", CONFIG.https_port);
 
         let listener = TcpListener::bind(addr).await?;
+
+        // Build the router once. Cloning a Router is a refcount bump, whereas building one
+        // allocates the whole route table and middleware stack — too much to redo on
+        // every accepted connection.
+        let router = create_router(AppState {
+            cache: self.cache.clone(),
+            tx: self.tx.clone(),
+            static_files: self.static_files.clone(),
+            http_challenge_handler: self.http_challenge_handler.clone(),
+        });
+
         let connection_limit = Arc::new(Semaphore::new(HTTPS_MAX_CONCURRENT_CONNECTIONS));
 
         // Rate-limited reporting of pool-exhaustion drops. Both are only touched from this
@@ -338,13 +349,7 @@ impl HttpsServer {
                 }
             };
 
-            // Clone state for the spawned task
-            let state = AppState {
-                cache: self.cache.clone(),
-                tx: self.tx.clone(),
-                static_files: self.static_files.clone(),
-                http_challenge_handler: self.http_challenge_handler.clone(),
-            };
+            let router = router.clone();
 
             tokio::spawn(async move {
                 // `connection_permit` (moved in above) is held for the HTTP-serving phase
@@ -368,8 +373,8 @@ impl HttpsServer {
                     }
                 };
 
-                // Create router with ConnectInfo injected for this connection
-                let router = create_router(state).layer(InjectConnectInfo(remote_addr));
+                // Inject ConnectInfo for this connection
+                let router = router.layer(InjectConnectInfo(remote_addr));
                 let service = TowerToHyperService::new(router);
 
                 let io = TokioIo::new(tls_stream);
