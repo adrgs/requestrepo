@@ -53,16 +53,22 @@ export const useUiStore = create<UiState>()(
         set({ selectedRequestId: requestId, sharedRequest: null }),
       setSharedRequest: (request) => set({ sharedRequest: request }),
 
+      // No-op when already visited: a new map re-renders every subscriber here, and
+      // changes the persisted value so other tabs re-parse it and re-render too.
       markRequestVisited: (subdomain, requestId) =>
-        set((state) => ({
-          visitedRequests: {
-            ...state.visitedRequests,
-            [subdomain]: {
-              ...state.visitedRequests[subdomain],
-              [requestId]: true,
-            },
-          },
-        })),
+        set((state) =>
+          state.visitedRequests[subdomain]?.[requestId]
+            ? state
+            : {
+                visitedRequests: {
+                  ...state.visitedRequests,
+                  [subdomain]: {
+                    ...state.visitedRequests[subdomain],
+                    [requestId]: true,
+                  },
+                },
+              },
+        ),
 
       markAllAsRead: (subdomain, requestIds) =>
         set((state) => ({

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardBody, Code, Button, Tabs, Tab, Chip } from "@heroui/react";
 import { Share2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -65,10 +65,14 @@ export function RequestsPage() {
   const activeSubdomain = useSessionStore((s) => s.activeSubdomain);
   const session = sessions.find((s) => s.subdomain === activeSubdomain);
 
-  const allRequests = useRequestStore((s) => s.requests);
-  const requests = activeSubdomain ? (allRequests[activeSubdomain] ?? []) : [];
-
   const selectedRequestId = useUiStore((s) => s.selectedRequestId);
+  // Select only the selected request: its reference is stable, so incoming requests
+  // don't re-render this page (and re-decode the body) unless the selection changes.
+  const storedRequest = useRequestStore((s) =>
+    activeSubdomain && selectedRequestId
+      ? s.requests[activeSubdomain]?.find((r) => r._id === selectedRequestId)
+      : undefined,
+  );
   const markRequestVisited = useUiStore((s) => s.markRequestVisited);
   const sharedRequest = useUiStore((s) => s.sharedRequest);
 
@@ -76,8 +80,7 @@ export function RequestsPage() {
   const [editorFocused, setEditorFocused] = useState(false);
 
   // Use shared request if available, otherwise find from session requests
-  const selectedRequest =
-    sharedRequest || requests.find((r) => r._id === selectedRequestId);
+  const selectedRequest = sharedRequest || storedRequest;
   const isSharedRequestView = Boolean(sharedRequest);
   const httpDomain = getBaseDomain();
   const dnsDomain = getDnsDomain();
@@ -98,6 +101,27 @@ export function RequestsPage() {
     markRequestVisited,
     isSharedRequestView,
   ]);
+
+  // Decoding the body and building the raw request is O(body size); only redo it when
+  // the selected request changes.
+  const httpView = useMemo(() => {
+    if (!selectedRequest || !isHttpRequest(selectedRequest)) return null;
+    const { text: bodyText, isPrintable } = decodeBase64Safe(
+      selectedRequest.raw,
+    );
+    const rawRequest = [
+      `${selectedRequest.method} ${selectedRequest.path}${selectedRequest.query ?? ""} HTTP/1.1`,
+      ...Object.entries(selectedRequest.headers).map(([k, v]) => `${k}: ${v}`),
+      "",
+      isPrintable ? bodyText : "[Binary data]",
+    ].join("\n");
+    return {
+      bodyText,
+      isPrintable,
+      rawRequest,
+      rawRequestBase64: btoa(rawRequest),
+    };
+  }, [selectedRequest]);
 
   const handleCopyCode = () => {
     const code = PYTHON_EXAMPLE.replace(
@@ -227,21 +251,11 @@ export function RequestsPage() {
     );
   }
 
-  if (isHttpRequest(selectedRequest)) {
-    const { text: bodyText, isPrintable } = decodeBase64Safe(
-      selectedRequest.raw,
-    );
+  if (isHttpRequest(selectedRequest) && httpView) {
+    const { bodyText, isPrintable, rawRequest, rawRequestBase64 } = httpView;
     const queryParams = selectedRequest.query
       ? new URLSearchParams(selectedRequest.query.replace(/^\?/, ""))
       : null;
-
-    // Build raw request
-    const rawRequest = [
-      `${selectedRequest.method} ${selectedRequest.path}${selectedRequest.query ?? ""} HTTP/1.1`,
-      ...Object.entries(selectedRequest.headers).map(([k, v]) => `${k}: ${v}`),
-      "",
-      isPrintable ? bodyText : "[Binary data]",
-    ].join("\n");
 
     return (
       <Card className="h-full overflow-auto">
@@ -399,7 +413,7 @@ export function RequestsPage() {
           {/* Raw request */}
           <h3 className="text-base font-semibold mb-2">Raw request</h3>
           <Code className="block p-3 text-xs mb-2 overflow-x-auto break-all whitespace-pre-wrap min-h-[60px]">
-            {btoa(rawRequest)}
+            {rawRequestBase64}
           </Code>
           <Code className="block whitespace-pre-wrap p-2 text-xs font-mono">
             {rawRequest}

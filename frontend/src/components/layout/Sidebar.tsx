@@ -19,6 +19,9 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+// Stable fallback so the selector doesn't return a new array (and re-render) each call
+const EMPTY_REQUESTS: Request[] = [];
+
 export function Sidebar({ onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -27,10 +30,12 @@ export function Sidebar({ onClose }: SidebarProps) {
   const activeSubdomain = useSessionStore((s) => s.activeSubdomain);
   const session = sessions.find((s) => s.subdomain === activeSubdomain);
 
-  const allRequests = useRequestStore((s) => s.requests);
-  const requests = useMemo(
-    () => (activeSubdomain ? (allRequests[activeSubdomain] ?? []) : []),
-    [activeSubdomain, allRequests],
+  // Subscribe to the active session's list only, so traffic to other sessions
+  // doesn't re-filter and re-render this list.
+  const requests = useRequestStore((s) =>
+    activeSubdomain
+      ? (s.requests[activeSubdomain] ?? EMPTY_REQUESTS)
+      : EMPTY_REQUESTS,
   );
   const clearRequests = useRequestStore((s) => s.clearRequests);
 

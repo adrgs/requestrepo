@@ -20,7 +20,9 @@ export function encodeBase64(str: string): string {
 export function decodeBase64(base64: string): string {
   try {
     const binary = atob(base64);
-    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    // Plain loop: Uint8Array.from with a map callback is several times slower on large bodies
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return new TextDecoder().decode(bytes);
   } catch {
     return "";
