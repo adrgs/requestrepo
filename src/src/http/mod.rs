@@ -1,5 +1,5 @@
 mod routes;
-mod routes_v2;
+pub(crate) mod routes_v2;
 mod static_files;
 mod websocket;
 
@@ -10,6 +10,8 @@ pub use static_files::StaticFiles;
 #[derive(Clone, Copy, Debug)]
 pub struct TlsConnectInfo;
 
+use crate::abuse::{self, AbuseList};
+use crate::utils::{get_subdomain_from_hostname, get_subdomain_from_path};
 use anyhow::{anyhow, Result};
 use axum::{
     extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State},
@@ -123,6 +125,7 @@ pub struct Server {
     tx: Arc<broadcast::Sender<CacheMessage>>,
     static_files: Arc<StaticFiles>,
     http_challenge_handler: Option<HttpChallengeHandler>,
+    abuse: Arc<AbuseList>,
 }
 
 #[derive(Clone)]
@@ -131,6 +134,7 @@ pub struct AppState {
     pub tx: Arc<broadcast::Sender<CacheMessage>>,
     pub static_files: Arc<StaticFiles>,
     pub http_challenge_handler: Option<HttpChallengeHandler>,
+    pub abuse: Arc<AbuseList>,
 }
 
 /// Load static files into memory (call once at startup, share between servers)
@@ -144,12 +148,14 @@ impl Server {
         tx: Arc<broadcast::Sender<CacheMessage>>,
         static_files: Arc<StaticFiles>,
         http_challenge_handler: Option<HttpChallengeHandler>,
+        abuse: Arc<AbuseList>,
     ) -> Self {
         Self {
             cache,
             tx,
             static_files,
             http_challenge_handler,
+            abuse,
         }
     }
 
@@ -161,6 +167,7 @@ impl Server {
             tx: self.tx.clone(),
             static_files: self.static_files.clone(),
             http_challenge_handler: self.http_challenge_handler.clone(),
+            abuse: self.abuse.clone(),
         };
 
         let app = create_router(state);
@@ -180,7 +187,7 @@ impl Server {
 }
 
 /// Create the shared router with all routes
-fn create_router(state: AppState) -> Router {
+pub(crate) fn create_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([
@@ -221,10 +228,13 @@ fn create_router(state: AppState) -> Router {
         .route("/api/v2/ws", get(websocket::websocket_handler_v2))
         .layer(cors);
 
-    // Main router: API routes with CORS, ACME challenge, catch_all WITHOUT CORS
+    // Main router: API routes with CORS, blocklist routes without (the dashboard is
+    // same-origin, and a public write endpoint must not be callable from other sites),
+    // ACME challenge, catch_all WITHOUT CORS
     // This gives users full control over response headers for their files
     Router::new()
         .merge(api_routes)
+        .merge(abuse::routes::router())
         .route(
             "/.well-known/acme-challenge/:token",
             get(acme_challenge_handler),
@@ -234,7 +244,35 @@ fn create_router(state: AppState) -> Router {
         .layer(middleware::from_fn(sanitize_sentry_context))
         .layer(SentryHttpLayer::new().enable_transaction())
         .layer(NewSentryLayer::new_from_top())
+        // Outermost: a blocked subdomain is refused before its request is traced or its
+        // body (which may be megabytes) is read.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            reject_blocked_subdomains,
+        ))
         .with_state(state)
+}
+
+/// Refuse traffic to a blocked subdomain before anything else handles the request.
+///
+/// The subdomain is resolved exactly as `catch_all` resolves it: from the Host header, or
+/// from the path for `/r/<subdomain>` routing.
+async fn reject_blocked_subdomains(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let subdomain = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|host| host.to_str().ok())
+        .and_then(get_subdomain_from_hostname)
+        .or_else(|| get_subdomain_from_path(request.uri().path()));
+
+    match subdomain.filter(|subdomain| state.abuse.is_blocked(subdomain)) {
+        Some(_) => abuse::routes::blocked_traffic_response(),
+        None => next.run(request).await,
+    }
 }
 
 /// Handler for ACME HTTP-01 challenges (IP certificate validation)
@@ -262,6 +300,7 @@ pub struct HttpsServer {
     tls: TlsManager,
     static_files: Arc<StaticFiles>,
     http_challenge_handler: Option<HttpChallengeHandler>,
+    abuse: Arc<AbuseList>,
 }
 
 impl HttpsServer {
@@ -271,6 +310,7 @@ impl HttpsServer {
         tls: TlsManager,
         static_files: Arc<StaticFiles>,
         http_challenge_handler: Option<HttpChallengeHandler>,
+        abuse: Arc<AbuseList>,
     ) -> Self {
         Self {
             cache,
@@ -278,6 +318,7 @@ impl HttpsServer {
             tls,
             static_files,
             http_challenge_handler,
+            abuse,
         }
     }
 
@@ -344,6 +385,7 @@ impl HttpsServer {
                 tx: self.tx.clone(),
                 static_files: self.static_files.clone(),
                 http_challenge_handler: self.http_challenge_handler.clone(),
+                abuse: self.abuse.clone(),
             };
 
             tokio::spawn(async move {

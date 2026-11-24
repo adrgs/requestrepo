@@ -14,11 +14,13 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
+use crate::abuse::{routes::blocked_rejection, AbuseList};
+use crate::cache::Cache;
 use crate::http::AppState;
 use crate::models::{DnsRecord, DnsRecords, FileTree};
 use crate::utils::config::CONFIG;
 use crate::utils::{
-    auth::{can_create_session, is_admin_token_required},
+    auth::{bearer_token, can_create_session, extract_admin_token, is_admin_token_required},
     generate_jwt, generate_share_jwt, get_current_timestamp, get_random_subdomain, verify_jwt,
     verify_share_jwt, write_basic_file,
 };
@@ -64,14 +66,26 @@ pub struct CreateSessionRequest {
 // Helper Functions
 // ============================================================================
 
-/// Extract admin token from request body or cookie (body takes precedence)
-fn extract_admin_token(body_token: Option<&str>, cookies: &CookieJar) -> Option<String> {
-    // Body takes precedence
-    if let Some(token) = body_token {
-        return Some(token.to_string());
-    }
-    // Fallback to cookie
-    cookies.get("admin_token").map(|c| c.value().to_string())
+/// How many times `pick_subdomain` draws before giving up. A draw only has to miss the
+/// blocklist, so even a blocklist holding every entry it can would be missed almost
+/// immediately; the bound exists so a misconfigured tiny label space cannot spin forever.
+const SUBDOMAIN_DRAWS: usize = 16;
+
+/// A fresh session label that is not blocked.
+fn pick_subdomain(abuse: &AbuseList) -> Option<String> {
+    pick_unblocked(get_random_subdomain, |subdomain| {
+        abuse.is_blocked(subdomain)
+    })
+}
+
+/// Draws labels until one is not blocked, giving up after `SUBDOMAIN_DRAWS`.
+fn pick_unblocked(
+    mut draw: impl FnMut() -> String,
+    is_blocked: impl Fn(&str) -> bool,
+) -> Option<String> {
+    (0..SUBDOMAIN_DRAWS)
+        .map(|_| draw())
+        .find(|subdomain| !is_blocked(subdomain))
 }
 
 /// Build the admin token cookie string with security settings
@@ -80,49 +94,91 @@ fn build_admin_cookie(token: &str) -> String {
     format!("admin_token={token}; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=2592000{secure}")
 }
 
-/// Extract token from query param or Authorization header
-fn extract_token(query: &TokenQuery, headers: &axum::http::HeaderMap) -> Option<String> {
-    // Try query param first
-    if let Some(token) = &query.token {
-        return Some(token.clone());
-    }
-
-    // Try Authorization header (Bearer token)
-    if let Some(auth) = headers.get("authorization") {
-        if let Ok(auth_str) = auth.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                return Some(token.to_string());
-            }
-        }
-    }
-
-    None
-}
-
-/// Verify token and return subdomain, or return error response
+/// Verify token (query param or `Authorization: Bearer`) and return subdomain, or return
+/// error response
+///
+/// A token for a blocked subdomain is rejected here rather than in `verify_jwt` itself:
+/// to the caller it must read as "blocked", not as "invalid", because an invalid token
+/// is one the frontend discards.
 fn verify_token_or_error(
-    query: &TokenQuery,
+    token: Option<&str>,
     headers: &axum::http::HeaderMap,
-) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    let token = extract_token(query, headers).ok_or_else(|| {
-        (
+    abuse: &AbuseList,
+) -> Result<String, Box<Response>> {
+    // Query param first, then Authorization header
+    let token = token
+        .map(str::to_string)
+        .or_else(|| bearer_token(headers))
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| {
+            Box::new(token_error(
+                StatusCode::UNAUTHORIZED,
+                "No token provided",
+                "missing_token",
+            ))
+        })?;
+
+    let subdomain = verify_jwt(&token).ok_or_else(|| {
+        Box::new(token_error(
             StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "No token provided".to_string(),
-                code: "missing_token".to_string(),
-            }),
-        )
+            "Invalid or expired token",
+            "invalid_token",
+        ))
     })?;
 
-    verify_jwt(&token).ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid or expired token".to_string(),
-                code: "invalid_token".to_string(),
-            }),
-        )
-    })
+    match abuse.entry(&subdomain) {
+        Some(entry) => Err(Box::new(blocked_rejection(&entry))),
+        None => Ok(subdomain),
+    }
+}
+
+fn token_error(status: StatusCode, error: &str, code: &str) -> Response {
+    (
+        status,
+        Json(ErrorResponse {
+            error: error.to_string(),
+            code: code.to_string(),
+        }),
+    )
+        .into_response()
+}
+
+/// A page of a subdomain's request log: the number of stored entries (including deleted
+/// ones, which are kept as empty objects) and the parsed, non-deleted requests.
+pub(crate) async fn paginated_requests(
+    cache: &Cache,
+    subdomain: &str,
+    limit: usize,
+    offset: usize,
+) -> (usize, Vec<serde_json::Value>) {
+    let key = format!("requests:{subdomain}");
+    let total = cache.llen(&key).await.unwrap_or(0);
+    let requests = cache
+        .lrange(&key, offset as isize, (offset + limit - 1) as isize)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .filter(|v| !v.as_object().map(|o| o.is_empty()).unwrap_or(true))
+        .collect();
+    (total, requests)
+}
+
+/// Deletes the per-record entries (`dns:{type}:{fqdn}`) that the DNS server answers from.
+/// The subdomain's record list (`dns:{subdomain}`) is left for the caller to replace or delete.
+pub(crate) async fn delete_dns_record_entries(cache: &Cache, subdomain: &str) {
+    let records = cache
+        .get(&format!("dns:{subdomain}"))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|json| serde_json::from_str::<Vec<DnsRecord>>(&json).ok())
+        .unwrap_or_default();
+
+    for record in &records {
+        let fqdn = format!("{}.{}.{}.", record.domain, subdomain, CONFIG.server_domain);
+        let _ = cache.delete(&format!("dns:{}:{fqdn}", record.r#type)).await;
+    }
 }
 
 /// Validate a DNS domain name for security and RFC compliance
@@ -224,6 +280,7 @@ pub async fn create_session(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     cookies: CookieJar,
+    headers: axum::http::HeaderMap,
     Json(body): Json<CreateSessionRequest>,
 ) -> Response {
     let client_ip = addr.ip().to_string();
@@ -233,8 +290,8 @@ pub async fn create_session(
         return response.into_response();
     }
 
-    // Extract admin token from body or cookie
-    let admin_token = extract_admin_token(body.admin_token.as_deref(), &cookies);
+    // Extract admin token from body, cookie or Authorization header
+    let admin_token = extract_admin_token(body.admin_token.as_deref(), &cookies, &headers);
 
     // Check admin token if required
     if !can_create_session(admin_token.as_deref()) {
@@ -248,7 +305,17 @@ pub async fn create_session(
             .into_response();
     }
 
-    let subdomain = get_random_subdomain();
+    // A blocked subdomain must never be handed out as a fresh session
+    let Some(subdomain) = pick_subdomain(&state.abuse) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Could not allocate a subdomain",
+                "code": "subdomain_unavailable"
+            })),
+        )
+            .into_response();
+    };
     let token = match generate_jwt(&subdomain) {
         Ok(t) => t,
         Err(e) => {
@@ -385,9 +452,9 @@ pub async fn get_dns(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let dns_key = format!("dns:{subdomain}");
@@ -406,9 +473,9 @@ pub async fn update_dns(
     headers: axum::http::HeaderMap,
     Json(records): Json<DnsRecords>,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let dns_record_types = ["A", "AAAA", "CNAME", "TXT"];
@@ -452,24 +519,7 @@ pub async fn update_dns(
     }
 
     // Clear old records
-    if let Ok(Some(old_records_json)) = state.cache.get(&format!("dns:{subdomain}")).await {
-        if let Ok(old_records) =
-            serde_json::from_str::<Vec<HashMap<String, String>>>(&old_records_json)
-        {
-            for old_record in old_records {
-                if let (Some(record_type), Some(short_domain)) =
-                    (old_record.get("type"), old_record.get("domain"))
-                {
-                    let old_fqdn =
-                        format!("{}.{}.{}.", short_domain, subdomain, CONFIG.server_domain);
-                    let _ = state
-                        .cache
-                        .delete(&format!("dns:{record_type}:{old_fqdn}"))
-                        .await;
-                }
-            }
-        }
-    }
+    delete_dns_record_entries(&state.cache, &subdomain).await;
 
     // Store new records
     let mut final_records = Vec::new();
@@ -521,9 +571,9 @@ pub async fn get_files(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let files_key = format!("files:{subdomain}");
@@ -562,9 +612,9 @@ pub async fn update_files(
     headers: axum::http::HeaderMap,
     Json(files): Json<FileTree>,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Calculate total size of all files (raw content is base64 encoded)
@@ -613,9 +663,9 @@ pub async fn get_file(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let files_key = format!("files:{subdomain}");
@@ -663,72 +713,25 @@ pub async fn list_requests(
     Query(query): Query<PaginatedTokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    // Extract and verify token
-    let token = query.token.clone().or_else(|| {
-        headers
-            .get("authorization")
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "))
-            .map(|s| s.to_string())
-    });
-
-    let subdomain = match token {
-        Some(t) => match verify_jwt(&t) {
-            Some(s) => s,
-            None => {
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({
-                        "error": "Invalid or expired token",
-                        "code": "invalid_token"
-                    })),
-                )
-                    .into_response();
-            }
-        },
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "error": "No token provided",
-                    "code": "missing_token"
-                })),
-            )
-                .into_response();
-        }
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
-
-    let key = format!("requests:{subdomain}");
-
-    // Get total count (before filtering empty objects)
-    let total_raw = state.cache.llen(&key).await.unwrap_or(0);
 
     // Apply pagination limits
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = query.offset.unwrap_or(0);
 
-    // Fetch paginated range
-    let requests = match state
-        .cache
-        .lrange(&key, offset as isize, (offset + limit - 1) as isize)
-        .await
-    {
-        Ok(list) => list
-            .into_iter()
-            .filter_map(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .filter(|v| !v.as_object().map(|o| o.is_empty()).unwrap_or(true))
-            .collect::<Vec<_>>(),
-        Err(_) => Vec::new(),
-    };
+    let (total, requests) = paginated_requests(&state.cache, &subdomain, limit, offset).await;
 
-    let has_more = offset + limit < total_raw;
+    let has_more = offset + limit < total;
 
     (
         StatusCode::OK,
         Json(json!({
             "requests": requests,
             "pagination": {
-                "total": total_raw,
+                "total": total,
                 "limit": limit,
                 "offset": offset,
                 "has_more": has_more
@@ -745,9 +748,9 @@ pub async fn get_request(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Find request by ID
@@ -794,9 +797,9 @@ pub async fn delete_request(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Find request by scanning the list (indices are not stable due to eviction)
@@ -869,9 +872,9 @@ pub async fn delete_all_requests(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Delete the requests list
@@ -916,9 +919,9 @@ pub async fn share_request(
         return response.into_response();
     }
 
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Verify the request exists
@@ -1001,6 +1004,11 @@ pub async fn get_shared_request(
         }
     };
 
+    // Links to a blocked subdomain's requests stop working with its token
+    if let Some(entry) = state.abuse.entry(&claims.subdomain) {
+        return blocked_rejection(&entry);
+    }
+
     // Find the request
     let requests = match state
         .cache
@@ -1045,6 +1053,20 @@ pub async fn get_shared_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pick_unblocked_skips_blocked_labels() {
+        let draws = ["11111111", "22222222", "33333333", "44444444"];
+        let mut next = draws.iter();
+        let picked = pick_unblocked(
+            || next.next().unwrap().to_string(),
+            |subdomain| subdomain != "44444444",
+        );
+        assert_eq!(picked.as_deref(), Some("44444444"));
+
+        // When every draw is blocked it gives up instead of drawing forever
+        assert_eq!(pick_unblocked(|| "11111111".to_string(), |_| true), None);
+    }
 
     #[test]
     fn test_validate_dns_domain_valid() {

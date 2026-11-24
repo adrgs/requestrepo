@@ -75,14 +75,29 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                             other => other,
                         };
 
-                        let ws_msg = json!({
-                            "cmd": cmd,
-                            "subdomain": subdomain,
-                            "data": data
-                        });
+                        // A block notice puts its reason at the top level, where the dashboard
+                        // reads it. It is not a request, so it has nothing to carry in `data`.
+                        let ws_msg = if msg.cmd == "blacklisted" {
+                            json!({
+                                "cmd": "blacklisted",
+                                "subdomain": subdomain,
+                                "category": data.get("category").cloned().unwrap_or(Value::Null),
+                            })
+                        } else {
+                            json!({
+                                "cmd": cmd,
+                                "subdomain": subdomain,
+                                "data": data
+                            })
+                        };
 
                         if tx_for_broadcast.send(ws_msg.to_string()).await.is_err() {
                             break;
+                        }
+
+                        if msg.cmd == "blacklisted" {
+                            // Nothing will ever be logged for a blocked subdomain again.
+                            sessions_for_broadcast.lock().await.remove(&subdomain);
                         }
                     }
                 }
@@ -148,8 +163,29 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                     }
                                 };
 
-                                match verify_jwt(token) {
-                                    Some(subdomain) => {
+                                // A blocked subdomain gets its own error code. It must not read
+                                // as `invalid_token`: the dashboard drops sessions with an
+                                // invalid token, and the owner could never get back in after
+                                // the block is lifted.
+                                let verified = verify_jwt(token).map(|subdomain| {
+                                    let blocked = state.abuse.entry(&subdomain);
+                                    (subdomain, blocked.map(|entry| entry.category))
+                                });
+
+                                match verified {
+                                    Some((subdomain, Some(category))) => {
+                                        let response = json!({
+                                            "cmd": "error",
+                                            "code": "subdomain_blacklisted",
+                                            "subdomain": subdomain,
+                                            "category": category,
+                                            "message": "This subdomain has been blocked"
+                                        });
+                                        if tx.send(response.to_string()).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Some((subdomain, None)) => {
                                         {
                                             let mut sessions = sessions_for_receive.lock().await;
                                             sessions.insert(subdomain.clone());

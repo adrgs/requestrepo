@@ -53,6 +53,12 @@ pub struct Config {
     pub dangerously_allow_all_headers: bool,
     // Max requests per session (FIFO eviction when exceeded)
     pub max_requests_per_session: usize,
+    // Abuse reporting: public, rate-limited reports that block a subdomain
+    pub abuse_reporting_enabled: bool,
+    // Contact shown to the owner of a blocked subdomain and to people reporting abuse
+    pub abuse_contact: Option<String>,
+    // Directory for state that must survive a restart (currently the subdomain blocklist)
+    pub data_dir: String,
 }
 
 impl Config {
@@ -224,6 +230,18 @@ impl Config {
             .parse()
             .unwrap_or(10000);
 
+        // Abuse reporting is on by default; an instance that does not want a public
+        // report endpoint can switch it off.
+        let abuse_reporting_enabled = env::var("ABUSE_REPORTING_ENABLED")
+            .unwrap_or_else(|_| "true".to_string())
+            .to_lowercase()
+            == "true";
+        let abuse_contact = env::var("ABUSE_CONTACT")
+            .ok()
+            .map(|contact| contact.trim().to_string())
+            .filter(|contact| !contact.is_empty());
+        let data_dir = env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string());
+
         Self {
             server_ip,
             server_ipv6,
@@ -259,6 +277,9 @@ impl Config {
             dangerously_allow_same_origin_user_content,
             dangerously_allow_all_headers,
             max_requests_per_session,
+            abuse_reporting_enabled,
+            abuse_contact,
+            data_dir,
         }
     }
 }

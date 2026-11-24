@@ -167,18 +167,35 @@ mod tests {
         "127.0.0.1:5353".parse().unwrap()
     }
 
+    /// The DNS server always consults the blocklist, so tests need one (empty) to pass in.
+    async fn empty_blocklist(dir: &tempfile::TempDir) -> Arc<crate::abuse::AbuseList> {
+        Arc::new(
+            crate::abuse::AbuseList::load(dir.path(), true, None)
+                .await
+                .unwrap(),
+        )
+    }
+
     /// An unhandled query type on our own zone must be NODATA (NOERROR, no
     /// answers) with an SOA in the authority section — NOT NXDOMAIN.
     #[tokio::test]
     async fn test_unhandled_type_is_nodata_not_nxdomain() {
         let cache = Arc::new(Cache::new());
         let (tx, _) = broadcast::channel::<crate::models::CacheMessage>(1024);
+        let dir = tempfile::TempDir::new().unwrap();
 
         // DS query for the apex (localhost is the default test domain)
         let query = build_query("localhost.", RecordType::DS);
-        let bytes = crate::dns::process_dns_query(&query, test_addr(), cache, Arc::new(tx), false)
-            .await
-            .unwrap();
+        let bytes = crate::dns::process_dns_query(
+            &query,
+            test_addr(),
+            cache,
+            Arc::new(tx),
+            empty_blocklist(&dir).await,
+            false,
+        )
+        .await
+        .unwrap();
 
         let resp = Message::from_bytes(&bytes).unwrap();
         assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
@@ -192,6 +209,7 @@ mod tests {
     async fn test_soa_and_ns_answered() {
         let cache = Arc::new(Cache::new());
         let (tx, _) = broadcast::channel::<crate::models::CacheMessage>(1024);
+        let dir = tempfile::TempDir::new().unwrap();
 
         for rtype in [RecordType::SOA, RecordType::NS] {
             let query = build_query("localhost.", rtype);
@@ -200,6 +218,7 @@ mod tests {
                 test_addr(),
                 cache.clone(),
                 Arc::new(tx.clone()),
+                empty_blocklist(&dir).await,
                 false,
             )
             .await
@@ -224,6 +243,8 @@ mod tests {
         let cache = Arc::new(Cache::new());
         let (tx, _) = broadcast::channel::<crate::models::CacheMessage>(1024);
         let rate_limiter = Arc::new(crate::dns::DnsRateLimiter::new(1000));
+        let dir = tempfile::TempDir::new().unwrap();
+        let abuse = empty_blocklist(&dir).await;
 
         // Bind an ephemeral port and serve exactly one connection
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -231,7 +252,7 @@ mod tests {
         let tx2 = Arc::new(tx);
         tokio::spawn(async move {
             let (stream, peer) = listener.accept().await.unwrap();
-            crate::dns::handle_tcp_connection(stream, peer, cache, tx2, rate_limiter)
+            crate::dns::handle_tcp_connection(stream, peer, cache, tx2, abuse, rate_limiter)
                 .await
                 .ok();
         });

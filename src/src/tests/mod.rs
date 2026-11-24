@@ -1,3 +1,4 @@
+mod abuse_tests;
 mod acme_staging_tests;
 mod auth_tests;
 mod cache_tests;

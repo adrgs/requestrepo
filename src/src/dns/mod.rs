@@ -15,6 +15,7 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{broadcast, Semaphore};
 use tracing::{error, info, warn};
 
+use crate::abuse::AbuseList;
 use crate::cache::Cache;
 use crate::ip2country::lookup_country;
 use crate::models::{CacheMessage, DnsRequestLog};
@@ -83,11 +84,16 @@ impl DnsRateLimiter {
 pub struct Server {
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
+    abuse: Arc<AbuseList>,
 }
 
 impl Server {
-    pub fn new(cache: Arc<Cache>, tx: Arc<broadcast::Sender<CacheMessage>>) -> Self {
-        Self { cache, tx }
+    pub fn new(
+        cache: Arc<Cache>,
+        tx: Arc<broadcast::Sender<CacheMessage>>,
+        abuse: Arc<AbuseList>,
+    ) -> Self {
+        Self { cache, tx, abuse }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -99,8 +105,8 @@ impl Server {
         // Rate limiter is shared between the UDP and TCP listeners
         let rate_limiter = Arc::new(DnsRateLimiter::new(DNS_RATE_LIMIT_PER_SECOND));
 
-        let udp = self.run_udp(rate_limiter.clone());
-        let tcp = self.run_tcp(rate_limiter);
+        let udp = self.run_udp(rate_limiter.clone(), self.abuse.clone());
+        let tcp = self.run_tcp(rate_limiter, self.abuse.clone());
 
         // Drive both listeners concurrently; if either fails, propagate the error
         tokio::try_join!(udp, tcp)?;
@@ -108,7 +114,11 @@ impl Server {
     }
 
     /// UDP listener loop (RFC 1035 datagram transport).
-    async fn run_udp(&self, rate_limiter: Arc<DnsRateLimiter>) -> Result<()> {
+    async fn run_udp(
+        &self,
+        rate_limiter: Arc<DnsRateLimiter>,
+        abuse: Arc<AbuseList>,
+    ) -> Result<()> {
         let socket = Arc::new(UdpSocket::bind(format!("0.0.0.0:{}", CONFIG.dns_port)).await?);
         let mut buf = vec![0u8; 512];
         let mut query_count: u64 = 0;
@@ -131,11 +141,12 @@ impl Server {
                     let data = buf[..len].to_vec();
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
+                    let abuse = abuse.clone();
                     let socket_clone = socket.clone();
 
                     // Spawn a task to handle the request
                     tokio::spawn(async move {
-                        match process_dns_query(&data, addr, cache, tx, true).await {
+                        match process_dns_query(&data, addr, cache, tx, abuse, true).await {
                             Ok(response_bytes) => {
                                 if let Err(e) = socket_clone.send_to(&response_bytes, addr).await {
                                     error!("Error sending UDP DNS response: {}", e);
@@ -153,7 +164,11 @@ impl Server {
     }
 
     /// TCP listener loop (RFC 1035 §4.2.2 / RFC 7766 message framing).
-    async fn run_tcp(&self, rate_limiter: Arc<DnsRateLimiter>) -> Result<()> {
+    async fn run_tcp(
+        &self,
+        rate_limiter: Arc<DnsRateLimiter>,
+        abuse: Arc<AbuseList>,
+    ) -> Result<()> {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", CONFIG.dns_port)).await?;
         let connection_limit = Arc::new(Semaphore::new(DNS_TCP_MAX_CONCURRENT_CONNECTIONS));
 
@@ -166,11 +181,13 @@ impl Server {
                     };
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
+                    let abuse = abuse.clone();
                     let rate_limiter = rate_limiter.clone();
                     tokio::spawn(async move {
                         let _connection_permit = connection_permit;
                         if let Err(e) =
-                            handle_tcp_connection(stream, addr, cache, tx, rate_limiter).await
+                            handle_tcp_connection(stream, addr, cache, tx, abuse, rate_limiter)
+                                .await
                         {
                             // Connection-level errors (resets, timeouts) are expected; log at debug
                             tracing::debug!("DNS TCP connection from {} ended: {}", addr, e);
@@ -199,6 +216,7 @@ pub(crate) async fn handle_tcp_connection(
     addr: SocketAddr,
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
+    abuse: Arc<AbuseList>,
     rate_limiter: Arc<DnsRateLimiter>,
 ) -> Result<()> {
     loop {
@@ -234,7 +252,7 @@ pub(crate) async fn handle_tcp_connection(
 
         // No 512-byte truncation over TCP
         let response_bytes =
-            process_dns_query(&msg, addr, cache.clone(), tx.clone(), false).await?;
+            process_dns_query(&msg, addr, cache.clone(), tx.clone(), abuse.clone(), false).await?;
 
         // Write the 2-byte length prefix followed by the response
         let out_len = u16::try_from(response_bytes.len())
@@ -261,6 +279,7 @@ pub(crate) async fn process_dns_query(
     addr: SocketAddr,
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
+    abuse: Arc<AbuseList>,
     truncate_udp: bool,
 ) -> Result<Vec<u8>> {
     let request =
@@ -286,6 +305,15 @@ pub(crate) async fn process_dns_query(
 
     // Extract subdomain from hostname
     let subdomain = get_subdomain_from_hostname(&name);
+
+    // A blocked subdomain does not exist as far as DNS is concerned. Answer before
+    // anything is looked up or logged.
+    if subdomain
+        .as_deref()
+        .is_some_and(|subdomain| abuse.is_blocked(subdomain))
+    {
+        return blocked_response(&request, query);
+    }
 
     // Build response first so we can include it in the log
     let response = build_dns_response(&request, query, &subdomain, &cache).await?;
@@ -446,6 +474,23 @@ async fn log_dns_request(
     let _ = tx.send(message);
 
     Ok(())
+}
+
+/// The answer to any query about a blocked subdomain: the name does not exist.
+fn blocked_response(request: &Message, query: &Query) -> Result<Vec<u8>> {
+    let mut response = Message::response(request.metadata.id, request.metadata.op_code);
+    response.metadata.recursion_desired = request.metadata.recursion_desired;
+    response.metadata.recursion_available = true;
+    response.metadata.authoritative = true;
+    response.add_query(query.clone());
+    response.metadata.response_code = ResponseCode::NXDomain;
+    // The SOA lets resolvers cache the negative answer instead of asking again at once
+    if let Some(soa) = build_soa() {
+        response.add_authority(soa);
+    }
+    response
+        .to_bytes()
+        .map_err(|e| anyhow!("Failed to serialize blocked DNS response: {e}"))
 }
 
 /// Generate the wildcard key for a DNS query

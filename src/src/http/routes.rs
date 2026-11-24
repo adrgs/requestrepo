@@ -68,8 +68,13 @@ pub async fn health(
                 "total_requests": stats.total_requests,
                 "memory_used_mb": format!("{:.2}", memory_used_mb),
                 "memory_limit_mb": format!("{:.2}", memory_limit_mb),
-                "memory_usage_pct": format!("{:.1}", (memory_used_mb / memory_limit_mb) * 100.0)
-            }
+            "memory_usage_pct": format!("{:.1}", (memory_used_mb / memory_limit_mb) * 100.0)
+        },
+        "abuse": {
+            "blocked_subdomains": state.abuse.blocked_count(),
+            // Changes that took effect but could not be saved, so they are lost on restart
+            "persist_failures": state.abuse.persist_failures(),
+        }
         })),
     )
         .into_response()
