@@ -90,6 +90,16 @@ export function getSubdomainUrl(subdomain: string): string {
   return `${protocol}//${subdomain}.${baseDomain}`;
 }
 
+// Whether this instance accepts public abuse reports. Operators can switch it off.
+export function isAbuseReportingEnabled(): boolean {
+  return window.__CONFIG__?.ABUSE_REPORTING_ENABLED !== false;
+}
+
+// Where to report abuse, and where the owner of a blocked subdomain can ask for a review
+export function getAbuseContact(): string | null {
+  return window.__CONFIG__?.ABUSE_CONTACT || null;
+}
+
 // Export config object for easy access
 export const config = {
   isProduction,
@@ -98,4 +108,6 @@ export const config = {
   getBaseDomain,
   getDnsDomain,
   getSubdomainUrl,
+  isAbuseReportingEnabled,
+  getAbuseContact,
 };

@@ -3,6 +3,7 @@ import { useSessionStore } from "@/stores/sessionStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
 import { apiClient, isAdminRequiredError } from "@/api/client";
+import { getSubdomainFromToken } from "@/lib/jwt";
 
 /**
  * Automatically creates a session if none exists.
@@ -36,29 +37,20 @@ export function useAutoSession() {
 
     // Handle shared session token (full session share)
     if (sharedToken) {
-      try {
-        // Decode JWT to get subdomain
-        const parts = sharedToken.split(".");
-        if (parts.length >= 2) {
-          const payload = JSON.parse(atob(parts[1]));
-          const subdomain = payload.subdomain;
-
-          // Check if session already exists (use getState for fresh data)
-          const currentSessions = useSessionStore.getState().sessions;
-          if (
-            subdomain &&
-            !currentSessions.some((s) => s.subdomain === subdomain)
-          ) {
-            addSession({
-              subdomain,
-              token: sharedToken,
-              createdAt: new Date().toISOString(),
-            });
-          }
-          setActiveSession(subdomain);
+      const subdomain = getSubdomainFromToken(sharedToken);
+      if (subdomain) {
+        // Check if session already exists (use getState for fresh data)
+        const currentSessions = useSessionStore.getState().sessions;
+        if (!currentSessions.some((s) => s.subdomain === subdomain)) {
+          addSession({
+            subdomain,
+            token: sharedToken,
+            createdAt: new Date().toISOString(),
+          });
         }
-      } catch (e) {
-        console.error("Invalid share token:", e);
+        setActiveSession(subdomain);
+      } else {
+        console.error("Invalid share token");
       }
       // Clean URL
       window.history.replaceState({}, "", window.location.pathname);

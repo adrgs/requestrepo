@@ -1,11 +1,18 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type {
   SessionCreateResponse,
   DnsRecord,
   FileTree,
   PaginatedResponse,
   Request,
+  AbuseCategory,
+  AbuseEntry,
+  AbuseEntriesResponse,
+  AbuseReportResponse,
+  CreateAbuseReportPayload,
 } from "@/types";
+import { getSubdomainFromToken } from "@/lib/jwt";
+import { useBlockedStore } from "@/stores/blockedStore";
 
 const api = axios.create({
   baseURL: "/api/v2",
@@ -20,7 +27,7 @@ const authHeaders = (token: string) => ({
   Authorization: `Bearer ${token}`,
 });
 
-// Helper to check if we're in offline mode
+// Helper to check if we're offline mode
 function isNetworkError(error: unknown): boolean {
   if (error instanceof AxiosError) {
     return (
@@ -41,6 +48,52 @@ export function isAdminRequiredError(error: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * Why an admin request was refused, or null if it was not an access problem.
+ * A missing token and a wrong one are reported the same way by the server.
+ */
+export function adminAccessError(
+  error: unknown,
+): "unauthorized" | "not_configured" | null {
+  if (!(error instanceof AxiosError) || !error.response) return null;
+  const code = (error.response.data as { code?: string } | undefined)?.code;
+  if (code === "admin_not_configured") return "not_configured";
+  if (error.response.status === 401 || code === "invalid_admin_token")
+    return "unauthorized";
+  return null;
+}
+
+function bearerToken(
+  config: InternalAxiosRequestConfig | undefined,
+): string | null {
+  const value = config?.headers?.get("Authorization");
+  return typeof value === "string" && value.startsWith("Bearer ")
+    ? value.slice("Bearer ".length)
+    : null;
+}
+
+// A blocked subdomain is refused on every request made with its token. Remember it here,
+// once, so that every caller gets the same behaviour without each having to check.
+api.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    if (error instanceof AxiosError && error.response?.status === 403) {
+      const data = error.response.data as
+        | { code?: string; category?: AbuseCategory }
+        | undefined;
+      if (data?.code === "subdomain_blacklisted") {
+        const subdomain = getSubdomainFromToken(
+          bearerToken(error.config) ?? "",
+        );
+        if (subdomain) {
+          useBlockedStore.getState().markBlocked(subdomain, data.category);
+        }
+      }
+    }
+    return Promise.reject(error);
+  },
+);
 
 // Session API
 export async function createSession(
@@ -177,6 +230,76 @@ export async function getSharedRequest(
   }
 }
 
+// Abuse API
+
+// Submit an abuse report. A report blocks the subdomain. Public, rate limited by the server.
+export async function createAbuseReport(
+  payload: CreateAbuseReportPayload,
+): Promise<AbuseReportResponse> {
+  const { data } = await api.post<AbuseReportResponse>(
+    "/abuse/reports",
+    payload,
+  );
+  return data;
+}
+
+// List blocked subdomains. Requires the admin token.
+export async function getAbuseEntries(params: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<AbuseEntriesResponse> {
+  const { data } = await api.get<AbuseEntriesResponse>("/abuse/admin/entries", {
+    params,
+  });
+  return data;
+}
+
+export async function getAbuseEntry(subdomain: string): Promise<AbuseEntry> {
+  const { data } = await api.get<AbuseEntry>(
+    `/abuse/admin/entries/${subdomain}`,
+  );
+  return data;
+}
+
+// What the subdomain captured before it was blocked
+export async function getAbuseEntryRequests(
+  subdomain: string,
+  limit = 100,
+  offset = 0,
+): Promise<PaginatedResponse<Request>> {
+  const { data } = await api.get<PaginatedResponse<Request>>(
+    `/abuse/admin/entries/${subdomain}/requests`,
+    { params: { limit, offset } },
+  );
+  return data;
+}
+
+export async function blockAbuseEntry(
+  subdomain: string,
+  body: { category?: AbuseCategory; note?: string },
+): Promise<AbuseReportResponse> {
+  const { data } = await api.post<AbuseReportResponse>(
+    `/abuse/admin/entries/${subdomain}/block`,
+    body,
+  );
+  return data;
+}
+
+export async function liftAbuseEntry(
+  subdomain: string,
+): Promise<{ persisted: boolean }> {
+  const { data } = await api.delete<{ persisted: boolean }>(
+    `/abuse/admin/entries/${subdomain}`,
+  );
+  return data;
+}
+
+// Delete the subdomain's files, DNS records and captured requests
+export async function purgeAbuseEntryData(subdomain: string): Promise<void> {
+  await api.delete(`/abuse/admin/entries/${subdomain}/data`);
+}
+
 export const apiClient = {
   createSession,
   getDnsRecords,
@@ -189,4 +312,11 @@ export const apiClient = {
   getSharedRequest,
   deleteRequest,
   deleteAllRequests,
+  createAbuseReport,
+  getAbuseEntries,
+  getAbuseEntry,
+  getAbuseEntryRequests,
+  blockAbuseEntry,
+  liftAbuseEntry,
+  purgeAbuseEntryData,
 };

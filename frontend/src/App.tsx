@@ -2,13 +2,17 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuthStore } from "@/stores/authStore";
 import { useSessionStore } from "@/stores/sessionStore";
+import { useBlockedStore } from "@/stores/blockedStore";
 import { apiClient, isAdminRequiredError } from "@/api/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AdminAuthOverlay } from "@/components/auth/AdminAuthOverlay";
 import { BackendOfflineOverlay } from "@/components/auth/BackendOfflineOverlay";
+import { BlockedSubdomainOverlay } from "@/components/auth/BlockedSubdomainOverlay";
 import { RequestsPage } from "@/pages/RequestsPage";
 import { ResponseEditorPage } from "@/pages/ResponseEditorPage";
 import { DnsSettingsPage } from "@/pages/DnsSettingsPage";
+import { ReportAbusePage } from "@/pages/ReportAbusePage";
+import { AbuseAdminPage } from "@/pages/AbuseAdminPage";
 
 // Redirect that preserves query params (for share links)
 function RedirectWithParams() {
@@ -26,6 +30,11 @@ function App() {
   const setShowAuthOverlay = useAuthStore((s) => s.setShowAuthOverlay);
   const setAuthError = useAuthStore((s) => s.setAuthError);
   const addSession = useSessionStore((s) => s.addSession);
+
+  // The active session, if the server has blocked it for abuse
+  const activeSubdomain = useSessionStore((s) => s.activeSubdomain);
+  const blocked = useBlockedStore((s) => s.blocked);
+  const activeBlock = activeSubdomain ? blocked[activeSubdomain] : undefined;
 
   // Handle auth form submission
   const handleAuthSubmit = async (password: string) => {
@@ -51,7 +60,21 @@ function App() {
     <main className="h-full text-foreground bg-background">
       {backendOffline && <BackendOfflineOverlay />}
       {showAuthOverlay && <AdminAuthOverlay onSubmit={handleAuthSubmit} />}
+      {/* Asking for the admin password comes first: it is how to get a session that works */}
+      {activeBlock &&
+        activeSubdomain &&
+        !showAuthOverlay &&
+        !backendOffline && (
+          <BlockedSubdomainOverlay
+            subdomain={activeSubdomain}
+            category={activeBlock.category}
+          />
+        )}
       <Routes>
+        {/* Outside the dashboard on purpose: a visitor reporting abuse, or an admin
+            managing blocks, should not be handed a session and a WebSocket */}
+        <Route path="/abuse" element={<ReportAbusePage />} />
+        <Route path="/admin/abuse" element={<AbuseAdminPage />} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<RedirectWithParams />} />
           <Route path="requests" element={<RequestsPage />} />

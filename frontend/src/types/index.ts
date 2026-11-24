@@ -111,6 +111,60 @@ export interface PaginatedResponse<T> {
   };
 }
 
+// Abuse reporting: a report blocks the subdomain
+export type AbuseCategory =
+  | "malware"
+  | "phishing"
+  | "csam"
+  | "spam"
+  | "copyright"
+  | "other";
+
+export interface AbuseReport {
+  at: number;
+  category: AbuseCategory;
+  // Reporter's network, such as "203.0.113.0/24"
+  network: string;
+  description: string;
+  evidence_url?: string;
+  contact?: string;
+}
+
+export interface AbuseEntrySummary {
+  subdomain: string;
+  category: AbuseCategory;
+  source: "report" | "admin";
+  created_at: number;
+  report_count: number;
+}
+
+export type AbuseEntry = AbuseEntrySummary & {
+  reports: AbuseReport[];
+  admin_note?: string;
+};
+
+export interface CreateAbuseReportPayload {
+  subdomain: string;
+  category: AbuseCategory;
+  description: string;
+  evidence_url?: string;
+  contact?: string;
+}
+
+export interface AbuseReportResponse {
+  status: "blocked" | "already_blocked";
+  subdomain: string;
+  // False when the block took effect but could not be saved to disk
+  persisted: boolean;
+}
+
+export interface AbuseEntriesResponse {
+  entries: AbuseEntrySummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 // WebSocket types
 export type WebSocketClientMessage =
   | { cmd: "connect"; token: string }
@@ -124,4 +178,13 @@ export type WebSocketServerMessage =
   | { cmd: "requests"; subdomain: string; data: Request[] }
   | { cmd: "deleted"; subdomain: string; data: { _id: string } }
   | { cmd: "cleared"; subdomain: string }
-  | { cmd: "error"; code: string; message: string };
+  // Sent to a live dashboard when its session gets blocked
+  | { cmd: "blacklisted"; subdomain: string; category?: AbuseCategory }
+  | {
+      cmd: "error";
+      code: string;
+      message: string;
+      // Set when the code is "subdomain_blacklisted"
+      subdomain?: string;
+      category?: AbuseCategory;
+    };

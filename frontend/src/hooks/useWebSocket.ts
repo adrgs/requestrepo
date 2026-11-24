@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useRequestStore } from "@/stores/requestStore";
+import { useBlockedStore } from "@/stores/blockedStore";
+import { getSubdomainFromToken } from "@/lib/jwt";
 import type { WebSocketServerMessage, Session } from "@/types";
 
 // Reconnection with exponential backoff
@@ -40,6 +42,7 @@ export function useWebSocket() {
   const addRequest = useRequestStore((s) => s.addRequest);
   const removeRequest = useRequestStore((s) => s.removeRequest);
   const clearRequests = useRequestStore((s) => s.clearRequests);
+  const markBlocked = useBlockedStore((s) => s.markBlocked);
 
   // Keep sessions ref updated in an effect
   useEffect(() => {
@@ -79,16 +82,30 @@ export function useWebSocket() {
             clearRequests(message.subdomain);
             break;
 
+          case "blacklisted":
+            // The server has stopped logging for this session and is saying why
+            markBlocked(message.subdomain, message.category);
+            break;
+
           case "pong":
             // Connection is alive
             break;
 
           case "error":
-            // If invalid token, remove the session that caused it
-            if (
+            if (message.code === "subdomain_blacklisted") {
+              // A blocked session keeps its token: it is still valid, and works again
+              // once the block is lifted. So it is marked, never removed.
+              if (message.subdomain) {
+                markBlocked(message.subdomain, message.category);
+              }
+              pendingTokensRef.current = pendingTokensRef.current.filter(
+                (token) => getSubdomainFromToken(token) !== message.subdomain,
+              );
+            } else if (
               message.code === "invalid_token" &&
               pendingTokensRef.current.length > 0
             ) {
+              // If invalid token, remove the session that caused it
               const badToken = pendingTokensRef.current.shift();
               const badSession = sessionsRef.current.find(
                 (s) => s.token === badToken,
@@ -103,7 +120,14 @@ export function useWebSocket() {
         console.error("WebSocket message parse error:", error);
       }
     },
-    [addRequest, setRequests, removeRequest, clearRequests, removeSession],
+    [
+      addRequest,
+      setRequests,
+      removeRequest,
+      clearRequests,
+      removeSession,
+      markBlocked,
+    ],
   );
 
   const connect = useCallback(() => {

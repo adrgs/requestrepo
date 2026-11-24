@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Input, Button, Tooltip } from "@heroui/react";
-import { Star, Plus, Share2, Search, X, Menu } from "lucide-react";
+import { Ban, Flag, Star, Plus, Share2, Search, X, Menu } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "./ThemeToggle";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useRequestStore } from "@/stores/requestStore";
+import { useBlockedStore } from "@/stores/blockedStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
 import { apiClient, isAdminRequiredError } from "@/api/client";
@@ -19,6 +20,7 @@ export function Topbar() {
   const addSession = useSessionStore((s) => s.addSession);
   const setActiveSession = useSessionStore((s) => s.setActiveSession);
   const removeSession = useSessionStore((s) => s.removeSession);
+  const blocked = useBlockedStore((s) => s.blocked);
 
   const activeSession = sessions.find((s) => s.subdomain === activeSubdomain);
 
@@ -149,6 +151,14 @@ export function Topbar() {
                     </span>
                   )}
                   <span className="font-mono">{session.subdomain}</span>
+                  {blocked[session.subdomain] && (
+                    <Tooltip content="Blocked for abuse">
+                      <Ban
+                        className="h-3 w-3 text-danger"
+                        aria-label="Blocked for abuse"
+                      />
+                    </Tooltip>
+                  )}
                   <button
                     className="ml-1 hidden opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 md:block"
                     onClick={(e) => handleCloseSession(e, session.subdomain)}
@@ -164,6 +174,22 @@ export function Topbar() {
 
       {/* Right: Icons + Search */}
       <div className="flex shrink-0 items-center gap-1">
+        <Tooltip content="Report abuse">
+          <Button
+            isIconOnly
+            as="a"
+            href="/abuse"
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="light"
+            size="sm"
+            radius="full"
+            aria-label="Report abuse"
+          >
+            <Flag className="h-4 w-4" />
+          </Button>
+        </Tooltip>
+
         <Tooltip content="New session">
           <Button
             isIconOnly

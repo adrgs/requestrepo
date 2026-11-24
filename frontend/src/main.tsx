@@ -28,6 +28,8 @@ declare global {
       DOMAIN?: string;
       SENTRY_DSN_FRONTEND?: string;
       DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT?: boolean;
+      ABUSE_REPORTING_ENABLED?: boolean;
+      ABUSE_CONTACT?: string;
     };
   }
 }
