@@ -78,6 +78,7 @@ requestrepo/
 │       ├── smtp/           # SMTP server
 │       ├── tcp/            # Custom TCP port handling
 │       ├── ip2country/     # IP geolocation (DB-IP)
+│       ├── abuse/          # Subdomain blocklist (public reports, admin API)
 │       ├── models/         # Shared data structures
 │       ├── utils/          # JWT auth, config
 │       └── tests/          # Integration tests
@@ -104,11 +105,14 @@ requestrepo/
 │       ├── pages/          # Route components
 │       │   ├── RequestsPage.tsx
 │       │   ├── DnsSettingsPage.tsx
-│       │   └── ResponseEditorPage.tsx
+│       │   ├── ResponseEditorPage.tsx
+│       │   ├── ReportAbusePage.tsx   # Public, outside the dashboard
+│       │   └── AbuseAdminPage.tsx    # Admin, outside the dashboard
 │       ├── stores/         # Zustand stores
 │       │   ├── authStore.ts
 │       │   ├── sessionStore.ts
 │       │   ├── requestStore.ts
+│       │   ├── blockedStore.ts
 │       │   ├── themeStore.ts
 │       │   └── uiStore.ts
 │       └── types/          # TypeScript definitions
@@ -158,6 +162,19 @@ requestrepo/
 - Country code lookup for incoming IPs
 - Graceful fallback if database unavailable
 
+### Subdomain Blocklist (`abuse/`)
+- A blocked subdomain is refused everywhere. Check `is_blocked()` wherever a subdomain is
+  derived: HTTP (the outermost middleware in `http/mod.rs`), DNS, SMTP, the token-bearing
+  API routes, the WebSocket and session creation. A new ingress point needs the same check.
+- `list.rs`: an `ArcSwap` snapshot, so reads are lock-free. Changes are clone-modify-save-swap
+  under a write lock and saved to `DATA_DIR/abuse.json` before being published.
+- `limiter.rs`: 3 reports per hour per network (IPv4 address or IPv6 /64), held in memory.
+- `routes.rs`: the public `POST /api/v2/abuse/reports` and the `/api/v2/abuse/admin/…` API.
+  Neither is CORS-enabled.
+- A saved blocklist that cannot be parsed stops startup. A blocked session's token must be
+  refused with `subdomain_blacklisted`, never as `invalid_token`: the frontend deletes
+  sessions whose token it considers invalid.
+
 ## API Reference
 
 ### REST Endpoints
@@ -178,6 +195,12 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 | `DELETE` | `/requests` | Delete all requests |
 | `GET` | `/requests/{id}` | Get single request |
 | `DELETE` | `/requests/{id}` | Delete single request |
+| `POST` | `/abuse/reports` | Report a subdomain for abuse, which blocks it (public, rate limited, no CORS) |
+| `GET` | `/abuse/admin/entries` | List blocked subdomains (admin token) |
+| `POST` | `/abuse/admin/entries/{subdomain}/block` | Block a subdomain (admin token) |
+| `DELETE` | `/abuse/admin/entries/{subdomain}` | Lift a block (admin token) |
+| `DELETE` | `/abuse/admin/entries/{subdomain}/data` | Delete its files, DNS records and requests |
+| `GET` | `/abuse/admin/entries/{subdomain}/requests` | What it captured before the block |
 | `GET` | `/ws` | WebSocket upgrade |
 
 ### WebSocket Protocol
@@ -191,9 +214,10 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 // Server → Client
 { cmd: "connected", subdomain: string }
 { cmd: "pong" }
-{ cmd: "request", subdomain: string, data: Request }
-{ cmd: "requests", subdomain: string, data: Request[] }
-{ cmd: "error", code: string, message: string }
+  { cmd: "request", subdomain: string, data: Request }
+  { cmd: "requests", subdomain: string, data: Request[] }
+  { cmd: "blacklisted", subdomain: string, category?: string }  // sent to a live dashboard when its session is blocked
+  { cmd: "error", code: string, message: string }
 ```
 
 ### Request Object Structure
@@ -288,7 +312,10 @@ interface Request {
 | `IP_CERT_ENABLED` | `false` | Enable IP address TLS certificates (HTTP-01) |
 | `IP_CERT_CHECK_HOURS` | `6` | How often to check IP cert expiry |
 | `IP_CERT_RENEWAL_HOURS` | `96` | Renew IP cert when fewer than this many hours remain |
-| `ADMIN_TOKEN` | - | Require password for session creation |
+| `ADMIN_TOKEN` | - | Require password for session creation, and unlock managing blocked subdomains |
+| `ABUSE_REPORTING_ENABLED` | `true` | Accept public abuse reports that block a subdomain |
+| `ABUSE_CONTACT` | - | Contact for abuse reports and for owners of a blocked subdomain |
+| `DATA_DIR` | `./data` | Directory of `abuse.json`, the saved blocklist (`/app/data` in Docker) |
 | `SESSION_RATE_LIMIT` | `10` | Max sessions per IP per window |
 | `SESSION_RATE_WINDOW_SECS` | `60` | Rate limit window in seconds |
 | `RUST_LOG` | `info` | Log level (trace, debug, info, warn, error) |
@@ -358,6 +385,7 @@ Tests are in `src/src/tests/`:
 - `http_tests.rs` - HTTP route tests
 - `auth_tests.rs` - JWT validation
 - `certs_tests.rs` - Certificate management
+- `abuse_tests.rs` - Subdomain blocklist, driven over a real HTTP server and WebSocket
 - `acme_staging_tests.rs` - ACME integration (requires network)
 
 ### Frontend

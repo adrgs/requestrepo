@@ -16,6 +16,7 @@ A tool for analyzing HTTP, DNS, and SMTP requests with custom DNS records and re
 - **IP Geolocation**: Country detection for incoming requests (via DB-IP)
 - **Request sharing**: Share individual requests via secure tokens
 - **Admin authentication**: Optional password protection for session creation
+- **Abuse reporting**: Public, rate-limited reports that block a subdomain; whoever holds the admin token can list, lift and purge blocks
 - **No external dependencies**: In-memory cache with LRU eviction (no Redis required)
 
 ## Quick Start
@@ -32,10 +33,12 @@ docker run -d \
   -e TLS_ENABLED=true \
   -e ACME_EMAIL=admin@yourdomain.com \
   -v requestrepo-certs:/app/certs \
+  -v requestrepo-data:/app/data \
   ghcr.io/adrgs/requestrepo:latest
 ```
 
-This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25).
+This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25). The `certs` volume
+keeps the TLS certificates and the `data` volume keeps blocked subdomains across restarts.
 
 ## Using Docker Compose
 
@@ -163,6 +166,52 @@ requestrepo/
 └── ip2country/         # IP geolocation database
 ```
 
+## Reporting Abuse
+
+Anyone can report a subdomain of this instance that is being used for abuse, for example
+as a malware beacon or to host phishing pages. A report **blocks the subdomain at once**:
+
+- Requests to it are refused with `410 Gone`; nothing is logged or served.
+- Its name does not resolve (`NXDOMAIN`).
+- Mail to it is refused, and its owner's token stops working.
+
+Subdomain names are random, so only report one you have actually seen in traffic. Each
+network (an IPv4 address, or an IPv6 /64) can file up to **3 reports per hour**.
+
+**To report**, open `https://<your-domain>/abuse`, or call the endpoint:
+
+```bash
+curl -X POST https://<your-domain>/api/v2/abuse/reports \
+  -H 'Content-Type: application/json' \
+  -d '{"subdomain":"abcdefgh","category":"malware","description":"What the subdomain is used for"}'
+```
+
+`subdomain` accepts a label, a hostname or a URL. Categories are `malware`, `phishing`,
+`csam`, `spam`, `copyright` and `other`. `evidence_url` (an http(s) link) and `contact` are
+optional.
+
+**To manage blocks**, open `/admin/abuse` or call the API with the admin token as
+`Authorization: Bearer <ADMIN_TOKEN>`:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v2/abuse/admin/entries` | Blocked subdomains, newest first (`q`, `limit`, `offset`) |
+| `GET` | `/api/v2/abuse/admin/entries/{subdomain}` | One entry with its reports |
+| `POST` | `/api/v2/abuse/admin/entries/{subdomain}/block` | Block directly (`category`, `note`; body optional) |
+| `DELETE` | `/api/v2/abuse/admin/entries/{subdomain}` | Lift the block |
+| `DELETE` | `/api/v2/abuse/admin/entries/{subdomain}/data` | Delete its files, DNS records and captured requests |
+| `GET` | `/api/v2/abuse/admin/entries/{subdomain}/requests` | What it captured before the block |
+
+**Persistence.** Blocks are saved to `abuse.json` in `DATA_DIR` (the `data` volume in
+Docker) and survive a restart. Without an `ADMIN_TOKEN` there is nobody allowed to lift a
+block through the API, so it is done by removing the entry from that file and restarting. A
+blocklist that cannot be read stops the server from starting instead of silently dropping
+blocks. `GET /health` reports the number of blocked subdomains and of changes that could
+not be saved.
+
+Set `ABUSE_CONTACT` to tell reporters, and owners of a blocked subdomain, where to reach
+you. Set `ABUSE_REPORTING_ENABLED=false` to switch the public report endpoint off.
+
 ## Environment Variables
 
 See [.env.example](.env.example) for all available options.
@@ -173,7 +222,10 @@ See [.env.example](.env.example) for all available options.
 | `DOMAIN` | Yes | - | Base domain (e.g., `requestrepo.com`) |
 | `SERVER_IP` | Yes | - | Public IP for DNS responses |
 | `SERVER_IPV6` | No | - | Public IPv6 address for AAAA responses (IPv4-only when unset) |
-| `ADMIN_TOKEN` | No | - | Password for session creation |
+| `ADMIN_TOKEN` | No | - | Password for session creation. Also unlocks managing blocked subdomains |
+| `ABUSE_REPORTING_ENABLED` | No | `true` | Accept public abuse reports that block a subdomain |
+| `ABUSE_CONTACT` | No | - | Where to report abuse, and where the owner of a blocked subdomain can ask for a review |
+| `DATA_DIR` | No | `./data` | Directory for `abuse.json`, the saved blocklist (`/app/data` in Docker) |
 | `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
 | `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |
 | `IP_CERT_ENABLED` | No | `false` | Enable IP address TLS certificates (HTTP-01) |
