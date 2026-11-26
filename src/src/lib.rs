@@ -34,8 +34,7 @@ pub async fn run() -> Result<()> {
     // Start the cache cleanup task
     cache::Cache::start_cleanup_task(cache.clone());
 
-    // A saved blocklist that cannot be read stops startup: without it every blocked
-    // subdomain would silently come back.
+    // Never fails: an unreadable blocklist is set aside and an empty one used instead.
     let abuse = match abuse::AbuseList::load(&CONFIG.data_dir, abuse::Settings::from_config()).await
     {
         Ok(list) => Arc::new(list),

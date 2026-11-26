@@ -216,15 +216,17 @@ reported, so reports cannot be used to fill the list with names that never exist
 working, and the owner of a legitimate subdomain caught by mistake can simply create a new one.
 A suspended subdomain answers `410 Gone` (a short page for browsers) and serves nothing, DNS
 answers `NXDOMAIN`, mail is refused, and the owner's dashboard, API token and share links stop
-working with `subdomain_suspended`. Nothing sent to it is logged any more.
+working with `subdomain_suspended`. Its response files, DNS records and captured requests are
+deleted at once (a response may be the next stage of a loader), and nothing sent to it is
+logged any more.
 
 Reports are rate limited to 3 per hour per IP address (an IPv6 /48 counts as one). On a
 private instance (`ADMIN_TOKEN` set), reporting needs the admin token like everything else.
 
 **Lifting a suspension.** Suspensions are saved to `abuse.json` in `DATA_DIR` (the `data`
 volume in Docker), one per line, and survive restarts. To lift one, delete its line and
-restart. A file that cannot be read stops the server from starting instead of silently
-dropping suspensions. At 50,000 suspensions (about 2 MB) new reports are refused; nothing is
+restart. A file that cannot be read or parsed is renamed to `abuse.json.invalid-<time>` and
+the server starts with an empty list, so a bad edit can never keep it from starting. At 50,000 suspensions (about 2 MB) new reports are refused; nothing is
 ever lifted automatically. Checking a request against the list takes about 20 ns.
 
 ## Environment Variables

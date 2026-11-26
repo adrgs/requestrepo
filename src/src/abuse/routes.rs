@@ -21,7 +21,7 @@ use std::time::Duration;
 use tracing::warn;
 
 use super::{REPORT_RATE_LIMIT, REPORT_RATE_WINDOW};
-use crate::http::routes_v2::json_body;
+use crate::http::routes_v2::{delete_dns_record_entries, json_body};
 use crate::http::AppState;
 use crate::models::CacheMessage;
 use crate::utils::auth::extract_admin_token;
@@ -139,6 +139,7 @@ pub async fn create_report(
     };
     if newly {
         warn!("Subdomain {subdomain} suspended by an abuse report");
+        purge(&state, &subdomain).await;
         let _ = state.tx.send(CacheMessage {
             cmd: "suspended".to_string(),
             subdomain: subdomain.clone(),
@@ -158,6 +159,17 @@ pub async fn create_report(
         })),
     )
         .into_response()
+}
+
+/// Deletes everything a suspended subdomain had: its response files (which may be a
+/// payload, such as the next stage of a loader), its DNS records and its captured requests.
+/// None of it can be served or read any more, so it would only take up memory.
+async fn purge(state: &AppState, subdomain: &str) {
+    let cache = &state.cache;
+    let _ = cache.delete(&format!("files:{subdomain}")).await;
+    delete_dns_record_entries(cache, subdomain).await;
+    let _ = cache.delete(&format!("dns:{subdomain}")).await;
+    let _ = cache.delete(&format!("requests:{subdomain}")).await;
 }
 
 fn rate_limited(retry_after: Duration) -> Response {

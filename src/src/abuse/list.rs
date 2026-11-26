@@ -103,13 +103,31 @@ pub struct AbuseList {
 impl AbuseList {
     /// Loads the blocklist from `data_dir`.
     ///
-    /// Fails when a saved blocklist exists but cannot be read: starting without it would
-    /// silently restore every suspended subdomain.
+    /// Never fails. A blocklist that cannot be read or parsed is set aside and the server
+    /// starts with an empty one: losing suspensions is far better than not starting, which
+    /// on an instance that is its own nameserver takes the whole domain down.
     pub async fn load(data_dir: impl AsRef<Path>, settings: Settings) -> Result<Self> {
         let storage = Storage::new(data_dir);
-        let entries = match storage.load().await? {
-            Some(text) => parse_file(&text, storage.path())?,
-            None => Vec::new(),
+        let entries = match storage.load().await {
+            Ok(Some(text)) => match parse_file(&text, storage.path()) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    let aside = storage.set_aside().await;
+                    error!(
+                        "{e:#}. Starting with an empty blocklist; the old file was {}",
+                        aside.map_or("left in place".to_string(), |path| format!(
+                            "moved to {}",
+                            path.display()
+                        ))
+                    );
+                    Vec::new()
+                }
+            },
+            Ok(None) => Vec::new(),
+            Err(e) => {
+                error!("{e:#}. Starting with an empty blocklist");
+                Vec::new()
+            }
         };
         if let Err(e) = storage.ensure_dir().await {
             error!("The blocklist cannot be saved and will be lost on restart: {e}");
@@ -272,7 +290,7 @@ fn without_trailing_commas(text: &str) -> String {
 }
 
 /// Parses and validates a saved blocklist. A malformed file is a version mismatch or an
-/// editing mistake, and must stop startup rather than drop suspensions.
+/// editing mistake; the caller sets it aside.
 fn parse_file(text: &str, path: &Path) -> Result<Vec<Entry>> {
     let text = without_trailing_commas(text);
     let file: FileFormat = serde_json::from_str(&text)
@@ -456,7 +474,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn corrupt_files_refuse_to_load_and_unreachable_labels_are_skipped() {
+    async fn an_invalid_file_is_set_aside_and_the_list_starts_empty() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("abuse.json");
         let entry = r#"{"subdomain": "abcdefgh", "suspended_at": 0}"#;
@@ -472,13 +490,29 @@ mod tests {
                 "more than once",
             ),
         ];
-        for (contents, expected) in cases {
+        for (contents, why) in cases {
+            for leftover in std::fs::read_dir(dir.path()).unwrap() {
+                std::fs::remove_file(leftover.unwrap().path()).unwrap();
+            }
             std::fs::write(&path, &contents).unwrap();
-            let err = AbuseList::load(dir.path(), Settings::default())
-                .await
-                .err()
-                .unwrap();
-            assert!(err.to_string().contains(expected), "{contents}: {err}");
+            let list = load(&dir).await;
+            assert_eq!(list.blocked_count(), 0, "{why}");
+            assert!(!path.exists(), "{why}: the invalid file was moved away");
+            let kept: Vec<String> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(
+                kept.iter()
+                    .any(|name| name.starts_with("abuse.json.invalid-")),
+                "{why}: kept for inspection, got {kept:?}"
+            );
+            // Suspending works again, into a fresh file
+            assert_eq!(list.suspend("abcdefgh").await, Some(true));
+            assert!(load(&dir).await.is_blocked("abcdefgh"), "{why}");
+        }
+        for leftover in std::fs::read_dir(dir.path()).unwrap() {
+            std::fs::remove_file(leftover.unwrap().path()).unwrap();
         }
 
         // An entry that no longer fits the subdomain settings is skipped, not fatal

@@ -314,8 +314,22 @@ mod tests {
             .await;
         assert_eq!(put.status, 201, "{}", put.body);
         server.request("GET", &host, "/loader.sh", &[], "").await;
-        let logged_before = server.logged(&label).await;
+        let dns = r#"{"records": [{"domain": "stage2", "type": "TXT", "value": "payload"}]}"#;
+        assert_eq!(
+            server.api(&token, "PUT", "/api/v2/dns", dns).await.status,
+            200
+        );
         server.report(&label).await;
+
+        // Everything it had is gone at once: the payload, its DNS records, its traffic
+        for key in [
+            format!("files:{label}"),
+            format!("dns:{label}"),
+            format!("dns:TXT:stage2.{label}.{}.", CONFIG.server_domain),
+        ] {
+            assert_eq!(server.cache.get(&key).await.unwrap(), None, "{key}");
+        }
+        assert_eq!(server.logged(&label).await, 0);
 
         for (method, path, body) in [
             ("GET", "/loader.sh", ""),
@@ -364,7 +378,7 @@ mod tests {
             .await;
         assert_eq!(by_path.status, 410);
 
-        assert_eq!(server.logged(&label).await, logged_before, "nothing logged");
+        assert_eq!(server.logged(&label).await, 0, "nothing logged");
     }
 
     #[tokio::test]
@@ -592,7 +606,8 @@ mod tests {
             assert_eq!(code, ResponseCode::NXDomain, "{suspended}");
             assert_eq!(answers, 0, "{suspended}");
         }
-        assert_eq!(server.logged(&label).await, 1, "nothing more logged");
+        // The earlier query went with the purge, and nothing new is logged
+        assert_eq!(server.logged(&label).await, 0);
 
         let other = server.used().await;
         assert_eq!(

@@ -44,6 +44,18 @@ impl Storage {
         }
     }
 
+    /// Moves an unusable blocklist out of the way, keeping it for inspection, so that the
+    /// next save starts a fresh one. Returns where it went.
+    pub(super) async fn set_aside(&self) -> Option<PathBuf> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let aside = self.path.with_extension(format!("json.invalid-{stamp}"));
+        tokio::fs::rename(&self.path, &aside).await.ok()?;
+        Some(aside)
+    }
+
     pub(super) async fn save(&self, contents: &[u8]) -> Result<()> {
         self.ensure_dir().await?;
 
