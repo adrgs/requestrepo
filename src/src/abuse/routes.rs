@@ -110,11 +110,33 @@ pub async fn create_report(
         );
     };
 
+    // The rate limit comes before the existence check, so that the endpoint cannot be used
+    // to find out which subdomains are in use.
     if let Err(retry_after) = state.abuse.check_report_rate(addr.ip()) {
         return rate_limited(retry_after);
     }
 
-    let newly = state.abuse.suspend(&subdomain).await;
+    // Only a subdomain that has been used can be abusing anything. Every session gets a
+    // file tree when it is created, and anything sent to a subdomain is captured, so a label
+    // with neither was never handed out or never used: reporting it would only waste space.
+    let in_use = state.abuse.is_blocked(&subdomain)
+        || state.cache.contains(&format!("files:{subdomain}"))
+        || state.cache.contains(&format!("requests:{subdomain}"));
+    if !in_use {
+        return error(
+            StatusCode::NOT_FOUND,
+            "unknown_subdomain",
+            "This subdomain has not been used, so there is nothing to report",
+        );
+    }
+
+    let Some(newly) = state.abuse.suspend(&subdomain).await else {
+        return error(
+            StatusCode::INSUFFICIENT_STORAGE,
+            "blocklist_full",
+            "No more subdomains can be suspended on this instance",
+        );
+    };
     if newly {
         warn!("Subdomain {subdomain} suspended by an abuse report");
         let _ = state.tx.send(CacheMessage {

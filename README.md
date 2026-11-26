@@ -208,7 +208,9 @@ curl -X POST https://<your-domain>/api/v2/abuse/reports \
   -H 'Content-Type: application/json' -d '{"subdomain":"abcd1234"}'
 ```
 
-`subdomain` accepts a label, any hostname under it, or a URL. Nothing else is asked for.
+`subdomain` accepts a label, any hostname under it, or a URL. Nothing else is asked for. Only
+a subdomain that is in use (it was handed out as a session, or has received traffic) can be
+reported, so reports cannot be used to fill the list with names that never existed.
 
 **A report suspends the subdomain immediately.** Nobody has to be awake for a beacon to stop
 working, and the owner of a legitimate subdomain caught by mistake can simply create a new one.
@@ -222,7 +224,8 @@ private instance (`ADMIN_TOKEN` set), reporting needs the admin token like every
 **Lifting a suspension.** Suspensions are saved to `abuse.json` in `DATA_DIR` (the `data`
 volume in Docker), one per line, and survive restarts. To lift one, delete its line and
 restart. A file that cannot be read stops the server from starting instead of silently
-dropping suspensions. At 20,000 suspensions the oldest one is lifted to make room.
+dropping suspensions. At 50,000 suspensions (about 2 MB) new reports are refused; nothing is
+ever lifted automatically. Checking a request against the list takes about 20 ns.
 
 ## Environment Variables
 

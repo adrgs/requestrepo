@@ -11,7 +11,7 @@ curl -s -X POST {{ORIGIN}}/api/v2/abuse/reports \
   -d '{"subdomain": "abcd1234.{{DOMAIN}}"}'
 ```
 
-`subdomain` can be the label, any hostname under it, or a full URL. Nothing else is needed.
+`subdomain` can be the label, any hostname under it, or a full URL. Nothing else is needed. Only a subdomain that is in use can be reported (`404 unknown_subdomain` otherwise).
 
 **A report suspends the subdomain immediately.** A suspended subdomain serves nothing (`410 Gone`), does not resolve (`NXDOMAIN`), refuses mail, and its owner's access stops working.
 

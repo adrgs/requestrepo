@@ -21,10 +21,11 @@ pub const REPORT_RATE_WINDOW: StdDuration = StdDuration::from_secs(60 * 60);
 /// How often expired rate-limit buckets are dropped.
 const CLEANUP_INTERVAL: StdDuration = StdDuration::from_secs(60);
 
-/// Upper bound on suspended subdomains. The report endpoint is anonymous and the whole file
-/// is rewritten on every change, so growth must have a limit. When it is reached, the
-/// oldest suspension is lifted to make room for the new one.
-const MAX_ENTRIES: usize = 20_000;
+/// Upper bound on suspended subdomains (about 2.5 MB of file). The report endpoint is
+/// anonymous and the whole file is rewritten on every change, so growth must have a limit.
+/// When it is reached new reports are refused: lifting old suspensions to make room would
+/// let a flood of reports bring a real abuser back.
+const MAX_ENTRIES: usize = 50_000;
 
 const FILE_VERSION: u32 = 1;
 
@@ -168,26 +169,20 @@ impl AbuseList {
         });
     }
 
-    /// Suspends `subdomain`. False if it already was suspended.
-    pub async fn suspend(&self, subdomain: &str) -> bool {
+    /// Suspends `subdomain`: `Some(true)` if it now is, `Some(false)` if it already was,
+    /// `None` if the list is full.
+    pub async fn suspend(&self, subdomain: &str) -> Option<bool> {
         if self.is_blocked(subdomain) {
-            return false;
+            return Some(false);
         }
         let now = get_current_timestamp();
         self.update(|snapshot| {
             if snapshot.entries.contains_key(subdomain) {
-                return false;
+                return Some(false);
             }
             if snapshot.entries.len() >= MAX_ENTRIES {
-                let oldest = snapshot
-                    .entries
-                    .values()
-                    .min_by_key(|entry| entry.suspended_at)
-                    .map(|entry| entry.subdomain.clone());
-                if let Some(oldest) = oldest {
-                    warn!("Blocklist full: lifting the oldest suspension, {oldest}");
-                    snapshot.entries.remove(&oldest);
-                }
+                error!("Blocklist full ({MAX_ENTRIES} entries): refusing to suspend {subdomain}");
+                return None;
             }
             let entry = Entry {
                 subdomain: subdomain.to_string(),
@@ -196,7 +191,7 @@ impl AbuseList {
             snapshot
                 .entries
                 .insert(subdomain.to_string(), Arc::new(entry));
-            true
+            Some(true)
         })
         .await
     }
@@ -351,10 +346,10 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let list = load(&dir).await;
 
-        assert!(list.suspend("abcdefgh").await);
+        assert_eq!(list.suspend("abcdefgh").await, Some(true));
         assert_eq!(list.persist_failures(), 0);
         assert!(list.is_blocked("abcdefgh"));
-        assert!(!list.suspend("abcdefgh").await, "already suspended");
+        assert_eq!(list.suspend("abcdefgh").await, Some(false));
 
         // A restart must not bring the subdomain back
         assert!(load(&dir).await.is_blocked("abcdefgh"));
@@ -410,7 +405,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_full_list_lifts_the_oldest_suspension() {
+    async fn a_full_list_refuses_new_suspensions_and_keeps_the_old_ones() {
         let dir = TempDir::new().unwrap();
         let entries: Vec<String> = (0..MAX_ENTRIES)
             .map(|n| format!(r#"{{"subdomain": "{}", "suspended_at": {n}}}"#, label(n)))
@@ -422,11 +417,12 @@ mod tests {
         .unwrap();
         let list = load(&dir).await;
 
-        list.suspend("newcomer").await;
-        assert!(list.is_blocked("newcomer"));
-        assert!(!list.is_blocked(&label(0)), "the oldest one goes");
-        assert!(list.is_blocked(&label(1)));
+        assert_eq!(list.suspend("newcomer").await, None);
+        assert!(!list.is_blocked("newcomer"));
+        assert!(list.is_blocked(&label(0)), "nothing is lifted to make room");
         assert_eq!(list.blocked_count(), MAX_ENTRIES);
+        // Reporting one that is already suspended is still fine
+        assert_eq!(list.suspend(&label(0)).await, Some(false));
     }
 
     #[tokio::test]
@@ -454,7 +450,7 @@ mod tests {
         std::fs::create_dir(dir.path().join("abuse.json.tmp")).unwrap();
         let list = load(&dir).await;
 
-        assert!(list.suspend("abcdefgh").await);
+        assert_eq!(list.suspend("abcdefgh").await, Some(true));
         assert!(list.is_blocked("abcdefgh"));
         assert_eq!(list.persist_failures(), 1);
     }

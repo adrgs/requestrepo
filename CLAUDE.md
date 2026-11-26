@@ -174,7 +174,9 @@ requestrepo/
   A new ingress point needs the same `is_blocked()` check.
 - `list.rs`: `ArcSwap` snapshot, lock-free reads; changes are clone-modify-save-swap under a
   write lock. The file has one entry per line and tolerates a trailing comma, so hand edits
-  are safe. At 20,000 entries the oldest suspension is lifted.
+  are safe. At 50,000 entries new reports are refused (never lift automatically: a flood of
+  reports would bring a real abuser back). Only subdomains in use (a `files:` or `requests:`
+  cache entry) can be reported; the rate limit is checked first so this is no oracle.
 - The report route is not CORS-enabled and must be `application/json`, so no site can make
   its visitors' browsers file reports.
 

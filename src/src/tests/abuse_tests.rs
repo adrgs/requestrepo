@@ -8,7 +8,7 @@ mod tests {
         http, private_settings, websocket, ws_recv, ws_send, Reply, TestServer, ADMIN, JSON,
     };
     use crate::utils::config::CONFIG;
-    use crate::utils::{generate_jwt, get_random_subdomain};
+    use crate::utils::{generate_jwt, get_random_subdomain, write_basic_file};
     use serde_json::json;
     use std::sync::Arc;
     use tokio::sync::broadcast;
@@ -29,6 +29,13 @@ mod tests {
                 &report_body(subdomain),
             )
             .await
+        }
+
+        /// A subdomain in use, as one is right after its session is created.
+        async fn used(&self) -> String {
+            let label = get_random_subdomain();
+            write_basic_file(&label, &self.cache).await.unwrap();
+            label
         }
 
         async fn logged(&self, subdomain: &str) -> usize {
@@ -57,7 +64,7 @@ mod tests {
     #[tokio::test]
     async fn a_report_suspends_at_once_and_survives_a_restart() {
         let server = public().await;
-        let label = get_random_subdomain();
+        let label = server.used().await;
         let host = server.subdomain_host(&label);
         assert_eq!(server.request("GET", &host, "/", &[], "").await.status, 200);
 
@@ -82,7 +89,7 @@ mod tests {
     #[tokio::test]
     async fn report_accepts_a_url_or_nested_name_and_rejects_bad_input_for_free() {
         let server = public().await;
-        let label = get_random_subdomain();
+        let label = server.used().await;
         let host = server.subdomain_host(&label);
 
         let reply = server.report(&format!("http://x.{host}/loader.png")).await;
@@ -122,15 +129,37 @@ mod tests {
 
         // Two more reports fit in the budget of three
         for _ in 0..2 {
-            assert_eq!(server.report(&get_random_subdomain()).await.status, 201);
+            assert_eq!(server.report(&server.used().await).await.status, 201);
         }
 
-        let limited = server.report(&get_random_subdomain()).await;
+        let limited = server.report(&server.used().await).await;
         assert_eq!(limited.status, 429);
         assert_eq!(limited.code(), "rate_limited");
         let retry_after: u64 = limited.header("retry-after").unwrap().parse().unwrap();
         assert!((3595..=3600).contains(&retry_after), "{retry_after}");
         assert_eq!(server.abuse.blocked_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_subdomain_that_was_never_used_cannot_be_reported() {
+        let server = public().await;
+        let never_used = get_random_subdomain();
+
+        let reply = server.report(&never_used).await;
+        assert_eq!(reply.status, 404);
+        assert_eq!(reply.code(), "unknown_subdomain");
+        assert_eq!(server.abuse.blocked_count(), 0);
+
+        // Traffic alone makes it reportable: a beacon that is hit is in use
+        server
+            .request("GET", &server.subdomain_host(&never_used), "/", &[], "")
+            .await;
+        assert_eq!(server.report(&never_used).await.status, 201);
+
+        // Probing which labels exist costs attempts like any report
+        let _ = server.report(&get_random_subdomain()).await;
+        let limited = server.report(&get_random_subdomain()).await;
+        assert_eq!(limited.status, 429, "{}", limited.body);
     }
 
     #[tokio::test]
@@ -144,7 +173,7 @@ mod tests {
                 &server.main_host(),
                 REPORTS,
                 &[("Content-Type", "text/plain")],
-                &report_body(&get_random_subdomain()),
+                &report_body(&server.used().await),
             )
             .await;
         assert_eq!(not_json.status, 415);
@@ -165,7 +194,7 @@ mod tests {
 
         let mut tasks = Vec::new();
         for _ in 0..24 {
-            let body = report_body(&get_random_subdomain());
+            let body = report_body(&server.used().await);
             let (addr, host) = (server.addr, server.main_host());
             tasks.push(tokio::spawn(async move {
                 http(addr, "POST", &host, REPORTS, JSON, &body).await.status
@@ -187,7 +216,7 @@ mod tests {
         let policy = server.main("GET", "/api/v2/abuse", &[]).await.json();
         assert_eq!(policy["requires_admin_token"], true);
 
-        let anonymous = server.report(&get_random_subdomain()).await;
+        let anonymous = server.report(&server.used().await).await;
         assert_eq!(anonymous.status, 403);
         assert_eq!(anonymous.code(), "admin_required");
 
@@ -202,7 +231,7 @@ mod tests {
                     ("Content-Type", "application/json"),
                     ("Authorization", "Bearer wrong"),
                 ],
-                &report_body(&get_random_subdomain()),
+                &report_body(&server.used().await),
             )
             .await;
         assert_eq!(wrong.status, 403);
@@ -224,12 +253,12 @@ mod tests {
                     &server.main_host(),
                     REPORTS,
                     &headers,
-                    &report_body(&get_random_subdomain()),
+                    &report_body(&server.used().await),
                 )
                 .await;
             assert_eq!(reply.status, 201, "{}", reply.body);
         }
-        let in_body = json!({ "subdomain": get_random_subdomain(), "admin_token": ADMIN });
+        let in_body = json!({ "subdomain": server.used().await, "admin_token": ADMIN });
         let reply = server
             .request(
                 "POST",
@@ -250,7 +279,7 @@ mod tests {
         })
         .await;
 
-        let reply = server.report(&get_random_subdomain()).await;
+        let reply = server.report(&server.used().await).await;
         assert_eq!(reply.status, 404);
         assert_eq!(reply.code(), "reporting_disabled");
     }
@@ -258,7 +287,7 @@ mod tests {
     #[tokio::test]
     async fn report_endpoint_answers_without_cors_headers() {
         let server = public().await;
-        let reply = server.report(&get_random_subdomain()).await;
+        let reply = server.report(&server.used().await).await;
 
         assert_eq!(reply.status, 201);
         // Other API routes send these; the report route must not, or any site could make
@@ -271,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn a_suspended_subdomain_serves_nothing_and_logs_nothing() {
         let server = public().await;
-        let label = get_random_subdomain();
+        let label = server.used().await;
         let host = server.subdomain_host(&label);
         let token = generate_jwt(&label).unwrap();
 
@@ -341,8 +370,8 @@ mod tests {
     #[tokio::test]
     async fn the_owner_is_refused_everywhere_with_its_own_code() {
         let server = public().await;
-        let label = get_random_subdomain();
-        let other = get_random_subdomain();
+        let label = server.used().await;
+        let other = server.used().await;
         let token = generate_jwt(&label).unwrap();
 
         // A shared request link made before the suspension
@@ -407,7 +436,7 @@ mod tests {
     #[tokio::test]
     async fn a_long_poll_stops_when_its_session_is_suspended() {
         let server = public().await;
-        let label = get_random_subdomain();
+        let label = server.used().await;
         let token = generate_jwt(&label).unwrap();
 
         let poll = {
@@ -443,7 +472,7 @@ mod tests {
         assert_eq!(before["abuse"]["suspended"], 0);
         assert_eq!(before["abuse"]["persist_failures"], 0);
 
-        server.report(&get_random_subdomain()).await;
+        server.report(&server.used().await).await;
         let after = server.main("GET", "/health", &[]).await.json();
         assert_eq!(after["abuse"]["suspended"], 1);
     }
@@ -453,8 +482,8 @@ mod tests {
     #[tokio::test]
     async fn websocket_refuses_a_suspended_token_with_its_own_code() {
         let server = public().await;
-        let label = get_random_subdomain();
-        let other = get_random_subdomain();
+        let label = server.used().await;
+        let other = server.used().await;
         server.report(&label).await;
 
         let mut socket = websocket(server.addr, &server.main_host()).await;
@@ -488,7 +517,7 @@ mod tests {
     #[tokio::test]
     async fn a_connected_dashboard_is_told_and_then_hears_nothing_more() {
         let server = public().await;
-        let label = get_random_subdomain();
+        let label = server.used().await;
         let host = server.subdomain_host(&label);
 
         let mut socket = websocket(server.addr, &server.main_host()).await;
@@ -549,7 +578,7 @@ mod tests {
         use hickory_proto::op::ResponseCode;
 
         let server = public().await;
-        let label = get_random_subdomain();
+        let label = server.used().await;
         let name = format!("{}.{}.", label, CONFIG.server_domain);
         let nested = format!("data.{}.", name.trim_end_matches('.'));
 
@@ -565,7 +594,7 @@ mod tests {
         }
         assert_eq!(server.logged(&label).await, 1, "nothing more logged");
 
-        let other = get_random_subdomain();
+        let other = server.used().await;
         assert_eq!(
             dns_query(&server, &format!("{other}.{}.", CONFIG.server_domain)).await,
             (ResponseCode::NoError, 1)

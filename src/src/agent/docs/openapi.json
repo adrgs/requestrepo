@@ -615,7 +615,7 @@
         ],
         "operationId": "reportAbuse",
         "summary": "Report a subdomain used for abuse; it is suspended immediately",
-        "description": "Rate limited to 3 reports per hour per IPv4 address or IPv6 /48. Must be sent as application/json. On a private instance, send its admin token as a Bearer header.",
+        "description": "Rate limited to 3 reports per hour per IPv4 address or IPv6 /48. Must be sent as application/json. On a private instance, send its admin token as a Bearer header. Only a subdomain that is in use (handed out as a session, or that has received traffic) can be reported; otherwise 404 unknown_subdomain. 507 blocklist_full if the instance has reached its limit.",
         "security": [
           {}
         ],
@@ -666,6 +666,9 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "507": {
             "$ref": "#/components/responses/Error"
           }
         }

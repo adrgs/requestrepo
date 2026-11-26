@@ -27,6 +27,9 @@ function describeError(error: unknown): string {
     if (data?.code === "invalid_subdomain") {
       return `That is not a subdomain of ${getDnsDomain()}.`;
     }
+    if (data?.code === "unknown_subdomain") {
+      return "That subdomain has never been used, so there is nothing to report.";
+    }
     if (data?.code === "admin_required") {
       return "This instance is private: sign in on the dashboard first.";
     }
