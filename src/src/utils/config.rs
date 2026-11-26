@@ -55,6 +55,8 @@ pub struct Config {
     pub max_requests_per_session: usize,
     // Abuse reporting: public, rate-limited reports that block a subdomain
     pub abuse_reporting_enabled: bool,
+    // Token for the abuse admin API. Separate from ADMIN_TOKEN, which gates session creation
+    pub abuse_admin_token: Option<String>,
     // Contact shown to the owner of a blocked subdomain and to people reporting abuse
     pub abuse_contact: Option<String>,
     // Directory for state that must survive a restart (currently the subdomain blocklist)
@@ -236,6 +238,16 @@ impl Config {
             .unwrap_or_else(|_| "true".to_string())
             .to_lowercase()
             == "true";
+        let abuse_admin_token = env::var("ABUSE_ADMIN_TOKEN")
+            .ok()
+            .map(|token| token.trim().to_string())
+            .filter(|token| !token.is_empty());
+        if abuse_admin_token
+            .as_ref()
+            .is_some_and(|token| token.len() < 16)
+        {
+            panic!("ABUSE_ADMIN_TOKEN must be at least 16 characters");
+        }
         let abuse_contact = env::var("ABUSE_CONTACT")
             .ok()
             .map(|contact| contact.trim().to_string())
@@ -278,6 +290,7 @@ impl Config {
             dangerously_allow_all_headers,
             max_requests_per_session,
             abuse_reporting_enabled,
+            abuse_admin_token,
             abuse_contact,
             data_dir,
         }

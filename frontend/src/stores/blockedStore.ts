@@ -2,13 +2,13 @@ import { create } from "zustand";
 import type { AbuseCategory } from "@/types";
 
 interface BlockedState {
-  // Subdomains the server has answered with `subdomain_blacklisted`, and why
+  // Subdomains the server has answered with `subdomain_suspended`, and why
   blocked: Record<string, { category?: AbuseCategory }>;
   markBlocked: (subdomain: string, category?: AbuseCategory) => void;
 }
 
 // Not persisted on purpose: this is the server's answer, and it is asked for again on
-// every load. A block that has been lifted is forgotten by reloading.
+// every load. A suspension that has been lifted is forgotten by reloading.
 export const useBlockedStore = create<BlockedState>()((set) => ({
   blocked: {},
 

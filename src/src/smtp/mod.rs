@@ -372,11 +372,11 @@ async fn handle_smtp_connection(
                             if let Some(extracted) = extract_subdomain_from_email(&recipient) {
                                 if abuse.is_blocked(&extracted) {
                                     transaction_log.push_str(
-                                        "S: 550 5.7.1 Recipient address rejected: subdomain is blocked\n",
+                                        "S: 550 5.7.1 Recipient address rejected: subdomain is suspended\n",
                                     );
                                     writer
                                         .write_all(
-                                            b"550 5.7.1 Recipient address rejected: subdomain is blocked\r\n",
+                                            b"550 5.7.1 Recipient address rejected: subdomain is suspended\r\n",
                                         )
                                         .await?;
                                     continue;
@@ -746,8 +746,15 @@ mod tests {
         let allowed = "bbbbbbbb";
         // Kept alive for the test: the blocklist saves into it
         let _dir = tempfile::TempDir::new().unwrap();
-        let abuse = Arc::new(AbuseList::load(_dir.path(), true, None).await.unwrap());
-        abuse.block(blocked, Category::Malware, None).await.unwrap();
+        let abuse = Arc::new(
+            AbuseList::load(_dir.path(), crate::abuse::Settings::default())
+                .await
+                .unwrap(),
+        );
+        abuse
+            .suspend(blocked, Some(Category::Malware), None)
+            .await
+            .unwrap();
         let cache = Arc::new(Cache::new());
         let domain = &CONFIG.server_domain;
 
@@ -777,7 +784,7 @@ mod tests {
             .collect();
         assert_eq!(
             refused,
-            ["550 5.7.1 Recipient address rejected: subdomain is blocked"]
+            ["550 5.7.1 Recipient address rejected: subdomain is suspended"]
         );
         // Accepted for MAIL and for the one recipient that was allowed
         assert_eq!(said.matches("250 OK\r\n").count(), 2, "{said}");
@@ -792,8 +799,15 @@ mod tests {
     async fn mail_is_never_attributed_to_a_blocked_subdomain_from_its_headers() {
         let blocked = "aaaaaaaa";
         let _dir = tempfile::TempDir::new().unwrap();
-        let abuse = Arc::new(AbuseList::load(_dir.path(), true, None).await.unwrap());
-        abuse.block(blocked, Category::Malware, None).await.unwrap();
+        let abuse = Arc::new(
+            AbuseList::load(_dir.path(), crate::abuse::Settings::default())
+                .await
+                .unwrap(),
+        );
+        abuse
+            .suspend(blocked, Some(Category::Malware), None)
+            .await
+            .unwrap();
         let cache = Arc::new(Cache::new());
         let domain = &CONFIG.server_domain;
 

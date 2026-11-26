@@ -4,7 +4,6 @@ import {
   Button,
   Card,
   CardBody,
-  CardHeader,
   Chip,
   Input,
   Modal,
@@ -21,13 +20,9 @@ import {
   TableHeader,
   TableRow,
 } from "@heroui/react";
-import { Ban, Download, Lock, ShieldOff, Trash2 } from "lucide-react";
+import { Ban, Download, Lock, LogOut, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  adminAccessError,
-  apiClient,
-  isAdminRequiredError,
-} from "@/api/client";
+import { adminAccessError, apiClient } from "@/api/client";
 import { AdminAuthOverlay } from "@/components/auth/AdminAuthOverlay";
 import { StandaloneLayout } from "@/components/layout/StandaloneLayout";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -35,8 +30,11 @@ import { useAuthStore } from "@/stores/authStore";
 import {
   ABUSE_CATEGORIES,
   categoryLabel,
+  downloadCsv,
   downloadJson,
   extractSubdomain,
+  loadAdminToken,
+  saveAdminToken,
 } from "@/lib/abuse";
 import { getDnsDomain } from "@/lib/config";
 import { formatDate, getFlagClass } from "@/lib/utils";
@@ -63,121 +61,123 @@ function warnIfUnsaved(persisted: boolean) {
   }
 }
 
-function BlockForm() {
+function SuspendForm({ token }: { token: string }) {
   const queryClient = useQueryClient();
   const [subdomain, setSubdomain] = useState("");
-  const [category, setCategory] = useState<AbuseCategory>("other");
+  const [category, setCategory] = useState<AbuseCategory>("malware");
   const [note, setNote] = useState("");
   const label = extractSubdomain(subdomain);
 
-  const block = useMutation({
+  const suspend = useMutation({
     mutationFn: () =>
-      apiClient.blockAbuseEntry(label ?? "", {
+      apiClient.suspendSubdomain(token, label ?? "", {
         category,
         note: note.trim() || undefined,
       }),
     onSuccess: (result) => {
       warnIfUnsaved(result.persisted);
       toast.success(
-        result.status === "blocked"
-          ? `${result.subdomain} is now blocked`
-          : `${result.subdomain} was already blocked`,
+        result.already_suspended
+          ? `${result.subdomain} was already suspended; reason updated`
+          : `${result.subdomain} is suspended`,
       );
       setSubdomain("");
       setNote("");
       queryClient.invalidateQueries({ queryKey: ["abuse"] });
     },
-    onError: () => toast.error("Failed to block the subdomain"),
+    onError: () => toast.error("Failed to suspend the subdomain"),
   });
 
   return (
     <Card>
-      <CardHeader>
-        <h3 className="text-base font-semibold">Block a subdomain directly</h3>
-      </CardHeader>
       <CardBody className="gap-3">
-        <div className="flex flex-col gap-3 md:flex-row">
+        <h2 className="text-base font-semibold">Suspend a subdomain</h2>
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
           <Input
             label="Subdomain"
-            placeholder={`name.${getDnsDomain()}`}
+            labelPlacement="outside"
+            placeholder={`abcd1234.${getDnsDomain()}`}
             value={subdomain}
             onValueChange={setSubdomain}
-            isRequired
             autoComplete="off"
             classNames={{ input: "font-mono" }}
-            className="md:w-72"
+            className="md:flex-1"
           />
           <Select
             label="Category"
+            labelPlacement="outside"
             selectedKeys={[category]}
+            disallowEmptySelection
             onSelectionChange={(keys) => {
               const key = Array.from(keys)[0] as AbuseCategory | undefined;
               if (key) setCategory(key);
             }}
-            className="md:w-60"
+            className="md:w-48"
           >
             {ABUSE_CATEGORIES.map((option) => (
               <SelectItem key={option.key}>{option.label}</SelectItem>
             ))}
           </Select>
           <Input
-            label="Note (optional)"
+            label="Note"
+            labelPlacement="outside"
+            placeholder="Optional"
             value={note}
             onValueChange={setNote}
-            maxLength={500}
+            maxLength={300}
             className="md:flex-1"
           />
+          <Button
+            color="danger"
+            startContent={<Ban className="h-4 w-4" />}
+            isLoading={suspend.isPending}
+            isDisabled={!label}
+            onPress={() => suspend.mutate()}
+          >
+            Suspend
+          </Button>
         </div>
-        <Button
-          color="danger"
-          variant="flat"
-          startContent={<Ban className="h-4 w-4" />}
-          isLoading={block.isPending}
-          isDisabled={!label || block.isPending}
-          onPress={() => block.mutate()}
-          className="w-full sm:w-auto sm:self-start"
-        >
-          Block subdomain
-        </Button>
       </CardBody>
     </Card>
   );
 }
 
 interface EntryDialogProps {
+  token: string;
   subdomain: string;
   onClose: () => void;
-  // Called once the block is lifted, so the list can drop back to a page that exists
-  onLifted: () => void;
 }
 
-/** One blocked subdomain: why it was blocked, what it captured, and what to do with it. */
-function EntryDialog({ subdomain, onClose, onLifted }: EntryDialogProps) {
+/** One suspension: why, what it captured, and the way out. */
+function EntryDialog({ token, subdomain, onClose }: EntryDialogProps) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState<"lift" | "purge" | null>(null);
 
   const entry = useQuery({
     queryKey: ["abuse", "entry", subdomain],
-    queryFn: () => apiClient.getAbuseEntry(subdomain),
+    queryFn: () => apiClient.getAbuseEntry(token, subdomain),
   });
   const requests = useQuery({
     queryKey: ["abuse", "entry-requests", subdomain],
-    queryFn: () => apiClient.getAbuseEntryRequests(subdomain),
+    queryFn: () => apiClient.getAbuseEntryRequests(token, subdomain),
+  });
+  const sources = useQuery({
+    queryKey: ["abuse", "entry-sources", subdomain],
+    queryFn: () => apiClient.getAbuseEntrySources(token, subdomain),
   });
 
   const lift = useMutation({
-    mutationFn: () => apiClient.liftAbuseEntry(subdomain),
+    mutationFn: () => apiClient.liftSuspension(token, subdomain),
     onSuccess: ({ persisted }) => {
       warnIfUnsaved(persisted);
-      toast.success(`The block on ${subdomain} is lifted`);
+      toast.success(`${subdomain} is no longer suspended`);
       queryClient.invalidateQueries({ queryKey: ["abuse"] });
-      onLifted();
       onClose();
     },
-    onError: () => toast.error("Failed to lift the block"),
+    onError: () => toast.error("Failed to lift the suspension"),
   });
   const purge = useMutation({
-    mutationFn: () => apiClient.purgeAbuseEntryData(subdomain),
+    mutationFn: () => apiClient.purgeAbuseEntryData(token, subdomain),
     onSuccess: () => {
       toast.success(`Deleted the data of ${subdomain}`);
       setConfirming(null);
@@ -186,92 +186,148 @@ function EntryDialog({ subdomain, onClose, onLifted }: EntryDialogProps) {
     onError: () => toast.error("Failed to delete the data"),
   });
 
+  const data = entry.data;
   const captured = requests.data?.requests ?? [];
+  const sourceList = sources.data?.sources ?? [];
 
   return (
-    <Modal
-      isOpen={true}
-      onClose={onClose}
-      size="4xl"
-      scrollBehavior="inside"
-      classNames={{
-        wrapper: "z-50",
-      }}
-    >
+    <Modal isOpen={true} onClose={onClose} size="3xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex flex-wrap items-center gap-2">
-          <span className="font-mono">
+          <span className="break-all font-mono">
             {subdomain}.{getDnsDomain()}
           </span>
-          {entry.data && (
-            <>
-              <Chip size="sm" variant="flat" color="danger">
-                {categoryLabel(entry.data.category)}
-              </Chip>
-              <Chip size="sm" variant="flat">
-                {entry.data.source === "admin"
-                  ? "Blocked by an admin"
-                  : "Blocked by a report"}
-              </Chip>
-              <span className="text-sm font-normal text-default-500">
-                since {formatDate(entry.data.created_at)}
-              </span>
-            </>
+          {data && (
+            <Chip size="sm" variant="flat" color="danger">
+              {categoryLabel(data.category)}
+            </Chip>
           )}
         </ModalHeader>
 
-        <ModalBody className="gap-5">
-          {/* Everything below is text supplied by whoever reported the subdomain, or
-              captured from it. It is rendered as text and never as markup. */}
-          <section className="flex flex-col gap-3">
-            <h3 className="text-sm font-semibold">Why it was blocked</h3>
-            {entry.data?.admin_note && (
-              <p className="text-sm">{entry.data.admin_note}</p>
-            )}
-            {entry.data && entry.data.reports.length === 0 && (
-              <p className="text-sm text-default-400">
-                No reports were recorded.
-              </p>
-            )}
-            {entry.data?.reports.map((report, index) => (
-              <div
-                key={index}
-                className="flex flex-col gap-1 rounded-lg bg-default-100 p-3"
-              >
-                <div className="flex flex-wrap items-center gap-2 text-xs text-default-500">
-                  <span className="font-mono">{report.network}</span>
-                  <span>{formatDate(report.at)}</span>
-                  <Chip size="sm" variant="flat">
-                    {categoryLabel(report.category)}
-                  </Chip>
-                  {report.contact && <span>contact: {report.contact}</span>}
-                </div>
-                <p className="whitespace-pre-wrap break-words text-sm">
-                  {report.description}
+        <ModalBody className="gap-6">
+          {data && (
+            <p className="text-sm text-default-500">
+              Suspended {formatDate(data.suspended_at)}{" "}
+              {data.source === "admin" ? "by an admin" : "by a report"}.{" "}
+              {data.report_count > 0 &&
+                `${data.report_count} report${data.report_count === 1 ? "" : "s"}.`}
+            </p>
+          )}
+
+          {/* Text below comes from reporters or from captured traffic. It is rendered as
+              text, never as markup. */}
+          {(data?.admin_note || (data && data.reports.length > 0)) && (
+            <section className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold">Reports</h3>
+              {data?.admin_note && (
+                <p className="rounded-lg border border-default-200 p-3 text-sm">
+                  <span className="text-default-500">Admin note: </span>
+                  {data.admin_note}
                 </p>
-                {report.evidence_url &&
-                  (/^https?:\/\//i.test(report.evidence_url) ? (
-                    <a
-                      href={report.evidence_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="break-all text-sm text-primary hover:underline"
-                    >
-                      {report.evidence_url}
-                    </a>
-                  ) : (
-                    <span className="break-all text-sm text-default-500">
-                      {report.evidence_url}
-                    </span>
-                  ))}
-              </div>
-            ))}
+              )}
+              {data?.reports.map((report, index) => (
+                <div
+                  key={index}
+                  className="flex flex-col gap-1 rounded-lg bg-default-100 p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-default-500">
+                    <span>{formatDate(report.at)}</span>
+                    <span className="font-mono">{report.network}</span>
+                    <span>{categoryLabel(report.category)}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap break-words text-sm">
+                    {report.reason ?? (
+                      <span className="text-default-400">No reason given</span>
+                    )}
+                  </p>
+                </div>
+              ))}
+            </section>
+          )}
+
+          <section className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">
+                Sources{" "}
+                <span className="font-normal text-default-400">
+                  {sources.data?.unique_sources ?? 0}
+                </span>
+              </h3>
+              <Button
+                size="sm"
+                variant="flat"
+                startContent={<Download className="h-4 w-4" />}
+                isDisabled={sourceList.length === 0}
+                onPress={() =>
+                  downloadCsv(
+                    `${subdomain}-sources.csv`,
+                    [
+                      "ip",
+                      "country",
+                      "requests",
+                      "first_seen",
+                      "last_seen",
+                      "types",
+                    ],
+                    sourceList.map((source) => [
+                      source.ip,
+                      source.country,
+                      source.requests,
+                      new Date(source.first_seen * 1000).toISOString(),
+                      new Date(source.last_seen * 1000).toISOString(),
+                      source.types.join(" "),
+                    ]),
+                  )
+                }
+              >
+                CSV
+              </Button>
+            </div>
+            <p className="text-xs text-default-400">
+              Every address that contacted it. For a botnet beacon these are its
+              victims: hand them to a CERT or abuse.ch.
+            </p>
+            {sourceList.length > 0 && (
+              <Table
+                aria-label="Sources"
+                isCompact
+                removeWrapper
+                classNames={{ base: "max-h-56 overflow-auto" }}
+              >
+                <TableHeader>
+                  <TableColumn key="ip">Address</TableColumn>
+                  <TableColumn key="requests">Requests</TableColumn>
+                  <TableColumn key="last">Last seen</TableColumn>
+                </TableHeader>
+                <TableBody items={sourceList}>
+                  {(source) => (
+                    <TableRow key={source.ip}>
+                      <TableCell className="font-mono text-xs">
+                        <span
+                          className={`${getFlagClass(source.country)} mr-1`}
+                        />
+                        {source.ip}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {source.requests}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {formatDate(source.last_seen)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </section>
 
           <section className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">
-                Captured before the block
+                Traffic{" "}
+                <span className="font-normal text-default-400">
+                  {requests.data?.pagination.total ?? 0}
+                </span>
               </h3>
               <Button
                 size="sm"
@@ -282,54 +338,45 @@ function EntryDialog({ subdomain, onClose, onLifted }: EntryDialogProps) {
                   downloadJson(`${subdomain}-requests.json`, captured)
                 }
               >
-                Export JSON
+                JSON
               </Button>
             </div>
             <p className="text-xs text-default-400">
-              Only what the server still holds. Requests are kept in memory and
-              do not survive a restart.
+              Includes what arrived while suspended, which its owner never sees.
+              Kept in memory only: export before a redeploy.
             </p>
-            <Table
-              aria-label="Captured requests"
-              isCompact
-              removeWrapper
-              classNames={{ wrapper: "max-h-72 overflow-auto" }}
-            >
-              <TableHeader>
-                <TableColumn key="time">Time</TableColumn>
-                <TableColumn key="type">Type</TableColumn>
-                <TableColumn key="source">Source</TableColumn>
-                <TableColumn key="request">Request</TableColumn>
-              </TableHeader>
-              <TableBody
-                items={captured}
-                isLoading={requests.isLoading}
-                loadingContent="Loading…"
-                emptyContent="Nothing was captured"
+            {captured.length > 0 && (
+              <Table
+                aria-label="Traffic"
+                isCompact
+                removeWrapper
+                classNames={{ base: "max-h-64 overflow-auto" }}
               >
-                {(request) => (
-                  <TableRow key={request._id}>
-                    <TableCell className="text-xs">
-                      {formatDate(request.date)}
-                    </TableCell>
-                    <TableCell>
-                      <Chip size="sm" variant="flat">
-                        {request.type.toUpperCase()}
-                      </Chip>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      <span
-                        className={`${getFlagClass(request.country)} mr-1`}
-                      />
-                      {request.ip}
-                    </TableCell>
-                    <TableCell className="break-all font-mono text-xs">
-                      {summarize(request)}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                <TableHeader>
+                  <TableColumn key="time">Time</TableColumn>
+                  <TableColumn key="source">Source</TableColumn>
+                  <TableColumn key="request">Request</TableColumn>
+                </TableHeader>
+                <TableBody items={captured}>
+                  {(request) => (
+                    <TableRow key={request._id}>
+                      <TableCell className="whitespace-nowrap text-xs">
+                        {formatDate(request.date)}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {request.ip}
+                      </TableCell>
+                      <TableCell className="break-all font-mono text-xs">
+                        <span className="mr-1 text-default-400">
+                          {request.type.toUpperCase()}
+                        </span>
+                        {summarize(request)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </section>
 
           {confirming && (
@@ -338,46 +385,33 @@ function EntryDialog({ subdomain, onClose, onLifted }: EntryDialogProps) {
               className="rounded-lg bg-default-100 p-3 text-sm text-foreground"
             >
               {confirming === "lift"
-                ? `${subdomain} starts working again right away, for whoever holds its token. A new report can block it again.`
-                : `This deletes the files, DNS records and captured requests of ${subdomain}. It cannot be undone. The subdomain stays blocked.`}
+                ? `${subdomain} works again right away, for whoever holds its token. A new report suspends it again.`
+                : `This deletes the files, DNS records and captured traffic of ${subdomain}. It cannot be undone; export the sources first if they are to be shared.`}
             </p>
           )}
         </ModalBody>
 
         <ModalFooter>
-          {confirming === "purge" ? (
+          {confirming ? (
             <>
               <Button variant="light" onPress={() => setConfirming(null)}>
                 Cancel
               </Button>
               <Button
-                color="danger"
-                isLoading={purge.isPending}
-                onPress={() => purge.mutate()}
+                color={confirming === "purge" ? "danger" : "primary"}
+                isLoading={lift.isPending || purge.isPending}
+                onPress={() =>
+                  confirming === "lift" ? lift.mutate() : purge.mutate()
+                }
               >
-                Delete the data
-              </Button>
-            </>
-          ) : confirming === "lift" ? (
-            <>
-              <Button variant="light" onPress={() => setConfirming(null)}>
-                Cancel
-              </Button>
-              <Button
-                color="primary"
-                isLoading={lift.isPending}
-                onPress={() => lift.mutate()}
-              >
-                Lift the block
+                {confirming === "lift" ? "Lift suspension" : "Delete the data"}
               </Button>
             </>
           ) : (
             <>
               <Button
-                color="danger"
-                variant="flat"
+                variant="light"
                 startContent={<Trash2 className="h-4 w-4" />}
-                isDisabled={purge.isPending}
                 onPress={() => setConfirming("purge")}
               >
                 Purge data…
@@ -385,11 +419,10 @@ function EntryDialog({ subdomain, onClose, onLifted }: EntryDialogProps) {
               <Button
                 color="primary"
                 variant="flat"
-                startContent={<ShieldOff className="h-4 w-4" />}
-                isDisabled={lift.isPending}
+                startContent={<ShieldCheck className="h-4 w-4" />}
                 onPress={() => setConfirming("lift")}
               >
-                Lift block…
+                Lift suspension…
               </Button>
             </>
           )}
@@ -400,103 +433,111 @@ function EntryDialog({ subdomain, onClose, onLifted }: EntryDialogProps) {
 }
 
 /**
- * Lists the blocked subdomains for whoever holds the admin token, and lets them block,
- * lift and purge. Outside the dashboard: it creates no session and opens no WebSocket.
+ * Suspended subdomains, for whoever holds ABUSE_ADMIN_TOKEN. Outside the dashboard: it
+ * creates no session and opens no WebSocket.
  */
 export function AbuseAdminPage() {
-  usePageTitle("Blocked subdomains");
+  usePageTitle("Suspended subdomains");
   const queryClient = useQueryClient();
   const setAuthError = useAuthStore((s) => s.setAuthError);
+  const [token, setToken] = useState<string | null>(loadAdminToken);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
 
   const entries = useQuery({
-    queryKey: ["abuse", "entries", deferredSearch, offset],
+    queryKey: ["abuse", "entries", token, deferredSearch, offset],
     queryFn: () =>
-      apiClient.getAbuseEntries({
+      apiClient.getAbuseEntries(token ?? "", {
         q: deferredSearch.trim() || undefined,
         limit: PAGE_SIZE,
         offset,
       }),
+    enabled: token !== null,
     // An access problem is not worth retrying, and a retry would only delay the prompt
     retry: (failureCount, error) =>
       adminAccessError(error) === null && failureCount < 1,
   });
 
   const access = entries.error ? adminAccessError(entries.error) : null;
+  const needsToken = token === null || access === "unauthorized";
   const page = entries.data;
 
   const handleAuth = async (password: string) => {
     try {
-      // There is no separate sign-in: sending the admin password with a session request
-      // is what sets the cookie. The session it creates is not used.
-      await apiClient.createSession(password);
+      // Check the token before keeping it
+      await apiClient.getAbuseEntries(password, { limit: 1 });
+      saveAdminToken(password);
+      setToken(password);
       setAuthError(null);
-      await queryClient.invalidateQueries({ queryKey: ["abuse"] });
     } catch (error) {
-      if (isAdminRequiredError(error)) {
-        setAuthError("Invalid admin password");
+      const problem = adminAccessError(error);
+      if (problem === "not_configured") {
+        setToken(password);
+      } else if (problem === "unauthorized") {
+        setAuthError("Invalid admin token");
       } else {
-        setAuthError("Failed to authenticate. Please try again.");
+        setAuthError("Could not reach the server. Please try again.");
       }
     }
   };
 
-  const hasNext = page ? offset + page.entries.length < page.total : false;
+  const signOut = () => {
+    saveAdminToken(null);
+    setToken(null);
+    queryClient.removeQueries({ queryKey: ["abuse"] });
+  };
 
   return (
     <StandaloneLayout>
-      {access === "unauthorized" && (
+      {needsToken && access !== "not_configured" && (
         <AdminAuthOverlay
-          title="Admin access required"
-          description="Enter the admin password to manage blocked subdomains."
+          title="Abuse admin"
+          description="Enter the abuse admin token (ABUSE_ADMIN_TOKEN)."
           onSubmit={handleAuth}
         />
       )}
 
-      <Card>
-        <CardBody className="gap-2">
-          <div className="flex items-center gap-2">
-            <Ban className="h-5 w-5 text-danger" />
-            <h1 className="text-xl font-semibold">Blocked subdomains</h1>
-          </div>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-semibold">Suspended subdomains</h1>
           <p className="text-sm text-default-500">
-            A blocked subdomain is refused everywhere: its requests get{" "}
-            <code>410 Gone</code>, its name does not resolve and its
-            owner&apos;s token stops working. Blocks are saved and survive a
-            restart.
+            Reports suspend a subdomain immediately. Suspended subdomains answer{" "}
+            <code>410</code>, do not resolve, and keep recording their traffic
+            here.
           </p>
-        </CardBody>
-      </Card>
+        </div>
+        {token && access !== "not_configured" && (
+          <Button
+            size="sm"
+            variant="light"
+            startContent={<LogOut className="h-4 w-4" />}
+            onPress={signOut}
+          >
+            Sign out
+          </Button>
+        )}
+      </div>
 
       {access === "not_configured" ? (
         <Card>
-          <CardBody className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-default-400" />
-              <h2 className="text-base font-semibold">
-                Not available on this instance
-              </h2>
-            </div>
+          <CardBody className="flex flex-row items-start gap-3">
+            <Lock className="mt-0.5 h-5 w-5 shrink-0 text-default-400" />
             <p className="text-sm text-default-500">
-              Managing blocked subdomains requires an admin token. None is
-              configured here, so a block can only be lifted by removing its
-              entry from <code>abuse.json</code> in the server&apos;s data
-              directory and restarting.
+              The abuse admin API is off. Set <code>ABUSE_ADMIN_TOKEN</code> on
+              the server to manage suspensions here.
             </p>
           </CardBody>
         </Card>
-      ) : access === null ? (
+      ) : token ? (
         <>
-          <BlockForm />
+          <SuspendForm token={token} />
 
           <Card>
-            <CardHeader className="flex flex-col gap-3">
-              <h3 className="text-base font-semibold">Blocked subdomains</h3>
+            <CardBody className="gap-3">
               <Input
-                placeholder="Search by subdomain"
+                placeholder="Search"
                 aria-label="Search by subdomain"
                 value={search}
                 onValueChange={(value) => {
@@ -507,10 +548,8 @@ export function AbuseAdminPage() {
                 onClear={() => setOffset(0)}
                 className="max-w-xs"
               />
-            </CardHeader>
-            <CardBody>
               <Table
-                aria-label="Blocked subdomains"
+                aria-label="Suspended subdomains"
                 selectionMode="none"
                 onRowAction={(key) => setSelected(String(key))}
                 removeWrapper
@@ -518,18 +557,18 @@ export function AbuseAdminPage() {
                 <TableHeader>
                   <TableColumn key="subdomain">Subdomain</TableColumn>
                   <TableColumn key="category">Category</TableColumn>
-                  <TableColumn key="origin">Origin</TableColumn>
+                  <TableColumn key="by">By</TableColumn>
                   <TableColumn key="reports">Reports</TableColumn>
-                  <TableColumn key="since">Blocked since</TableColumn>
+                  <TableColumn key="since">Suspended</TableColumn>
                 </TableHeader>
                 <TableBody
                   isLoading={entries.isLoading}
                   loadingContent="Loading…"
-                  items={page?.entries ?? []}
+                  items={page?.subdomains ?? []}
                   emptyContent={
                     entries.error
-                      ? "Could not load the blocklist"
-                      : "No blocked subdomains"
+                      ? "Could not load the list"
+                      : "No suspended subdomains"
                   }
                 >
                   {(entry) => (
@@ -537,10 +576,8 @@ export function AbuseAdminPage() {
                       <TableCell className="font-mono text-sm">
                         {entry.subdomain}
                       </TableCell>
-                      <TableCell>
-                        <Chip size="sm" variant="flat" color="danger">
-                          {categoryLabel(entry.category)}
-                        </Chip>
+                      <TableCell className="text-sm">
+                        {categoryLabel(entry.category)}
                       </TableCell>
                       <TableCell className="text-sm text-default-500">
                         {entry.source === "admin" ? "Admin" : "Report"}
@@ -549,19 +586,18 @@ export function AbuseAdminPage() {
                         {entry.report_count}
                       </TableCell>
                       <TableCell className="text-sm text-default-500">
-                        {formatDate(entry.created_at)}
+                        {formatDate(entry.suspended_at)}
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
 
-              {page && page.entries.length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              {page && page.pagination.total > PAGE_SIZE && (
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-default-500">
-                    {offset + 1}–
-                    {Math.min(offset + page.entries.length, page.total)} of{" "}
-                    {page.total}
+                    {offset + 1}–{offset + page.subdomains.length} of{" "}
+                    {page.pagination.total}
                   </span>
                   <div className="flex gap-2">
                     <Button
@@ -575,7 +611,7 @@ export function AbuseAdminPage() {
                     <Button
                       size="sm"
                       variant="flat"
-                      isDisabled={!hasNext}
+                      isDisabled={!page.pagination.has_more}
                       onPress={() => setOffset(offset + PAGE_SIZE)}
                     >
                       Next
@@ -588,12 +624,12 @@ export function AbuseAdminPage() {
         </>
       ) : null}
 
-      {selected && (
+      {selected && token && (
         <EntryDialog
           key={selected}
+          token={token}
           subdomain={selected}
           onClose={() => setSelected(null)}
-          onLifted={() => setOffset(0)}
         />
       )}
     </StandaloneLayout>

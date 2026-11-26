@@ -82,8 +82,8 @@ export function useWebSocket() {
             clearRequests(message.subdomain);
             break;
 
-          case "blacklisted":
-            // The server has stopped logging for this session and is saying why
+          case "suspended":
+            // The session was suspended for abuse, and the server is saying why
             markBlocked(message.subdomain, message.category);
             break;
 
@@ -92,9 +92,9 @@ export function useWebSocket() {
             break;
 
           case "error":
-            if (message.code === "subdomain_blacklisted") {
-              // A blocked session keeps its token: it is still valid, and works again
-              // once the block is lifted. So it is marked, never removed.
+            if (message.code === "subdomain_suspended") {
+              // A suspended session keeps its token: it is still valid, and works again
+              // if the suspension is lifted. So it is marked, never removed.
               if (message.subdomain) {
                 markBlocked(message.subdomain, message.category);
               }

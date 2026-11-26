@@ -22,7 +22,7 @@ interface BlockedSubdomainOverlayProps {
 }
 
 /**
- * Shown when the active session has been blocked for abuse. Nothing in the dashboard
+ * Shown when the active session has been suspended for abuse. Nothing in the dashboard
  * works for it any more, so the only ways forward are a new URL or another session.
  */
 export function BlockedSubdomainOverlay({
@@ -33,6 +33,7 @@ export function BlockedSubdomainOverlay({
   const sessions = useSessionStore((s) => s.sessions);
   const replaceSession = useSessionStore((s) => s.replaceSession);
   const setActiveSession = useSessionStore((s) => s.setActiveSession);
+  const removeSession = useSessionStore((s) => s.removeSession);
   const blocked = useBlockedStore((s) => s.blocked);
   const setShowAuthOverlay = useAuthStore((s) => s.setShowAuthOverlay);
   const contact = getAbuseContact();
@@ -75,27 +76,27 @@ export function BlockedSubdomainOverlay({
         <ModalHeader className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Ban className="h-5 w-5 text-danger" />
-            <span>This session has been blocked</span>
+            <span>This session has been suspended</span>
           </div>
         </ModalHeader>
         <ModalBody className="pb-6">
           <p className="text-sm text-default-500">
             <span className="font-mono text-foreground">{subdomain}</span> was
-            blocked{" "}
-            {category
-              ? `after an abuse report (${categoryLabel(category).toLowerCase()})`
-              : "for abuse"}
-            . Requests to it are refused and nothing is served from it.
+            reported for abuse
+            {category ? ` (${categoryLabel(category).toLowerCase()})` : ""} and
+            suspended. It no longer serves responses or resolves, and new
+            requests to it are not shown here.
           </p>
           <p className="text-sm text-default-500">
+            If you were using it for legitimate testing, take a new URL and
+            carry on.
             {contact ? (
               <>
-                If you believe this is a mistake, contact{" "}
+                {" "}
+                To dispute the suspension, contact{" "}
                 <span className="text-foreground">{contact}</span>.
               </>
-            ) : (
-              "If you believe this is a mistake, contact the operator of this instance."
-            )}
+            ) : null}
           </p>
 
           <div className="mt-4 flex flex-col gap-2">
@@ -109,14 +110,23 @@ export function BlockedSubdomainOverlay({
               Get a new URL
             </Button>
             {alternative && (
-              <Button
-                variant="flat"
-                onPress={() => setActiveSession(alternative.subdomain)}
-                className="w-full"
-              >
-                Switch to{" "}
-                <span className="font-mono">{alternative.subdomain}</span>
-              </Button>
+              <>
+                <Button
+                  variant="flat"
+                  onPress={() => setActiveSession(alternative.subdomain)}
+                  className="w-full"
+                >
+                  Switch to{" "}
+                  <span className="font-mono">{alternative.subdomain}</span>
+                </Button>
+                <Button
+                  variant="light"
+                  onPress={() => removeSession(subdomain)}
+                  className="w-full"
+                >
+                  Close this session
+                </Button>
+              </>
             )}
           </div>
         </ModalBody>

@@ -6,7 +6,6 @@ export const ABUSE_CATEGORIES: { key: AbuseCategory; label: string }[] = [
   { key: "phishing", label: "Phishing" },
   { key: "csam", label: "Child sexual abuse material" },
   { key: "spam", label: "Spam" },
-  { key: "copyright", label: "Copyright infringement" },
   { key: "other", label: "Other" },
 ];
 
@@ -56,4 +55,46 @@ export function downloadJson(filename: string, data: unknown): void {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+/** Starts a download of rows as a CSV file. */
+export function downloadCsv(
+  filename: string,
+  header: string[],
+  rows: (string | number | undefined)[][],
+): void {
+  const escape = (value: string | number | undefined) => {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const csv = [header, ...rows]
+    .map((row) => row.map(escape).join(","))
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([csv + "\n"], { type: "text/csv" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// The abuse admin token is kept for this tab only, and sent as a Bearer header. Storage can
+// be unavailable (private windows, blocked site data), so every access is guarded.
+const ADMIN_TOKEN_KEY = "abuse_admin_token";
+
+export function loadAdminToken(): string | null {
+  try {
+    return sessionStorage.getItem(ADMIN_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveAdminToken(token: string | null): void {
+  try {
+    if (token) sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+    else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch {
+    // Kept in memory only
+  }
 }

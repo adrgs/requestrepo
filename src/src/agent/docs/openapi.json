@@ -1,0 +1,1356 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "requestrepo API",
+    "version": "2",
+    "summary": "Capture HTTP, DNS and SMTP traffic to a throwaway subdomain and script its responses.",
+    "description": "Create a session, send traffic to its `domain`, and read what arrived. Authenticate every session call with `Authorization: Bearer <token>` (or `?token=`). Errors are `{\"error\": string, \"code\": string}`. Agent guide: {{ORIGIN}}/docs/api.md Every error is JSON with a stable `code`.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "{{ORIGIN}}/api/v2"
+    }
+  ],
+  "externalDocs": {
+    "url": "{{ORIGIN}}/docs/api.md",
+    "description": "Agent guide"
+  },
+  "security": [
+    {
+      "session": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "sessions"
+    },
+    {
+      "name": "requests",
+      "description": "Captured traffic"
+    },
+    {
+      "name": "files",
+      "description": "HTTP responses the subdomain serves"
+    },
+    {
+      "name": "dns",
+      "description": "DNS records the subdomain serves"
+    },
+    {
+      "name": "abuse",
+      "description": "Reporting abused subdomains"
+    },
+    {
+      "name": "abuse-admin",
+      "description": "Managing suspensions (operator only)"
+    }
+  ],
+  "paths": {
+    "/sessions": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "operationId": "createSession",
+        "summary": "Create a session",
+        "description": "The body is optional. On an instance that requires a password, send it as `Authorization: Bearer <ADMIN_TOKEN>` or as `admin_token`.",
+        "security": [
+          {},
+          {
+            "instancePassword": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "admin_token": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/requests": {
+      "get": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "listRequests",
+        "summary": "List captured requests, oldest first",
+        "description": "With `after`, returns only requests newer than that cursor. With `wait`, holds the response until a matching request arrives (long polling). Pass the returned `cursor` as `after` next time.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Return only requests captured after the request with this ID (the previous `cursor`)."
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "description": "Seconds to wait for a request when none matches yet."
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "http",
+                "dns",
+                "smtp",
+                "tcp"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Ignored with `after`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requests",
+                    "cursor",
+                    "pagination"
+                  ],
+                  "properties": {
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CapturedRequest"
+                      }
+                    },
+                    "cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "ID of the newest request returned, or the `after` given when nothing new arrived."
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "has_more": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "deleteAllRequests",
+        "summary": "Delete every captured request",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/requests/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "getRequest",
+        "summary": "Get one captured request",
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapturedRequest"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "deleteRequest",
+        "summary": "Delete one captured request",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/requests/{id}/share": {
+      "post": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "shareRequest",
+        "summary": "Create a read-only share token for one request",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Share token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "share_token": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/requests/shared/{share_token}": {
+      "get": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "getSharedRequest",
+        "summary": "Read a shared request (no session needed)",
+        "security": [
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapturedRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/files": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "getFiles",
+        "summary": "Get the whole response file tree",
+        "responses": {
+          "200": {
+            "description": "Map of path to file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/File"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "replaceFiles",
+        "summary": "Replace the whole response file tree",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/files/{path}": {
+      "parameters": [
+        {
+          "name": "path",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "File path without a leading slash; may contain slashes, e.g. `js/app.js`."
+        }
+      ],
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "getFile",
+        "summary": "Get one response file",
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "putFile",
+        "summary": "Create or replace one response file",
+        "description": "Give the body as text in `body` or as base64 in `raw`. Defaults: status 200, `Access-Control-Allow-Origin: *` and a Content-Type guessed from the extension.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "description": "Response body as text"
+                  },
+                  "raw": {
+                    "type": "string",
+                    "contentEncoding": "base64",
+                    "description": "Response body as base64"
+                  },
+                  "status_code": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 599,
+                    "default": 200
+                  },
+                  "headers": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Header"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutFileResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutFileResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "deleteFile",
+        "summary": "Delete one response file",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/dns": {
+      "get": {
+        "tags": [
+          "dns"
+        ],
+        "operationId": "getDnsRecords",
+        "summary": "Get the session's DNS records",
+        "responses": {
+          "200": {
+            "description": "Records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnsRecords"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "dns"
+        ],
+        "operationId": "putDnsRecords",
+        "summary": "Replace the session's DNS records",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DnsRecords"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnsRecords"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/abuse": {
+      "get": {
+        "tags": [
+          "abuse"
+        ],
+        "operationId": "getAbusePolicy",
+        "summary": "How abuse reporting works on this instance",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AbusePolicy"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/abuse/reports": {
+      "post": {
+        "tags": [
+          "abuse"
+        ],
+        "operationId": "reportAbuse",
+        "summary": "Report a subdomain used for abuse; it is suspended immediately",
+        "description": "Rate limited to 3 reports per hour per IPv4 address or IPv6 /48. Must be sent as application/json.",
+        "security": [
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AbuseReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Suspended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AbuseReportResult"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Already suspended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AbuseReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/abuse/admin/subdomains": {
+      "get": {
+        "tags": [
+          "abuse-admin"
+        ],
+        "operationId": "listSuspensions",
+        "summary": "Suspended subdomains, most recently changed first",
+        "security": [
+          {
+            "abuseAdmin": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Suspensions"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/abuse/admin/subdomains/{subdomain}": {
+      "parameters": [
+        {
+          "name": "subdomain",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Label, hostname or URL"
+        }
+      ],
+      "get": {
+        "tags": [
+          "abuse-admin"
+        ],
+        "operationId": "getSuspension",
+        "summary": "One suspension with its recent reports",
+        "security": [
+          {
+            "abuseAdmin": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Suspension"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "abuse-admin"
+        ],
+        "operationId": "suspend",
+        "summary": "Suspend a subdomain, or update the reason of a suspension",
+        "security": [
+          {
+            "abuseAdmin": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "category": {
+                    "$ref": "#/components/schemas/AbuseCategory"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Suspended"
+          },
+          "200": {
+            "description": "Already suspended; reason updated"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "abuse-admin"
+        ],
+        "operationId": "liftSuspension",
+        "summary": "Lift the suspension",
+        "security": [
+          {
+            "abuseAdmin": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lifted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/abuse/admin/subdomains/{subdomain}/requests": {
+      "get": {
+        "tags": [
+          "abuse-admin"
+        ],
+        "operationId": "listSuspendedTraffic",
+        "summary": "Traffic a suspended subdomain captured, including while suspended",
+        "security": [
+          {
+            "abuseAdmin": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "subdomain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Label, hostname or URL"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/abuse/admin/subdomains/{subdomain}/sources": {
+      "get": {
+        "tags": [
+          "abuse-admin"
+        ],
+        "operationId": "listSuspendedSources",
+        "summary": "Distinct source IPs that contacted a suspended subdomain",
+        "security": [
+          {
+            "abuseAdmin": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "subdomain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Label, hostname or URL"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sources"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/abuse/admin/subdomains/{subdomain}/data": {
+      "delete": {
+        "tags": [
+          "abuse-admin"
+        ],
+        "operationId": "purgeSubdomainData",
+        "summary": "Delete the subdomain's files, DNS records and captured requests",
+        "security": [
+          {
+            "abuseAdmin": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "subdomain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Label, hostname or URL"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Purged"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The `token` from createSession"
+      },
+      "instancePassword": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "ADMIN_TOKEN, on instances that require one to create sessions"
+      },
+      "abuseAdmin": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "ABUSE_ADMIN_TOKEN"
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error",
+          "code"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "examples": [
+              "invalid_token",
+              "subdomain_suspended",
+              "rate_limited",
+              "cursor_not_found"
+            ]
+          },
+          "retry_after": {
+            "type": "integer",
+            "description": "Seconds, on 429"
+          },
+          "contact": {
+            "type": "string",
+            "description": "On subdomain_suspended, whom to contact"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "required": [
+          "token",
+          "subdomain",
+          "domain",
+          "url",
+          "email"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "subdomain": {
+            "type": "string",
+            "examples": [
+              "abcd1234"
+            ]
+          },
+          "domain": {
+            "type": "string",
+            "examples": [
+              "abcd1234.{{DOMAIN}}"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "email": {
+            "type": "string",
+            "examples": [
+              "anything@abcd1234.{{DOMAIN}}"
+            ]
+          }
+        }
+      },
+      "CapturedRequest": {
+        "type": "object",
+        "required": [
+          "_id",
+          "type",
+          "date",
+          "raw"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "http",
+              "dns",
+              "smtp",
+              "tcp"
+            ]
+          },
+          "date": {
+            "type": "integer",
+            "description": "Unix seconds"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "country": {
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2"
+          },
+          "raw": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "HTTP: the body. DNS: the query packet. SMTP: the session transcript."
+          },
+          "uid": {
+            "type": "string",
+            "description": "The session subdomain"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "query_type": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string",
+            "description": "DNS: the name queried"
+          },
+          "reply": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text_body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "html_body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "data": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Header": {
+        "type": "object",
+        "required": [
+          "header",
+          "value"
+        ],
+        "properties": {
+          "header": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "File": {
+        "type": "object",
+        "required": [
+          "raw",
+          "headers",
+          "status_code"
+        ],
+        "properties": {
+          "raw": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Header"
+            }
+          },
+          "status_code": {
+            "type": "integer"
+          }
+        }
+      },
+      "PutFileResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "file": {
+            "$ref": "#/components/schemas/File"
+          }
+        }
+      },
+      "DnsRecords": {
+        "type": "object",
+        "required": [
+          "records"
+        ],
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "domain",
+                "type",
+                "value"
+              ],
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Relative to the session, e.g. `www` or `*`"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "A",
+                    "AAAA",
+                    "CNAME",
+                    "TXT"
+                  ]
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Separate several A/AAAA addresses with %"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AbuseCategory": {
+        "type": "string",
+        "enum": [
+          "malware",
+          "phishing",
+          "csam",
+          "spam",
+          "other"
+        ]
+      },
+      "AbusePolicy": {
+        "type": "object",
+        "properties": {
+          "reporting_enabled": {
+            "type": "boolean"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AbuseCategory"
+            }
+          },
+          "rate_limit": {
+            "type": "object"
+          },
+          "report_endpoint": {
+            "type": "string"
+          },
+          "report_page": {
+            "type": "string"
+          },
+          "contact": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AbuseReport": {
+        "type": "object",
+        "required": [
+          "subdomain",
+          "category"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "subdomain": {
+            "type": "string",
+            "description": "Label, hostname or URL"
+          },
+          "category": {
+            "$ref": "#/components/schemas/AbuseCategory"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      },
+      "AbuseReportResult": {
+        "type": "object",
+        "properties": {
+          "subdomain": {
+            "type": "string"
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "already_suspended": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

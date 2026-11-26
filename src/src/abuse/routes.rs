@@ -1,7 +1,8 @@
 //! HTTP endpoints of the subdomain blocklist.
 //!
-//! None of these routes are CORS-enabled. The dashboard is same-origin, and a public write
-//! endpoint must not be reachable from pages on other sites.
+//! None of these routes are CORS-enabled, and reports must be `application/json`, which a
+//! cross-site form or beacon cannot send without a CORS preflight: no website can make its
+//! visitors' browsers file reports.
 
 use axum::{
     body::{Body, Bytes},
@@ -11,59 +12,61 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
+use tracing::warn;
 
 use super::limiter::network_label;
-use super::{AdminError, Applied, Category, Entry, MutateError, Report, ReportOutcome, Source};
-use crate::http::routes_v2::{delete_dns_record_entries, paginated_requests};
+use super::{
+    AdminError, Applied, Category, Entry, MutateError, Report, Source, REPORT_RATE_LIMIT,
+    REPORT_RATE_WINDOW,
+};
+use crate::http::routes_v2::{delete_dns_record_entries, json_body, paginated_requests};
 use crate::http::AppState;
 use crate::models::CacheMessage;
-use crate::utils::auth::extract_admin_token;
+use crate::utils::auth::bearer_token;
 use crate::utils::config::CONFIG;
 use crate::utils::{get_current_timestamp, verify_subdomain};
 
 /// Largest accepted report or admin body. Both hold a few short text fields.
-const MAX_BODY_BYTES: usize = 16 * 1024;
+const MAX_BODY_BYTES: usize = 4 * 1024;
 const MAX_SUBDOMAIN_INPUT: usize = 512;
-const MAX_DESCRIPTION_CHARS: usize = 1000;
-const MAX_URL_CHARS: usize = 500;
-const MAX_CONTACT_CHARS: usize = 200;
-const MAX_NOTE_CHARS: usize = 500;
+/// Reasons are short on purpose: they are a note for the admin, not a place to store data.
+pub const MAX_REASON_CHARS: usize = 300;
 
 const DEFAULT_PAGE_LIMIT: usize = 50;
 const MAX_PAGE_LIMIT: usize = 500;
 
-/// All blocklist routes. The report route is public; the admin routes need the admin token.
+/// All blocklist routes. The policy and report routes are public; the admin routes need
+/// `ABUSE_ADMIN_TOKEN` as a Bearer token.
 pub fn router() -> Router<AppState> {
+    let admin = "/api/v2/abuse/admin/subdomains";
     Router::new()
+        .route("/api/v2/abuse", get(policy))
         .route(
             "/api/v2/abuse/reports",
             post(create_report).layer(DefaultBodyLimit::max(MAX_BODY_BYTES)),
         )
-        .route("/api/v2/abuse/admin/entries", get(list_entries))
+        .route(admin, get(list_entries))
         .route(
-            "/api/v2/abuse/admin/entries/:subdomain",
-            get(get_entry).delete(lift_entry),
+            &format!("{admin}/:subdomain"),
+            get(get_entry)
+                .put(suspend_entry)
+                .delete(lift_entry)
+                .layer(DefaultBodyLimit::max(MAX_BODY_BYTES)),
         )
         .route(
-            "/api/v2/abuse/admin/entries/:subdomain/block",
-            post(block_entry).layer(DefaultBodyLimit::max(MAX_BODY_BYTES)),
-        )
-        .route(
-            "/api/v2/abuse/admin/entries/:subdomain/data",
-            delete(purge_data),
-        )
-        .route(
-            "/api/v2/abuse/admin/entries/:subdomain/requests",
+            &format!("{admin}/:subdomain/requests"),
             get(list_entry_requests),
         )
+        .route(&format!("{admin}/:subdomain/sources"), get(list_sources))
+        .route(&format!("{admin}/:subdomain/data"), delete(purge_data))
 }
 
 // ============================================================================
@@ -71,32 +74,26 @@ pub fn router() -> Router<AppState> {
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateReportRequest {
     pub subdomain: String,
     pub category: Category,
-    pub description: String,
     #[serde(default)]
-    pub evidence_url: Option<String>,
-    #[serde(default)]
-    pub contact: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ListEntriesQuery {
-    pub q: Option<String>,
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
-pub struct BlockRequest {
-    pub admin_token: Option<String>,
+#[serde(deny_unknown_fields)]
+pub struct SuspendRequest {
+    #[serde(default)]
     pub category: Option<Category>,
+    #[serde(default)]
     pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EntryRequestsQuery {
+pub struct PageQuery {
+    pub q: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -107,7 +104,8 @@ struct EntrySummary<'a> {
     subdomain: &'a str,
     category: Category,
     source: Source,
-    created_at: i64,
+    suspended_at: i64,
+    updated_at: i64,
     report_count: u32,
 }
 
@@ -117,66 +115,63 @@ impl<'a> From<&'a Entry> for EntrySummary<'a> {
             subdomain: &entry.subdomain,
             category: entry.category,
             source: entry.source,
-            created_at: entry.created_at,
+            suspended_at: entry.suspended_at,
+            updated_at: entry.updated_at,
             report_count: entry.report_count,
         }
     }
 }
 
 // ============================================================================
-// Public Reporting
+// Public
 // ============================================================================
 
-/// POST /api/v2/abuse/reports - Report a subdomain for abuse, which blocks it
+/// GET /api/v2/abuse - How reporting works on this instance
+pub async fn policy(State(state): State<AppState>) -> Response {
+    Json(json!({
+        "reporting_enabled": state.abuse.settings().reporting_enabled,
+        "effect": "A report suspends the subdomain immediately.",
+        "categories": Category::ALL,
+        "rate_limit": {
+            "reports": REPORT_RATE_LIMIT,
+            "window_secs": REPORT_RATE_WINDOW.as_secs(),
+            "per": "IPv4 address or IPv6 /48",
+        },
+        "report_endpoint": "/api/v2/abuse/reports",
+        "report_page": "/abuse",
+        "contact": CONFIG.abuse_contact,
+    }))
+    .into_response()
+}
+
+/// POST /api/v2/abuse/reports - Report a subdomain for abuse, which suspends it at once
 pub async fn create_report(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(body): Json<CreateReportRequest>,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Response {
-    if !state.abuse.reporting_enabled() {
+    if !state.abuse.settings().reporting_enabled {
         return error(
             StatusCode::NOT_FOUND,
             "reporting_disabled",
             "Abuse reporting is disabled on this instance",
         );
     }
+    let body: CreateReportRequest = match json_body(&headers, &body, true) {
+        Ok(body) => body,
+        Err(response) => return *response,
+    };
 
-    // Validation comes first, so that a typo does not cost the reporter one of their few
-    // attempts.
+    // Validation comes first, so that a typo does not cost the reporter an attempt.
     let Some(subdomain) = normalize_subdomain(&body.subdomain) else {
+        return invalid_subdomain();
+    };
+    let Ok(reason) = optional(body.reason.as_deref(), MAX_REASON_CHARS) else {
         return error(
             StatusCode::BAD_REQUEST,
-            "invalid_subdomain",
-            "Enter a subdomain of this instance",
-        );
-    };
-    let Some(description) = bounded(&body.description, MAX_DESCRIPTION_CHARS)
-        .ok()
-        .filter(|description| !description.is_empty())
-    else {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "invalid_description",
-            format!(
-                "Description is required and must be at most {MAX_DESCRIPTION_CHARS} characters"
-            ),
-        );
-    };
-    let evidence_url = match normalize_evidence_url(body.evidence_url.as_deref()) {
-        Ok(url) => url,
-        Err(_) => {
-            return error(
-                StatusCode::BAD_REQUEST,
-                "invalid_evidence_url",
-                "Evidence URL must be an http or https URL",
-            )
-        }
-    };
-    let Ok(contact) = optional(body.contact.as_deref(), MAX_CONTACT_CHARS) else {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "invalid_contact",
-            format!("Contact must be at most {MAX_CONTACT_CHARS} characters"),
+            "invalid_reason",
+            format!("The reason must be at most {MAX_REASON_CHARS} characters"),
         );
     };
 
@@ -189,25 +184,27 @@ pub async fn create_report(
         at: get_current_timestamp(),
         category: body.category,
         network: network_label(ip),
-        description,
-        evidence_url,
-        contact,
+        reason,
     };
     match state.abuse.report(&subdomain, report).await {
-        Ok(applied) => {
-            if applied.value == ReportOutcome::Blocked {
-                announce_block(&state.tx, &subdomain, body.category);
+        Ok(Applied { value: newly, .. }) => {
+            if newly {
+                warn!("Subdomain {subdomain} suspended by an abuse report");
+                if let Some(entry) = state.abuse.suspension(&subdomain) {
+                    announce_suspension(&state.tx, &entry);
+                }
             }
-            let status = match applied.value {
-                ReportOutcome::Blocked => StatusCode::CREATED,
-                ReportOutcome::AlreadyBlocked => StatusCode::OK,
-            };
             (
-                status,
+                if newly {
+                    StatusCode::CREATED
+                } else {
+                    StatusCode::OK
+                },
                 Json(json!({
-                    "status": applied.value,
                     "subdomain": subdomain,
-                    "persisted": applied.persisted,
+                    "suspended": true,
+                    "already_suspended": !newly,
+                    "message": "The subdomain is suspended.",
                 })),
             )
                 .into_response()
@@ -226,7 +223,7 @@ fn rate_limited(retry_after: Duration) -> Response {
         StatusCode::TOO_MANY_REQUESTS,
         [(header::RETRY_AFTER, retry_after.to_string())],
         Json(json!({
-            "error": "Too many reports from your network",
+            "error": "Too many reports from your address. Try again later.",
             "code": "rate_limited",
             "retry_after": retry_after,
         })),
@@ -258,8 +255,12 @@ fn normalize_subdomain(input: &str) -> Option<String> {
     };
     let host = host.trim_end_matches('.');
 
+    // A name under the subdomain (`x.abc12345.example.com`) belongs to it too.
     let suffix = format!(".{}", CONFIG.server_domain);
-    let label = host.strip_suffix(&suffix).unwrap_or(host);
+    let label = match host.strip_suffix(&suffix) {
+        Some(rest) => rest.rsplit('.').next().unwrap_or(rest),
+        None => host,
+    };
     verify_subdomain(
         label,
         CONFIG.subdomain_length,
@@ -268,83 +269,66 @@ fn normalize_subdomain(input: &str) -> Option<String> {
     .then(|| label.to_string())
 }
 
-/// Trims `value` and enforces a character limit. Limits count characters, not bytes.
-fn bounded(value: &str, max_chars: usize) -> Result<String, ()> {
-    let value = value.trim();
+/// Trims `value` and enforces a character limit. A blank value means it was left out.
+fn optional(value: Option<&str>, max_chars: usize) -> Result<Option<String>, ()> {
+    let Some(value) = value.map(str::trim) else {
+        return Ok(None);
+    };
     if value.chars().count() > max_chars {
         return Err(());
     }
-    Ok(value.to_string())
-}
-
-/// Like `bounded`, but a blank value means the field was left out.
-fn optional(value: Option<&str>, max_chars: usize) -> Result<Option<String>, ()> {
-    let value = match value {
-        None => return Ok(None),
-        Some(value) => bounded(value, max_chars)?,
-    };
-    Ok((!value.is_empty()).then_some(value))
-}
-
-/// Evidence links are shown as links in the admin UI, so they must be absolute http(s) URLs.
-fn normalize_evidence_url(value: Option<&str>) -> Result<Option<String>, ()> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-    let uri = Uri::from_str(value).map_err(|_| ())?;
-    let is_http = matches!(uri.scheme_str(), Some("http" | "https"));
-    if !is_http || uri.host().is_none() || value.chars().count() > MAX_URL_CHARS {
-        return Err(());
-    }
-    Ok(Some(value.to_string()))
+    Ok((!value.is_empty()).then(|| value.to_string()))
 }
 
 // ============================================================================
 // Admin
 // ============================================================================
 
-/// Requires a valid admin token, supplied as `Authorization: Bearer`, the `admin_token`
-/// cookie, or `admin_token` in the request body.
-fn require_admin(
-    state: &AppState,
-    headers: &HeaderMap,
-    cookies: &CookieJar,
-    body_token: Option<&str>,
-) -> Option<Response> {
+/// Requires `Authorization: Bearer <ABUSE_ADMIN_TOKEN>`. Header only: no cookie, so no
+/// other site can ride on an admin's browser.
+fn require_admin(state: &AppState, headers: &HeaderMap) -> Option<Response> {
     state
         .abuse
-        .verify_admin(extract_admin_token(body_token, cookies, headers).as_deref())
+        .verify_admin(bearer_token(headers).as_deref())
         .err()
         .map(|err| match err {
             AdminError::NotConfigured => error(
                 StatusCode::FORBIDDEN,
                 "admin_not_configured",
-                "Managing blocked subdomains requires ADMIN_TOKEN to be configured",
+                "The abuse admin API is off: set ABUSE_ADMIN_TOKEN to turn it on",
             ),
             AdminError::Invalid => error(
                 StatusCode::UNAUTHORIZED,
                 "invalid_admin_token",
-                "A valid admin token is required",
+                "Send the abuse admin token as Authorization: Bearer <token>",
             ),
         })
 }
 
-/// GET /api/v2/abuse/admin/entries - Blocked subdomains, newest first
+/// Authorizes an admin request and parses the subdomain in its path, which may be given as
+/// a label, hostname or URL.
+fn admin_subdomain(
+    state: &AppState,
+    headers: &HeaderMap,
+    subdomain: &str,
+) -> Result<String, Box<Response>> {
+    if let Some(response) = require_admin(state, headers) {
+        return Err(Box::new(response));
+    }
+    normalize_subdomain(subdomain).ok_or_else(|| Box::new(invalid_subdomain()))
+}
+
+/// GET /api/v2/abuse/admin/subdomains - Suspended subdomains, most recently changed first
 pub async fn list_entries(
     State(state): State<AppState>,
-    Query(query): Query<ListEntriesQuery>,
+    Query(query): Query<PageQuery>,
     headers: HeaderMap,
-    cookies: CookieJar,
 ) -> Response {
-    if let Some(response) = require_admin(&state, &headers, &cookies, None) {
+    if let Some(response) = require_admin(&state, &headers) {
         return response;
     }
 
-    let limit = query
-        .limit
-        .unwrap_or(DEFAULT_PAGE_LIMIT)
-        .clamp(1, MAX_PAGE_LIMIT);
-    let offset = query.offset.unwrap_or(0);
+    let (limit, offset) = page(query.limit, query.offset);
     let search = query
         .q
         .as_deref()
@@ -359,8 +343,8 @@ pub async fn list_entries(
         .filter(|entry| entry.subdomain.contains(&search))
         .collect();
     entries.sort_unstable_by(|a, b| {
-        b.created_at
-            .cmp(&a.created_at)
+        b.updated_at
+            .cmp(&a.updated_at)
             .then_with(|| a.subdomain.cmp(&b.subdomain))
     });
 
@@ -372,100 +356,90 @@ pub async fn list_entries(
         .map(|entry| EntrySummary::from(*entry))
         .collect();
 
-    (
-        StatusCode::OK,
-        Json(json!({
-            "entries": page,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        })),
-    )
-        .into_response()
+    Json(json!({
+        "subdomains": page,
+        "pagination": pagination(total, limit, offset),
+    }))
+    .into_response()
 }
 
-/// GET /api/v2/abuse/admin/entries/:subdomain - One entry, with its reports
+/// GET /api/v2/abuse/admin/subdomains/:subdomain - One suspension, with its recent reports
 pub async fn get_entry(
     State(state): State<AppState>,
     Path(subdomain): Path<String>,
     headers: HeaderMap,
-    cookies: CookieJar,
 ) -> Response {
-    if let Some(response) = require_admin(&state, &headers, &cookies, None) {
-        return response;
-    }
-
-    match state.abuse.entry(&subdomain.to_lowercase()) {
-        Some(entry) => (StatusCode::OK, Json(entry.as_ref())).into_response(),
-        None => not_found(),
+    let subdomain = match admin_subdomain(&state, &headers, &subdomain) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
+    match state.abuse.suspension(&subdomain) {
+        Some(entry) => {
+            let captured = state
+                .cache
+                .llen(&format!("requests:{subdomain}"))
+                .await
+                .unwrap_or(0);
+            let mut body = serde_json::to_value(entry.as_ref()).unwrap_or_default();
+            body["captured_requests"] = json!(captured);
+            Json(body).into_response()
+        }
+        None => not_suspended(),
     }
 }
 
-/// POST /api/v2/abuse/admin/entries/:subdomain/block - Block a subdomain directly
-pub async fn block_entry(
+/// PUT /api/v2/abuse/admin/subdomains/:subdomain - Suspend a subdomain. The body is
+/// optional: `{"category"?, "note"?}`. On a suspended subdomain it updates the reason.
+pub async fn suspend_entry(
     State(state): State<AppState>,
     Path(subdomain): Path<String>,
     headers: HeaderMap,
-    cookies: CookieJar,
     body: Bytes,
 ) -> Response {
-    // The body is optional, so that `curl -X POST -H "Authorization: Bearer …"` is enough.
-    // Anything else must parse: `Option<Json<T>>` would silently treat a malformed body
-    // as an absent one.
-    let BlockRequest {
-        admin_token,
-        category,
-        note,
-    } = if body.is_empty() {
-        BlockRequest::default()
+    let subdomain = match admin_subdomain(&state, &headers, &subdomain) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
+    let request: SuspendRequest = if body.iter().all(u8::is_ascii_whitespace) {
+        SuspendRequest::default()
     } else {
-        match serde_json::from_slice(&body) {
-            Ok(body) => body,
-            Err(e) => {
-                return error(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_body",
-                    format!("Body must be a JSON object: {e}"),
-                )
-            }
+        match json_body(&headers, &body, false) {
+            Ok(request) => request,
+            Err(response) => return *response,
         }
     };
-    if let Some(response) = require_admin(&state, &headers, &cookies, admin_token.as_deref()) {
-        return response;
-    }
-
-    let Some(subdomain) = normalize_subdomain(&subdomain) else {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "invalid_subdomain",
-            "Enter a subdomain of this instance",
-        );
-    };
-    let Ok(note) = optional(note.as_deref(), MAX_NOTE_CHARS) else {
+    let Ok(note) = optional(request.note.as_deref(), MAX_REASON_CHARS) else {
         return error(
             StatusCode::BAD_REQUEST,
             "invalid_note",
-            format!("Note must be at most {MAX_NOTE_CHARS} characters"),
+            format!("The note must be at most {MAX_REASON_CHARS} characters"),
         );
     };
 
-    let category = category.unwrap_or(Category::Other);
-    match state.abuse.block(&subdomain, category, note).await {
+    match state
+        .abuse
+        .suspend(&subdomain, request.category, note)
+        .await
+    {
         Ok(applied) => {
+            let entry = state.abuse.suspension(&subdomain);
             if applied.value {
-                announce_block(&state.tx, &subdomain, category);
+                if let Some(entry) = &entry {
+                    announce_suspension(&state.tx, entry);
+                }
             }
-            let status = if applied.value {
-                StatusCode::CREATED
-            } else {
-                StatusCode::OK
-            };
             (
-                status,
+                if applied.value {
+                    StatusCode::CREATED
+                } else {
+                    StatusCode::OK
+                },
                 Json(json!({
-                    "status": if applied.value { "blocked" } else { "already_blocked" },
                     "subdomain": subdomain,
+                    "suspended": true,
+                    "already_suspended": !applied.value,
                     "persisted": applied.persisted,
+                    "entry": entry.as_deref(),
                 })),
             )
                 .into_response()
@@ -478,50 +452,37 @@ pub async fn block_entry(
     }
 }
 
-/// DELETE /api/v2/abuse/admin/entries/:subdomain - Lift the block
+/// DELETE /api/v2/abuse/admin/subdomains/:subdomain - Lift the suspension
 pub async fn lift_entry(
     State(state): State<AppState>,
     Path(subdomain): Path<String>,
     headers: HeaderMap,
-    cookies: CookieJar,
 ) -> Response {
-    if let Some(response) = require_admin(&state, &headers, &cookies, None) {
-        return response;
-    }
-
-    let subdomain = subdomain.to_lowercase();
+    let subdomain = match admin_subdomain(&state, &headers, &subdomain) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
     match state.abuse.lift(&subdomain).await {
-        Applied { value: false, .. } => not_found(),
-        Applied { persisted, .. } => (
-            StatusCode::OK,
-            Json(json!({
-                "message": "Block lifted",
-                "subdomain": subdomain,
-                "persisted": persisted,
-            })),
-        )
-            .into_response(),
+        Applied { value: false, .. } => not_suspended(),
+        Applied { persisted, .. } => Json(json!({
+            "subdomain": subdomain,
+            "suspended": false,
+            "persisted": persisted,
+        }))
+        .into_response(),
     }
 }
 
-/// DELETE /api/v2/abuse/admin/entries/:subdomain/data - Delete the subdomain's files,
+/// DELETE /api/v2/abuse/admin/subdomains/:subdomain/data - Delete the subdomain's files,
 /// DNS records and captured requests
 pub async fn purge_data(
     State(state): State<AppState>,
     Path(subdomain): Path<String>,
     headers: HeaderMap,
-    cookies: CookieJar,
 ) -> Response {
-    if let Some(response) = require_admin(&state, &headers, &cookies, None) {
-        return response;
-    }
-
-    let Some(subdomain) = normalize_subdomain(&subdomain) else {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "invalid_subdomain",
-            "Enter a subdomain of this instance",
-        );
+    let subdomain = match admin_subdomain(&state, &headers, &subdomain) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let cache = &state.cache;
@@ -530,61 +491,148 @@ pub async fn purge_data(
     let _ = cache.delete(&format!("dns:{subdomain}")).await;
     let _ = cache.delete(&format!("requests:{subdomain}")).await;
 
-    // The subdomain may be unblocked by now, with an owner's dashboard still showing them.
+    // The subdomain may not be suspended, with an owner's dashboard still showing them.
     let _ = state.tx.send(CacheMessage {
         cmd: "delete_all".to_string(),
         subdomain: subdomain.clone(),
         data: "{}".to_string(),
     });
 
-    (
-        StatusCode::OK,
-        Json(json!({
-            "message": "Deleted the files, DNS records and requests of the subdomain",
-            "subdomain": subdomain,
-        })),
-    )
-        .into_response()
+    Json(json!({
+        "subdomain": subdomain,
+        "purged": ["files", "dns", "requests"],
+    }))
+    .into_response()
 }
 
-/// GET /api/v2/abuse/admin/entries/:subdomain/requests - What the subdomain captured
-/// before it was blocked. Read-only.
+/// GET /api/v2/abuse/admin/subdomains/:subdomain/requests - What a suspended subdomain
+/// captured, including traffic that arrived while it was suspended. Read-only.
 pub async fn list_entry_requests(
     State(state): State<AppState>,
     Path(subdomain): Path<String>,
-    Query(query): Query<EntryRequestsQuery>,
+    Query(query): Query<PageQuery>,
     headers: HeaderMap,
-    cookies: CookieJar,
 ) -> Response {
-    if let Some(response) = require_admin(&state, &headers, &cookies, None) {
-        return response;
-    }
+    let subdomain = match suspended_subdomain(&state, &headers, &subdomain) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
 
-    let subdomain = subdomain.to_lowercase();
-    if state.abuse.entry(&subdomain).is_none() {
-        return not_found();
-    }
-
-    let limit = query
-        .limit
-        .unwrap_or(DEFAULT_PAGE_LIMIT)
-        .clamp(1, MAX_PAGE_LIMIT);
-    let offset = query.offset.unwrap_or(0);
+    let (limit, offset) = page(query.limit, query.offset);
     let (total, requests) = paginated_requests(&state.cache, &subdomain, limit, offset).await;
 
+    Json(json!({
+        "requests": requests,
+        "pagination": pagination(total, limit, offset),
+    }))
+    .into_response()
+}
+
+#[derive(Debug, Serialize)]
+struct SourceAddress {
+    ip: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    country: Option<String>,
+    requests: usize,
+    first_seen: i64,
+    last_seen: i64,
+    types: Vec<String>,
+}
+
+/// GET /api/v2/abuse/admin/subdomains/:subdomain/sources - Every source address that
+/// contacted a suspended subdomain, most active first. For a botnet beacon these are its
+/// victims, in the form a CERT or abuse.ch can use to notify them.
+pub async fn list_sources(
+    State(state): State<AppState>,
+    Path(subdomain): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let subdomain = match suspended_subdomain(&state, &headers, &subdomain) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
+
+    let requests = state
+        .cache
+        .lrange(&format!("requests:{subdomain}"), 0, -1)
+        .await
+        .unwrap_or_default();
+
+    let mut sources: HashMap<String, SourceAddress> = HashMap::new();
+    for raw in &requests {
+        let Ok(request) = serde_json::from_str::<serde_json::Value>(raw) else {
+            continue;
+        };
+        let Some(ip) = request.get("ip").and_then(|ip| ip.as_str()) else {
+            continue;
+        };
+        let date = request.get("date").and_then(|d| d.as_i64()).unwrap_or(0);
+        let kind = request
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("unknown");
+        let source = sources
+            .entry(ip.to_string())
+            .or_insert_with(|| SourceAddress {
+                ip: ip.to_string(),
+                country: request
+                    .get("country")
+                    .and_then(|c| c.as_str())
+                    .map(str::to_string),
+                requests: 0,
+                first_seen: date,
+                last_seen: date,
+                types: Vec::new(),
+            });
+        source.requests += 1;
+        source.first_seen = source.first_seen.min(date);
+        source.last_seen = source.last_seen.max(date);
+        if !source.types.iter().any(|t| t == kind) {
+            source.types.push(kind.to_string());
+        }
+    }
+
+    let mut sources: Vec<SourceAddress> = sources.into_values().collect();
+    sources.sort_unstable_by(|a, b| b.requests.cmp(&a.requests).then(a.ip.cmp(&b.ip)));
+
+    Json(json!({
+        "subdomain": subdomain,
+        "total_requests": requests.len(),
+        "unique_sources": sources.len(),
+        "sources": sources,
+    }))
+    .into_response()
+}
+
+/// The subdomain in an admin path, if it is suspended. Captured traffic is only open to the
+/// admin for subdomains that were suspended.
+fn suspended_subdomain(
+    state: &AppState,
+    headers: &HeaderMap,
+    subdomain: &str,
+) -> Result<String, Box<Response>> {
+    let subdomain = admin_subdomain(state, headers, subdomain)?;
+    if state.abuse.is_blocked(&subdomain) {
+        Ok(subdomain)
+    } else {
+        Err(Box::new(not_suspended()))
+    }
+}
+
+fn page(limit: Option<usize>, offset: Option<usize>) -> (usize, usize) {
     (
-        StatusCode::OK,
-        Json(json!({
-            "requests": requests,
-            "pagination": {
-                "total": total,
-                "limit": limit,
-                "offset": offset,
-                "has_more": offset + limit < total,
-            }
-        })),
+        limit.unwrap_or(DEFAULT_PAGE_LIMIT).clamp(1, MAX_PAGE_LIMIT),
+        offset.unwrap_or(0),
     )
-        .into_response()
+}
+
+fn pagination(total: usize, limit: usize, offset: usize) -> serde_json::Value {
+    json!({
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset.saturating_add(limit) < total,
+    })
 }
 
 // ============================================================================
@@ -599,19 +647,30 @@ fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response
         .into_response()
 }
 
-fn not_found() -> Response {
+fn invalid_subdomain() -> Response {
     error(
-        StatusCode::NOT_FOUND,
-        "not_found",
-        "Subdomain is not blocked",
+        StatusCode::BAD_REQUEST,
+        "invalid_subdomain",
+        format!(
+            "Give a subdomain of {}: a label, a hostname or a URL",
+            CONFIG.server_domain
+        ),
     )
 }
 
-/// Sent to the owner of a subdomain on any endpoint that accepts its token.
-pub(crate) fn blocked_rejection(entry: &Entry) -> Response {
+fn not_suspended() -> Response {
+    error(
+        StatusCode::NOT_FOUND,
+        "not_suspended",
+        "The subdomain is not suspended",
+    )
+}
+
+/// Sent to the owner of a suspended subdomain on any endpoint that accepts its token.
+pub(crate) fn suspended_rejection(entry: &Entry) -> Response {
     let mut body = json!({
-        "error": "This subdomain has been blocked",
-        "code": "subdomain_blacklisted",
+        "error": "This subdomain was suspended after an abuse report. Create a new session.",
+        "code": "subdomain_suspended",
         "category": entry.category,
     });
     if let Some(contact) = &CONFIG.abuse_contact {
@@ -620,32 +679,72 @@ pub(crate) fn blocked_rejection(entry: &Entry) -> Response {
     (StatusCode::FORBIDDEN, Json(body)).into_response()
 }
 
-/// Sent for any traffic to a blocked subdomain. Plain text on purpose: nothing of the
-/// subdomain's own content is served, and the response is not cached.
-pub(crate) fn blocked_traffic_response() -> Response {
-    let mut body = String::from("410 Gone: this subdomain has been disabled for abuse.");
-    if let Some(contact) = &CONFIG.abuse_contact {
-        body.push_str(&format!(
-            "\nIf you believe this is a mistake, contact {contact}."
-        ));
-    }
+/// Sent for any traffic to a suspended subdomain: a small page for browsers, plain text for
+/// everything else. Nothing of the subdomain's own content is served, and it is not cached.
+pub(crate) fn suspended_traffic_response(accept: Option<&str>) -> Response {
+    let contact = CONFIG.abuse_contact.as_deref();
+    let wants_html = accept.is_some_and(|accept| accept.contains("text/html"));
+
+    let (content_type, body) = if wants_html {
+        let contact = contact
+            .map(|contact| {
+                format!(
+                    "<p>If you believe this is a mistake, contact {}.</p>",
+                    html_escape(contact)
+                )
+            })
+            .unwrap_or_default();
+        (
+            "text/html; charset=utf-8",
+            format!(
+                "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+                 <meta name=\"robots\" content=\"noindex\">\
+                 <title>Suspended</title><style>\
+                 body{{font:16px/1.5 system-ui,sans-serif;margin:0;min-height:100vh;\
+                 display:grid;place-items:center;background:#fafafa;color:#18181b}}\
+                 main{{max-width:28rem;padding:2rem}}h1{{font-size:1.25rem;margin:0 0 .5rem}}\
+                 p{{margin:.5rem 0;color:#52525b}}\
+                 @media(prefers-color-scheme:dark){{body{{background:#18181b;color:#fafafa}}\
+                 p{{color:#a1a1aa}}}}</style></head><body><main>\
+                 <h1>This subdomain has been suspended</h1>\
+                 <p>It was reported for abuse and no longer serves content.</p>{contact}\
+                 </main></body></html>"
+            ),
+        )
+    } else {
+        let mut body = String::from("410 Gone: this subdomain has been suspended for abuse.\n");
+        if let Some(contact) = contact {
+            body.push_str(&format!(
+                "If you believe this is a mistake, contact {contact}.\n"
+            ));
+        }
+        ("text/plain; charset=utf-8", body)
+    };
 
     Response::builder()
         .status(StatusCode::GONE)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "no-store")
-        // The request body was never read, so the connection cannot be reused safely.
-        .header(header::CONNECTION, "close")
+        .header(header::VARY, "Accept")
+        .header("x-robots-tag", "noindex")
         .body(Body::from(body))
         .unwrap()
 }
 
-/// Tells live dashboards and other listeners that `subdomain` is now blocked, and why.
-fn announce_block(tx: &broadcast::Sender<CacheMessage>, subdomain: &str, category: Category) {
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Tells the owner's live dashboards that the subdomain is now suspended, and why.
+fn announce_suspension(tx: &broadcast::Sender<CacheMessage>, entry: &Entry) {
     let _ = tx.send(CacheMessage {
-        cmd: "blacklisted".to_string(),
-        subdomain: subdomain.to_string(),
-        data: json!({ "category": category }).to_string(),
+        cmd: "suspended".to_string(),
+        subdomain: entry.subdomain.clone(),
+        data: json!({ "category": entry.category }).to_string(),
     });
 }
 
@@ -682,6 +781,11 @@ mod tests {
             normalize_subdomain(&format!("http://user:pw@{label}.{domain}/")),
             expected
         );
+        // A name under the subdomain belongs to it
+        assert_eq!(
+            normalize_subdomain(&format!("data.x.{label}.{domain}")),
+            expected
+        );
         // Case never matters
         assert_eq!(
             normalize_subdomain(&format!(
@@ -704,9 +808,7 @@ mod tests {
             None
         );
         // Not a label of this instance
-        let foreign = format!("{}.example.org", CONFIG.server_domain);
         assert_eq!(normalize_subdomain(&format!("{label}.example.org")), None);
-        assert_eq!(normalize_subdomain(&format!("{label}.{foreign}")), None);
         assert_eq!(normalize_subdomain(&CONFIG.server_domain.clone()), None);
         assert_eq!(
             normalize_subdomain(&format!("x.{}", CONFIG.server_domain)),
@@ -722,45 +824,19 @@ mod tests {
     }
 
     #[test]
-    fn evidence_url_must_be_absolute_http_s() {
-        assert_eq!(normalize_evidence_url(None), Ok(None));
-        assert_eq!(normalize_evidence_url(Some("  ")), Ok(None));
-        assert_eq!(
-            normalize_evidence_url(Some(" https://threatfox.abuse.ch/ioc/1982219/ ")),
-            Ok(Some("https://threatfox.abuse.ch/ioc/1982219/".to_string()))
-        );
-        assert_eq!(
-            normalize_evidence_url(Some("http://example.org")),
-            Ok(Some("http://example.org".to_string()))
-        );
-
-        assert_eq!(normalize_evidence_url(Some("example.org/report")), Err(()));
-        assert_eq!(normalize_evidence_url(Some("javascript:alert(1)")), Err(()));
-        assert_eq!(normalize_evidence_url(Some("data:text/html,x")), Err(()));
-        assert_eq!(
-            normalize_evidence_url(Some(&format!("https://{}", "a".repeat(MAX_URL_CHARS)))),
-            Err(())
-        );
-    }
-
-    #[test]
-    fn bounded_trims_and_enforces_limits() {
-        assert_eq!(bounded("  spaced out  ", 20), Ok("spaced out".to_string()));
-        assert_eq!(bounded("abc", 3), Ok("abc".to_string()));
-        assert_eq!(bounded("abcd", 3), Err(()));
-        // Limits count characters, not bytes
-        assert_eq!(bounded("ééééé", 5), Ok("ééééé".to_string()));
-    }
-
-    #[test]
-    fn optional_treats_blank_as_absent() {
+    fn optional_trims_bounds_and_treats_blank_as_absent() {
         assert_eq!(optional(None, 20), Ok(None));
-        assert_eq!(optional(Some(""), 20), Ok(None));
         assert_eq!(optional(Some("   "), 20), Ok(None));
-        assert_eq!(
-            optional(Some(" abuse@example.org "), 20),
-            Ok(Some("abuse@example.org".to_string()))
-        );
+        assert_eq!(optional(Some("  spaced  "), 20), Ok(Some("spaced".into())));
         assert_eq!(optional(Some("abcd"), 3), Err(()));
+        // Limits count characters, not bytes
+        assert_eq!(optional(Some("ééé"), 3), Ok(Some("ééé".into())));
+    }
+
+    #[test]
+    fn the_suspended_page_escapes_the_contact() {
+        let response = suspended_traffic_response(Some("text/html"));
+        assert_eq!(response.status(), StatusCode::GONE);
+        assert_eq!(html_escape("<a&\">"), "&lt;a&amp;&quot;&gt;");
     }
 }

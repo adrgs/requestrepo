@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
+import { AxiosError } from "axios";
+import { toast } from "sonner";
 import { apiClient, isAdminRequiredError } from "@/api/client";
 import { getSubdomainFromToken } from "@/lib/jwt";
 
@@ -63,7 +65,7 @@ export function useAutoSession() {
       apiClient
         .getSharedRequest(requestParam)
         .then((requestData) => {
-          if (requestData) {
+          {
             const subdomain = requestData.uid;
 
             // Get FRESH sessions from store, not stale closure
@@ -80,12 +82,18 @@ export function useAutoSession() {
               // User doesn't have the session, show the shared request
               setSharedRequest(requestData);
             }
-          } else {
-            console.error("Failed to load shared request");
           }
         })
-        .catch((e) => {
-          console.error("Invalid request share token:", e);
+        .catch((error: unknown) => {
+          const code =
+            error instanceof AxiosError
+              ? (error.response?.data as { code?: string } | undefined)?.code
+              : undefined;
+          toast.error(
+            code === "subdomain_suspended"
+              ? "This shared request is no longer available: its subdomain was suspended for abuse."
+              : "This share link is invalid or has expired.",
+          );
         });
       // Clean URL
       window.history.replaceState({}, "", window.location.pathname);

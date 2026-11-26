@@ -170,7 +170,7 @@ mod tests {
     /// The DNS server always consults the blocklist, so tests need one (empty) to pass in.
     async fn empty_blocklist(dir: &tempfile::TempDir) -> Arc<crate::abuse::AbuseList> {
         Arc::new(
-            crate::abuse::AbuseList::load(dir.path(), true, None)
+            crate::abuse::AbuseList::load(dir.path(), crate::abuse::Settings::default())
                 .await
                 .unwrap(),
         )

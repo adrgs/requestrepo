@@ -9,6 +9,8 @@ import type {
   AbuseEntry,
   AbuseEntriesResponse,
   AbuseReportResponse,
+  AbuseSourcesResponse,
+  AbuseSuspendResponse,
   CreateAbuseReportPayload,
 } from "@/types";
 import { getSubdomainFromToken } from "@/lib/jwt";
@@ -27,7 +29,7 @@ const authHeaders = (token: string) => ({
   Authorization: `Bearer ${token}`,
 });
 
-// Helper to check if we're offline mode
+// Helper to check if we're in offline mode
 function isNetworkError(error: unknown): boolean {
   if (error instanceof AxiosError) {
     return (
@@ -49,10 +51,7 @@ export function isAdminRequiredError(error: unknown): boolean {
   return false;
 }
 
-/**
- * Why an admin request was refused, or null if it was not an access problem.
- * A missing token and a wrong one are reported the same way by the server.
- */
+/** Why an abuse admin request was refused, or null if it was not an access problem. */
 export function adminAccessError(
   error: unknown,
 ): "unauthorized" | "not_configured" | null {
@@ -73,7 +72,7 @@ function bearerToken(
     : null;
 }
 
-// A blocked subdomain is refused on every request made with its token. Remember it here,
+// A suspended subdomain is refused on every request made with its token. Remember it here,
 // once, so that every caller gets the same behaviour without each having to check.
 api.interceptors.response.use(
   (response) => response,
@@ -82,7 +81,7 @@ api.interceptors.response.use(
       const data = error.response.data as
         | { code?: string; category?: AbuseCategory }
         | undefined;
-      if (data?.code === "subdomain_blacklisted") {
+      if (data?.code === "subdomain_suspended") {
         const subdomain = getSubdomainFromToken(
           bearerToken(error.config) ?? "",
         );
@@ -219,20 +218,14 @@ export async function createShareToken(
 }
 
 // Get a shared request by share token (public endpoint, no auth required)
-export async function getSharedRequest(
-  shareToken: string,
-): Promise<Request | null> {
-  try {
-    const { data } = await api.get<Request>(`/requests/shared/${shareToken}`);
-    return data;
-  } catch {
-    return null;
-  }
+export async function getSharedRequest(shareToken: string): Promise<Request> {
+  const { data } = await api.get<Request>(`/requests/shared/${shareToken}`);
+  return data;
 }
 
 // Abuse API
 
-// Submit an abuse report. A report blocks the subdomain. Public, rate limited by the server.
+// Report a subdomain, which suspends it immediately. Public and rate limited.
 export async function createAbuseReport(
   payload: CreateAbuseReportPayload,
 ): Promise<AbuseReportResponse> {
@@ -243,61 +236,89 @@ export async function createAbuseReport(
   return data;
 }
 
-// List blocked subdomains. Requires the admin token.
-export async function getAbuseEntries(params: {
-  q?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<AbuseEntriesResponse> {
-  const { data } = await api.get<AbuseEntriesResponse>("/abuse/admin/entries", {
+// The admin API takes ABUSE_ADMIN_TOKEN as a Bearer token, never a cookie
+const ADMIN_BASE = "/abuse/admin/subdomains";
+
+export async function getAbuseEntries(
+  adminToken: string,
+  params: { q?: string; limit?: number; offset?: number },
+): Promise<AbuseEntriesResponse> {
+  const { data } = await api.get<AbuseEntriesResponse>(ADMIN_BASE, {
     params,
+    headers: authHeaders(adminToken),
   });
   return data;
 }
 
-export async function getAbuseEntry(subdomain: string): Promise<AbuseEntry> {
-  const { data } = await api.get<AbuseEntry>(
-    `/abuse/admin/entries/${subdomain}`,
-  );
+export async function getAbuseEntry(
+  adminToken: string,
+  subdomain: string,
+): Promise<AbuseEntry> {
+  const { data } = await api.get<AbuseEntry>(`${ADMIN_BASE}/${subdomain}`, {
+    headers: authHeaders(adminToken),
+  });
   return data;
 }
 
-// What the subdomain captured before it was blocked
+// Everything the subdomain captured, including while suspended
 export async function getAbuseEntryRequests(
+  adminToken: string,
   subdomain: string,
-  limit = 100,
+  limit = 200,
   offset = 0,
 ): Promise<PaginatedResponse<Request>> {
   const { data } = await api.get<PaginatedResponse<Request>>(
-    `/abuse/admin/entries/${subdomain}/requests`,
-    { params: { limit, offset } },
+    `${ADMIN_BASE}/${subdomain}/requests`,
+    { params: { limit, offset }, headers: authHeaders(adminToken) },
   );
   return data;
 }
 
-export async function blockAbuseEntry(
+// Distinct source IPs: for a beacon, its victims
+export async function getAbuseEntrySources(
+  adminToken: string,
   subdomain: string,
-  body: { category?: AbuseCategory; note?: string },
-): Promise<AbuseReportResponse> {
-  const { data } = await api.post<AbuseReportResponse>(
-    `/abuse/admin/entries/${subdomain}/block`,
-    body,
+): Promise<AbuseSourcesResponse> {
+  const { data } = await api.get<AbuseSourcesResponse>(
+    `${ADMIN_BASE}/${subdomain}/sources`,
+    { headers: authHeaders(adminToken) },
   );
   return data;
 }
 
-export async function liftAbuseEntry(
+// Suspend a subdomain, or update the reason of a suspension
+export async function suspendSubdomain(
+  adminToken: string,
+  subdomain: string,
+  body: { category?: AbuseCategory; note?: string } = {},
+): Promise<AbuseSuspendResponse> {
+  const { data } = await api.put<AbuseSuspendResponse>(
+    `${ADMIN_BASE}/${subdomain}`,
+    body,
+    { headers: authHeaders(adminToken) },
+  );
+  return data;
+}
+
+export async function liftSuspension(
+  adminToken: string,
   subdomain: string,
 ): Promise<{ persisted: boolean }> {
   const { data } = await api.delete<{ persisted: boolean }>(
-    `/abuse/admin/entries/${subdomain}`,
+    `${ADMIN_BASE}/${subdomain}`,
+    { headers: authHeaders(adminToken) },
   );
   return data;
 }
 
 // Delete the subdomain's files, DNS records and captured requests
-export async function purgeAbuseEntryData(subdomain: string): Promise<void> {
-  await api.delete(`/abuse/admin/entries/${subdomain}/data`);
+export async function purgeAbuseEntryData(
+  adminToken: string,
+  subdomain: string,
+): Promise<void> {
+  await api.delete(`${ADMIN_BASE}/${subdomain}/data`, {
+    headers: authHeaders(adminToken),
+  });
 }
 
 export const apiClient = {
@@ -316,7 +337,8 @@ export const apiClient = {
   getAbuseEntries,
   getAbuseEntry,
   getAbuseEntryRequests,
-  blockAbuseEntry,
-  liftAbuseEntry,
+  getAbuseEntrySources,
+  suspendSubdomain,
+  liftSuspension,
   purgeAbuseEntryData,
 };

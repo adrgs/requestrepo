@@ -111,58 +111,79 @@ export interface PaginatedResponse<T> {
   };
 }
 
-// Abuse reporting: a report blocks the subdomain
-export type AbuseCategory =
-  | "malware"
-  | "phishing"
-  | "csam"
-  | "spam"
-  | "copyright"
-  | "other";
+// Abuse reporting. A report suspends the subdomain immediately.
+export type AbuseCategory = "malware" | "phishing" | "csam" | "spam" | "other";
 
 export interface AbuseReport {
   at: number;
   category: AbuseCategory;
   // Reporter's network, such as "203.0.113.0/24"
   network: string;
-  description: string;
-  evidence_url?: string;
-  contact?: string;
+  reason?: string;
 }
 
 export interface AbuseEntrySummary {
   subdomain: string;
   category: AbuseCategory;
   source: "report" | "admin";
-  created_at: number;
+  suspended_at: number;
+  updated_at: number;
   report_count: number;
 }
 
-export type AbuseEntry = AbuseEntrySummary & {
+export interface AbuseEntry extends AbuseEntrySummary {
   reports: AbuseReport[];
   admin_note?: string;
-};
+  // Requests stored for the subdomain, including those received while suspended
+  captured_requests: number;
+}
 
 export interface CreateAbuseReportPayload {
   subdomain: string;
   category: AbuseCategory;
-  description: string;
-  evidence_url?: string;
-  contact?: string;
+  reason?: string;
 }
 
 export interface AbuseReportResponse {
-  status: "blocked" | "already_blocked";
   subdomain: string;
-  // False when the block took effect but could not be saved to disk
-  persisted: boolean;
+  suspended: boolean;
+  already_suspended: boolean;
+  message: string;
 }
 
 export interface AbuseEntriesResponse {
-  entries: AbuseEntrySummary[];
-  total: number;
-  limit: number;
-  offset: number;
+  subdomains: AbuseEntrySummary[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+}
+
+export interface AbuseSuspendResponse {
+  subdomain: string;
+  suspended: boolean;
+  already_suspended: boolean;
+  // False when the change took effect but could not be saved to disk
+  persisted: boolean;
+  entry: AbuseEntry | null;
+}
+
+export interface AbuseSource {
+  ip: string;
+  country?: string;
+  requests: number;
+  first_seen: number;
+  last_seen: number;
+  types: string[];
+}
+
+export interface AbuseSourcesResponse {
+  subdomain: string;
+  total_requests: number;
+  unique_sources: number;
+  sources: AbuseSource[];
 }
 
 // WebSocket types
@@ -178,13 +199,13 @@ export type WebSocketServerMessage =
   | { cmd: "requests"; subdomain: string; data: Request[] }
   | { cmd: "deleted"; subdomain: string; data: { _id: string } }
   | { cmd: "cleared"; subdomain: string }
-  // Sent to a live dashboard when its session gets blocked
-  | { cmd: "blacklisted"; subdomain: string; category?: AbuseCategory }
+  // Sent to a live dashboard when its session gets suspended for abuse
+  | { cmd: "suspended"; subdomain: string; category?: AbuseCategory }
   | {
       cmd: "error";
       code: string;
       message: string;
-      // Set when the code is "subdomain_blacklisted"
+      // Set when the code is "subdomain_suspended"
       subdomain?: string;
       category?: AbuseCategory;
     };

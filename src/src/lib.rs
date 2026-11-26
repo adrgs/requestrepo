@@ -1,4 +1,5 @@
 mod abuse;
+mod agent;
 mod cache;
 pub(crate) mod certs;
 mod dns;
@@ -35,12 +36,7 @@ pub async fn run() -> Result<()> {
 
     // A saved blocklist that cannot be read stops startup: without it every blocked
     // subdomain would silently come back.
-    let abuse = match abuse::AbuseList::load(
-        &CONFIG.data_dir,
-        CONFIG.abuse_reporting_enabled,
-        CONFIG.admin_token.clone(),
-    )
-    .await
+    let abuse = match abuse::AbuseList::load(&CONFIG.data_dir, abuse::Settings::from_config()).await
     {
         Ok(list) => Arc::new(list),
         Err(e) => {

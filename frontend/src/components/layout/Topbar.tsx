@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 import { Input, Button, Tooltip } from "@heroui/react";
-import { Ban, Flag, Star, Plus, Share2, Search, X, Menu } from "lucide-react";
+import {
+  Ban,
+  Bot,
+  Flag,
+  Star,
+  Plus,
+  Share2,
+  Search,
+  X,
+  Menu,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "./ThemeToggle";
+import { ReportAbuseDialog } from "@/components/abuse/ReportAbuseDialog";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useRequestStore } from "@/stores/requestStore";
 import { useBlockedStore } from "@/stores/blockedStore";
@@ -10,7 +21,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
 import { apiClient, isAdminRequiredError } from "@/api/client";
 import { copyToClipboard } from "@/lib/utils";
-import { isProduction } from "@/lib/config";
+import { getDnsDomain, getSubdomainUrl, isProduction } from "@/lib/config";
 
 const MAX_SESSIONS = 5;
 
@@ -33,6 +44,7 @@ export function Topbar() {
 
   // Mobile search toggle
   const [searchVisible, setSearchVisible] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   // GitHub stars count (only fetch in production)
   const [starsCount, setStarsCount] = useState<number | null>(null);
@@ -84,6 +96,27 @@ export function Topbar() {
     } else {
       toast.error("No active session to share");
     }
+  };
+
+  // Hands the session to a coding agent (Claude Code, Codex, ...), which then drives it over
+  // the API from the terminal
+  const handleCopyForAgent = () => {
+    if (!activeSession) {
+      toast.error("No active session");
+      return;
+    }
+    const origin = window.location.origin;
+    const prompt = [
+      `Use requestrepo through its HTTP API with curl. Docs: ${origin}/llms.txt`,
+      `My session captures HTTP, DNS and SMTP sent to ${activeSession.subdomain}.${getDnsDomain()} (${getSubdomainUrl(activeSession.subdomain)}/).`,
+      `Authenticate with: Authorization: Bearer ${activeSession.token}`,
+      `Wait for new captures with GET ${origin}/api/v2/requests?after=<cursor>&wait=60 instead of polling.`,
+    ].join("\n");
+    copyToClipboard(prompt);
+    toast.success("Prompt for your AI agent copied", {
+      description:
+        "It contains this session's token: share it only with your agent.",
+    });
   };
 
   const handleCloseSession = (e: React.MouseEvent, subdomain: string) => {
@@ -152,10 +185,10 @@ export function Topbar() {
                   )}
                   <span className="font-mono">{session.subdomain}</span>
                   {blocked[session.subdomain] && (
-                    <Tooltip content="Blocked for abuse">
+                    <Tooltip content="Suspended for abuse">
                       <Ban
                         className="h-3 w-3 text-danger"
-                        aria-label="Blocked for abuse"
+                        aria-label="Suspended for abuse"
                       />
                     </Tooltip>
                   )}
@@ -177,18 +210,20 @@ export function Topbar() {
         <Tooltip content="Report abuse">
           <Button
             isIconOnly
-            as="a"
-            href="/abuse"
-            target="_blank"
-            rel="noopener noreferrer"
             variant="light"
             size="sm"
             radius="full"
             aria-label="Report abuse"
+            onPress={() => setReportOpen(true)}
           >
             <Flag className="h-4 w-4" />
           </Button>
         </Tooltip>
+        <ReportAbuseDialog
+          // The suspended-session overlay takes over if the active session is reported
+          isOpen={reportOpen && !(activeSubdomain && blocked[activeSubdomain])}
+          onClose={() => setReportOpen(false)}
+        />
 
         <Tooltip content="New session">
           <Button
@@ -212,6 +247,20 @@ export function Topbar() {
             className="hidden md:flex"
           >
             <Share2 className="h-4 w-4" />
+          </Button>
+        </Tooltip>
+
+        <Tooltip content="Copy for AI agent">
+          <Button
+            isIconOnly
+            variant="light"
+            size="sm"
+            radius="full"
+            aria-label="Copy a prompt that lets an AI agent use this session"
+            onPress={handleCopyForAgent}
+            className="hidden md:flex"
+          >
+            <Bot className="h-4 w-4" />
           </Button>
         </Tooltip>
 

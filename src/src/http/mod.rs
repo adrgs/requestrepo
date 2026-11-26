@@ -211,7 +211,12 @@ pub(crate) fn create_router(state: AppState) -> Router {
             "/api/v2/files",
             get(routes_v2::get_files).put(routes_v2::update_files),
         )
-        .route("/api/v2/files/*path", get(routes_v2::get_file))
+        .route(
+            "/api/v2/files/*path",
+            get(routes_v2::get_file)
+                .put(routes_v2::put_file)
+                .delete(routes_v2::delete_file),
+        )
         .route(
             "/api/v2/requests",
             get(routes_v2::list_requests).delete(routes_v2::delete_all_requests),
@@ -244,35 +249,68 @@ pub(crate) fn create_router(state: AppState) -> Router {
         .layer(middleware::from_fn(sanitize_sentry_context))
         .layer(SentryHttpLayer::new().enable_transaction())
         .layer(NewSentryLayer::new_from_top())
-        // Outermost: a blocked subdomain is refused before its request is traced or its
-        // body (which may be megabytes) is read.
+        // Outermost: a suspended subdomain is answered before any route can serve it.
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            reject_blocked_subdomains,
+            sinkhole_suspended_subdomains,
         ))
         .with_state(state)
 }
 
-/// Refuse traffic to a blocked subdomain before anything else handles the request.
+/// Sinkholes a suspended subdomain before anything else handles the request.
 ///
-/// The subdomain is resolved exactly as `catch_all` resolves it: from the Host header, or
-/// from the path for `/r/<subdomain>` routing.
-async fn reject_blocked_subdomains(
+/// Nothing of the subdomain's own content is served and its owner is not told, but the
+/// request is still recorded, for the abuse admin: the sources of a botnet beacon are its
+/// victims. The subdomain is resolved exactly as `catch_all` resolves it: from the Host
+/// header, or from the path for `/r/<subdomain>` routing.
+async fn sinkhole_suspended_subdomains(
     State(state): State<AppState>,
     request: Request,
     next: Next,
 ) -> Response {
-    let subdomain = request
+    let host = request
         .headers()
         .get(header::HOST)
         .and_then(|host| host.to_str().ok())
-        .and_then(get_subdomain_from_hostname)
-        .or_else(|| get_subdomain_from_path(request.uri().path()));
+        .unwrap_or("")
+        .to_string();
+    let subdomain = get_subdomain_from_hostname(&host)
+        .or_else(|| get_subdomain_from_path(request.uri().path()))
+        .filter(|subdomain| state.abuse.is_blocked(subdomain));
+    let Some(subdomain) = subdomain else {
+        return next.run(request).await;
+    };
 
-    match subdomain.filter(|subdomain| state.abuse.is_blocked(subdomain)) {
-        Some(_) => abuse::routes::blocked_traffic_response(),
-        None => next.run(request).await,
+    let is_tls = request.extensions().get::<TlsConnectInfo>().is_some();
+    let peer = request
+        .extensions()
+        .get::<ConnectInfo<std::net::SocketAddr>>()
+        .map(|info| info.0);
+    let (parts, body) = request.into_parts();
+    // The same limit as for any other request. A body over it is not recorded.
+    let body = axum::body::to_bytes(body, CONFIG.max_request_body_bytes)
+        .await
+        .unwrap_or_default();
+
+    if let Some(peer) = peer {
+        let log = routes::http_request_log(
+            &subdomain,
+            peer,
+            is_tls,
+            &host,
+            &parts.method,
+            &parts.uri,
+            &parts.headers,
+            &body,
+        );
+        routes::record_http_request(&state, &subdomain, &log, false).await;
     }
+
+    let accept = parts
+        .headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok());
+    abuse::routes::suspended_traffic_response(accept)
 }
 
 /// Handler for ACME HTTP-01 challenges (IP certificate validation)

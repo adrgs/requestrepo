@@ -77,9 +77,9 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
 
                         // A block notice puts its reason at the top level, where the dashboard
                         // reads it. It is not a request, so it has nothing to carry in `data`.
-                        let ws_msg = if msg.cmd == "blacklisted" {
+                        let ws_msg = if msg.cmd == "suspended" {
                             json!({
-                                "cmd": "blacklisted",
+                                "cmd": "suspended",
                                 "subdomain": subdomain,
                                 "category": data.get("category").cloned().unwrap_or(Value::Null),
                             })
@@ -95,8 +95,8 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                             break;
                         }
 
-                        if msg.cmd == "blacklisted" {
-                            // Nothing will ever be logged for a blocked subdomain again.
+                        if msg.cmd == "suspended" {
+                            // The owner no longer hears about this subdomain's traffic.
                             sessions_for_broadcast.lock().await.remove(&subdomain);
                         }
                     }
@@ -168,7 +168,7 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                 // invalid token, and the owner could never get back in after
                                 // the block is lifted.
                                 let verified = verify_jwt(token).map(|subdomain| {
-                                    let blocked = state.abuse.entry(&subdomain);
+                                    let blocked = state.abuse.suspension(&subdomain);
                                     (subdomain, blocked.map(|entry| entry.category))
                                 });
 
@@ -176,7 +176,7 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                     Some((subdomain, Some(category))) => {
                                         let response = json!({
                                             "cmd": "error",
-                                            "code": "subdomain_blacklisted",
+                                            "code": "subdomain_suspended",
                                             "subdomain": subdomain,
                                             "category": category,
                                             "message": "This subdomain has been blocked"
