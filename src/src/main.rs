@@ -21,7 +21,15 @@ async fn main() {
         },
     ));
 
-    tracing_subscriber::fmt::init();
+    // RUST_LOG as usual (default "info"). rustls warns about every malformed handshake the
+    // internet sends, thousands a day, so it is quiet unless RUST_LOG asks for it by name.
+    let mut filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    if !filter.contains("rustls") {
+        filter.push_str(",rustls=error");
+    }
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
+        .init();
 
     if let Err(e) = run().await {
         eprintln!("Application error: {e}");

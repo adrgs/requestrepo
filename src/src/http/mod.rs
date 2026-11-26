@@ -411,7 +411,8 @@ impl HttpsServer {
                 {
                     Ok(Ok(stream)) => stream,
                     Ok(Err(e)) => {
-                        error!("TLS handshake failed from {}: {}", remote_addr, e);
+                        // Scanners and broken clients: routine, and thousands a day
+                        tracing::debug!("TLS handshake failed from {}: {}", remote_addr, e);
                         return;
                     }
                     Err(_) => {
@@ -434,9 +435,12 @@ impl HttpsServer {
                     .with_upgrades()
                     .await
                 {
-                    // Don't log connection reset errors as they're common
-                    if !e.to_string().contains("connection reset") {
-                        error!("Error serving HTTPS connection: {}", e);
+                    // Resets and idle timeouts are routine; anything else is worth a look
+                    let message = e.to_string();
+                    if message.contains("connection reset") || message.contains("timeout") {
+                        tracing::debug!("HTTPS connection ended: {}", message);
+                    } else {
+                        warn!("Error serving HTTPS connection: {}", message);
                     }
                 }
 

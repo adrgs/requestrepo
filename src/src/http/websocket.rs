@@ -64,9 +64,6 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                     };
 
                     if is_subscribed {
-                        // Parse data from string to JSON object (fix double-encoding)
-                        let data = serde_json::from_str::<Value>(&msg.data).unwrap_or(Value::Null);
-
                         // Map cmd names: new_request -> request, delete_request -> deleted
                         let cmd = match msg.cmd.as_str() {
                             "new_request" => "request",
@@ -78,16 +75,27 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                         // A block notice puts its reason at the top level, where the dashboard
                         // reads it. It is not a request, so it has nothing to carry in `data`.
                         let ws_msg = if msg.cmd == "suspended" {
-                            json!({ "cmd": "suspended", "subdomain": subdomain })
+                            json!({ "cmd": "suspended", "subdomain": subdomain }).to_string()
                         } else {
-                            json!({
-                                "cmd": cmd,
-                                "subdomain": subdomain,
-                                "data": data
-                            })
+                            // `data` is already JSON: splice it in rather than parse and
+                            // re-serialize it once per connected dashboard. Checking that it
+                            // is valid JSON allocates nothing.
+                            let data = if serde_json::from_str::<serde::de::IgnoredAny>(&msg.data)
+                                .is_ok()
+                            {
+                                msg.data.as_str()
+                            } else {
+                                "null"
+                            };
+                            format!(
+                                r#"{{"cmd":{},"subdomain":{},"data":{}}}"#,
+                                Value::from(cmd),
+                                Value::from(subdomain.as_str()),
+                                data
+                            )
                         };
 
-                        if tx_for_broadcast.send(ws_msg.to_string()).await.is_err() {
+                        if tx_for_broadcast.send(ws_msg).await.is_err() {
                             break;
                         }
 

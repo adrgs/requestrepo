@@ -223,6 +223,34 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(2));
     }
 
+    // --- Live updates ------------------------------------------------------
+
+    #[tokio::test]
+    async fn a_dashboard_receives_each_request_as_a_json_object() {
+        use crate::tests::harness::{websocket, ws_recv, ws_send};
+
+        let server = server().await;
+        let label = get_random_subdomain();
+        let mut socket = websocket(server.addr, &server.main_host()).await;
+        ws_send(
+            &mut socket,
+            &json!({ "cmd": "connect", "token": generate_jwt(&label).unwrap() }).to_string(),
+        )
+        .await;
+        assert_eq!(ws_recv(&mut socket).await["cmd"], "connected");
+
+        server
+            .request("GET", &server.subdomain_host(&label), "/live?x=1", &[], "")
+            .await;
+        let message = ws_recv(&mut socket).await;
+        assert_eq!(message["cmd"], "request");
+        assert_eq!(message["subdomain"], label.as_str());
+        // An object, not a string holding JSON
+        assert_eq!(message["data"]["path"], "/live");
+        assert_eq!(message["data"]["query"], "?x=1");
+        assert!(message["data"]["_id"].is_string());
+    }
+
     // --- Unused subdomains -------------------------------------------------
 
     #[tokio::test]

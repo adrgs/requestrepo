@@ -141,7 +141,7 @@ impl Cache {
         }
 
         // Compress the data
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
         encoder.write_all(value.as_bytes())?;
         let compressed_data = encoder.finish()?;
         let compressed_size = compressed_data.len();
