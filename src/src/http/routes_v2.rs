@@ -41,8 +41,13 @@ pub struct PaginatedTokenQuery {
     pub token: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
-    /// Only requests captured after the request with this ID (a cursor)
+    /// Only requests captured after the request with this ID (a cursor), or `now` for only
+    /// requests that have not arrived yet
     pub after: Option<String>,
+    /// Only the newest N matching requests (still oldest first)
+    pub last: Option<usize>,
+    /// `full` (default) or `summary`: one compact line per request, for reading at a glance
+    pub view: Option<String>,
     /// Seconds to wait for a new request when there is none yet (long polling)
     pub wait: Option<u64>,
     /// Only requests of this type: http, dns, smtp or tcp
@@ -1089,6 +1094,8 @@ pub async fn delete_file(
 /// - wait: When nothing matches yet, hold the response up to this many seconds (max 60)
 ///   until a request arrives. With `after`, this is a long poll for the next request.
 /// - type: Only `http`, `dns`, `smtp` or `tcp` requests
+/// - last: Only the newest N matching requests (still oldest first)
+/// - view: `summary` for one compact object per request instead of the full capture
 pub async fn list_requests(
     State(state): State<AppState>,
     Query(query): Query<PaginatedTokenQuery>,
@@ -1115,6 +1122,21 @@ pub async fn list_requests(
                 .into_response()
         }
     };
+    let summary = match query.view.as_deref() {
+        None | Some("full") => false,
+        Some("summary") => true,
+        Some(other) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Unknown view '{other}': use full or summary"),
+                    "code": "invalid_view"
+                })),
+            )
+                .into_response()
+        }
+    };
+    let last = query.last.map(|n| n.clamp(1, MAX_LIMIT));
     let mut wait = Duration::from_secs(query.wait.unwrap_or(0).min(MAX_WAIT_SECS));
     let _slot = if wait.is_zero() {
         None
@@ -1125,15 +1147,22 @@ pub async fn list_requests(
         }
         slot
     };
+    // Subscribe before anything is read, so a request that arrives in between is not missed.
+    let mut updates = state.tx.subscribe();
+
+    // `after=now` means after the newest request stored at this moment. On an empty session
+    // everything that arrives is new, so there is nothing to skip.
+    let resolved_after = match query.after.as_deref() {
+        Some("now") => newest_id(&state.cache, &subdomain).await,
+        other => other.map(str::to_string),
+    };
     let filter = PageFilter {
-        after: query.after.as_deref(),
+        after: resolved_after.as_deref(),
         kind: kind.as_deref(),
         limit,
         offset,
+        last,
     };
-
-    // Subscribe before the first read, so a request that arrives in between is not missed.
-    let mut updates = state.tx.subscribe();
     let deadline = Instant::now() + wait;
 
     let page = loop {
@@ -1187,27 +1216,33 @@ pub async fn list_requests(
     };
 
     // The cursor to pass as `after` next time: the newest request returned, or the cursor
-    // that was given when nothing new arrived.
+    // that was in effect when nothing new arrived (`now` stays `now` on an empty session).
     let cursor = page
         .requests
         .last()
         .and_then(|r| r.get("_id"))
         .and_then(|id| id.as_str())
         .map(str::to_string)
-        .or_else(|| query.after.clone());
+        .or(resolved_after)
+        .or_else(|| (query.after.as_deref() == Some("now")).then(|| "now".to_string()));
+    let requests: Vec<serde_json::Value> = if summary {
+        page.requests.iter().map(summarize).collect()
+    } else {
+        page.requests
+    };
     let mut pagination = json!({
         "total": page.total,
         "limit": limit,
         "has_more": page.has_more
     });
-    if query.after.is_none() {
+    if query.after.is_none() && last.is_none() {
         pagination["offset"] = json!(offset);
     }
 
     (
         StatusCode::OK,
         Json(json!({
-            "requests": page.requests,
+            "requests": requests,
             "cursor": cursor,
             "pagination": pagination,
         })),
@@ -1220,6 +1255,85 @@ struct PageFilter<'a> {
     kind: Option<&'a str>,
     limit: usize,
     offset: usize,
+    last: Option<usize>,
+}
+
+/// ID of the newest stored request of a session, if it has any.
+async fn newest_id(cache: &Cache, subdomain: &str) -> Option<String> {
+    all_requests(cache, subdomain)
+        .await
+        .iter()
+        .rev()
+        .find_map(|r| r.get("_id").and_then(|id| id.as_str()).map(str::to_string))
+}
+
+#[cfg(test)]
+pub(crate) fn summarize_for_tests(request: &serde_json::Value) -> serde_json::Value {
+    summarize(request)
+}
+
+/// Characters of a body shown in the summary view.
+const SUMMARY_BODY_CHARS: usize = 1000;
+
+/// One compact object for a captured request: what it was in a line, and its body as text.
+/// The full capture stays one `GET /requests/{id}` away.
+fn summarize(request: &serde_json::Value) -> serde_json::Value {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    let text = |key: &str| request.get(key).and_then(|v| v.as_str()).unwrap_or("");
+    let kind = text("type");
+    let line = match kind {
+        "http" => format!("{} {}{}", text("method"), text("path"), text("query")),
+        // Resolvers often randomize the case of names they query: show them lowercased
+        "dns" => format!(
+            "{} {}",
+            text("query_type"),
+            text("domain").trim_end_matches('.').to_lowercase()
+        ),
+        "smtp" => format!(
+            "mail from {} to {}: {}",
+            text("from"),
+            text("to"),
+            text("subject")
+        ),
+        "tcp" => format!(
+            "TCP connection to port {}",
+            request.get("port").cloned().unwrap_or_default()
+        ),
+        other => other.to_string(),
+    };
+
+    let mut out = json!({
+        "_id": request.get("_id"),
+        "type": kind,
+        "date": request.get("date"),
+        "ip": request.get("ip"),
+        "summary": line,
+    });
+    if let Some(country) = request.get("country").filter(|c| !c.is_null()) {
+        out["country"] = country.clone();
+    }
+
+    let body = match kind {
+        "http" => BASE64.decode(text("raw")).ok(),
+        "smtp" => Some(text("text_body").as_bytes().to_vec()),
+        _ => None,
+    };
+    if let Some(body) = body.filter(|body| !body.is_empty()) {
+        match String::from_utf8(body) {
+            Ok(body) => {
+                let shown: String = body.chars().take(SUMMARY_BODY_CHARS).collect();
+                if shown.len() < body.len() {
+                    out["body_truncated"] = json!(true);
+                }
+                out["body_text"] = json!(shown);
+            }
+            Err(e) => {
+                out["body_text"] = json!(format!("<{} bytes of binary data>", e.as_bytes().len()))
+            }
+        }
+    }
+    out
 }
 
 struct RequestPage {
@@ -1236,7 +1350,7 @@ async fn fetch_page(
     filter: &PageFilter<'_>,
 ) -> Option<RequestPage> {
     // The common case, a plain page, reads only that page.
-    if filter.after.is_none() && filter.kind.is_none() {
+    if filter.after.is_none() && filter.kind.is_none() && filter.last.is_none() {
         let (total, requests) =
             paginated_requests(cache, subdomain, filter.limit, filter.offset).await;
         return Some(RequestPage {
@@ -1262,6 +1376,15 @@ async fn fetch_page(
         .filter(|r| filter.kind.is_none_or(|kind| is_type(r, kind)))
         .collect();
     let total = matching.len();
+    if let Some(last) = filter.last {
+        // The newest `last`, oldest first; `has_more` means older ones exist
+        let skip = total.saturating_sub(last);
+        return Some(RequestPage {
+            total,
+            has_more: skip > 0,
+            requests: matching.into_iter().skip(skip).collect(),
+        });
+    }
     let offset = if filter.after.is_some() {
         0
     } else {

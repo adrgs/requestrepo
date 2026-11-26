@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Input, Button, Tooltip } from "@heroui/react";
 import {
   Ban,
@@ -44,7 +45,19 @@ export function Topbar() {
 
   // Mobile search toggle
   const [searchVisible, setSearchVisible] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
+  // /abuse is the dashboard with the report popup open, a link to hand to people who
+  // want to report a subdomain. ?subdomain= prefills it.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const onAbusePage = location.pathname === "/abuse";
+  const [reportOpen, setReportOpen] = useState(onAbusePage);
+  const reportPrefill = onAbusePage
+    ? (new URLSearchParams(location.search).get("subdomain") ?? "")
+    : "";
+  const closeReport = () => {
+    setReportOpen(false);
+    if (onAbusePage) navigate("/requests", { replace: true });
+  };
 
   // GitHub stars count (only fetch in production)
   const [starsCount, setStarsCount] = useState<number | null>(null);
@@ -110,7 +123,8 @@ export function Topbar() {
       `Use requestrepo through its HTTP API with curl. Docs: ${origin}/llms.txt`,
       `My session captures HTTP, DNS and SMTP sent to ${activeSession.subdomain}.${getDnsDomain()} (${getSubdomainUrl(activeSession.subdomain)}/).`,
       `Authenticate with: Authorization: Bearer ${activeSession.token}`,
-      `Wait for new captures with GET ${origin}/api/v2/requests?after=<cursor>&wait=60 instead of polling.`,
+      `See what arrived: GET ${origin}/api/v2/requests?last=20&view=summary`,
+      `Wait for the next capture: GET ${origin}/api/v2/requests?after=now&wait=60&view=summary (start it before triggering the callback; pass the returned cursor as after for the one after).`,
     ].join("\n");
     copyToClipboard(prompt);
     toast.success("Prompt for your AI agent copied", {
@@ -222,7 +236,8 @@ export function Topbar() {
         <ReportAbuseDialog
           // The suspended-session overlay takes over if the active session is reported
           isOpen={reportOpen && !(activeSubdomain && blocked[activeSubdomain])}
-          onClose={() => setReportOpen(false)}
+          onClose={closeReport}
+          initialSubdomain={reportPrefill}
         />
 
         <Tooltip content="New session">

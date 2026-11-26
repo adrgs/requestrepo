@@ -106,8 +106,7 @@ requestrepo/
 │       ├── pages/          # Route components
 │       │   ├── RequestsPage.tsx
 │       │   ├── DnsSettingsPage.tsx
-│       │   ├── ResponseEditorPage.tsx
-│       │   └── ReportAbusePage.tsx   # /abuse: the report dialog, outside the dashboard
+│       │   └── ResponseEditorPage.tsx
 │       ├── stores/         # Zustand stores
 │       │   ├── authStore.ts
 │       │   ├── sessionStore.ts
@@ -209,7 +208,7 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 | `GET` | `/files/{path}` | Get single file content |
 | `PUT` | `/files/{path}` | Create/replace one file: `{"body"` or `"raw", "status_code"?, "headers"?}` |
 | `DELETE` | `/files/{path}` | Delete one file |
-| `GET` | `/requests` | List captured requests; `after` (cursor), `wait` (long poll, ≤60 s), `type`, `limit`, `offset` |
+| `GET` | `/requests` | List captured requests; `after` (cursor or `now`), `wait` (long poll, ≤60 s), `last`, `view=summary`, `type`, `limit`, `offset` |
 | `DELETE` | `/requests` | Delete all requests |
 | `GET` | `/requests/{id}` | Get single request |
 | `DELETE` | `/requests/{id}` | Delete single request |

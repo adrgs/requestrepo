@@ -276,6 +276,129 @@ mod tests {
         assert!(server.cache.contains(&format!("files:{label}")));
     }
 
+    #[tokio::test]
+    async fn after_now_waits_only_for_what_is_new() {
+        let server = server().await;
+        let label = get_random_subdomain();
+        let host = server.subdomain_host(&label);
+        let token = generate_jwt(&label).unwrap();
+
+        // History exists, as when someone pokes the URL before the agent looks
+        server.request("GET", &host, "/before", &[], "").await;
+
+        let (addr, main_host) = (server.addr, server.main_host());
+        let authorization = format!("Bearer {token}");
+        let poll = tokio::spawn(async move {
+            crate::tests::harness::http(
+                addr,
+                "GET",
+                &main_host,
+                "/api/v2/requests?after=now&wait=20&view=summary",
+                &[("Authorization", authorization.as_str())],
+                "",
+            )
+            .await
+        });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!poll.is_finished(), "history must not end the wait");
+        server.request("GET", &host, "/after", &[], "").await;
+
+        let reply = tokio::time::timeout(Duration::from_secs(5), poll)
+            .await
+            .unwrap()
+            .unwrap()
+            .json();
+        let summaries: Vec<&str> = reply["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["summary"].as_str().unwrap())
+            .collect();
+        assert_eq!(summaries, ["GET /after"]);
+        assert_eq!(reply["cursor"], reply["requests"][0]["_id"]);
+    }
+
+    #[tokio::test]
+    async fn after_now_on_an_empty_session_times_out_with_a_usable_cursor() {
+        let server = server().await;
+        let token = generate_jwt(&get_random_subdomain()).unwrap();
+
+        let reply = server
+            .api(&token, "GET", "/api/v2/requests?after=now&wait=1", "")
+            .await
+            .json();
+        assert_eq!(reply["requests"], json!([]));
+        assert_eq!(reply["cursor"], "now", "pass it straight back as after");
+    }
+
+    #[tokio::test]
+    async fn last_returns_the_newest_and_summary_is_compact() {
+        let server = server().await;
+        let label = get_random_subdomain();
+        let host = server.subdomain_host(&label);
+        let token = generate_jwt(&label).unwrap();
+
+        server.request("GET", &host, "/one", &[], "").await;
+        server
+            .request(
+                "POST",
+                &host,
+                "/two?x=1",
+                &[("Content-Type", "application/json")],
+                r#"{"hello": "world"}"#,
+            )
+            .await;
+        server.request("GET", &host, "/three", &[], "").await;
+
+        let reply = server
+            .api(&token, "GET", "/api/v2/requests?last=2&view=summary", "")
+            .await
+            .json();
+        let requests = reply["requests"].as_array().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0]["summary"], "POST /two?x=1");
+        assert_eq!(requests[0]["body_text"], r#"{"hello": "world"}"#);
+        assert_eq!(requests[1]["summary"], "GET /three");
+        assert!(requests[1].get("body_text").is_none(), "no body, no field");
+        assert!(
+            requests[0].get("headers").is_none(),
+            "summary leaves headers out"
+        );
+        assert_eq!(reply["pagination"]["has_more"], true, "/one is older");
+        assert_eq!(reply["cursor"], requests[1]["_id"]);
+
+        // The full capture is one call away
+        let id = requests[0]["_id"].as_str().unwrap();
+        let full = server
+            .api(&token, "GET", &format!("/api/v2/requests/{id}"), "")
+            .await
+            .json();
+        assert!(full["headers"].is_object());
+
+        let bad = server
+            .api(&token, "GET", "/api/v2/requests?view=tiny", "")
+            .await;
+        assert_eq!(bad.status, 400);
+        assert_eq!(bad.code(), "invalid_view");
+    }
+
+    #[test]
+    fn dns_summaries_are_lowercased_and_binary_bodies_are_described() {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+        let dns = crate::http::routes_v2::summarize_for_tests(&json!({
+            "_id": "1", "type": "dns", "date": 1, "ip": "8.8.8.8",
+            "query_type": "A", "domain": "pRobE-1.FrH7tdle.REqUEStRePO.Com."
+        }));
+        assert_eq!(dns["summary"], "A probe-1.frh7tdle.requestrepo.com");
+
+        let binary = crate::http::routes_v2::summarize_for_tests(&json!({
+            "_id": "2", "type": "http", "date": 1, "ip": "1.2.3.4",
+            "method": "PUT", "path": "/x", "raw": BASE64.encode([0xff, 0xfe, 0x00])
+        }));
+        assert_eq!(binary["body_text"], "<3 bytes of binary data>");
+    }
+
     // --- Response files ----------------------------------------------------
 
     #[tokio::test]

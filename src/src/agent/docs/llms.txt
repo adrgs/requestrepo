@@ -8,10 +8,12 @@ The whole loop is three calls. Create a session, point something at its domain, 
 
 ```sh
 S=$(curl -s -X POST {{ORIGIN}}/api/v2/sessions)
-TOKEN=$(echo "$S" | jq -r .token); URL=$(echo "$S" | jq -r .url)
+TOKEN=$(jq -r .token <<<"$S"); URL=$(jq -r .url <<<"$S")
 curl -s "${URL}hello?x=1"
-curl -s -H "Authorization: Bearer $TOKEN" "{{ORIGIN}}/api/v2/requests?wait=30" | jq '.requests[] | {type, method, path, ip}'
+curl -s -H "Authorization: Bearer $TOKEN" "{{ORIGIN}}/api/v2/requests?last=20&view=summary" | jq -c '.requests[]'
 ```
+
+To wait for a callback instead of checking for one, use `requests?after=now&wait=60&view=summary`, started before you trigger it; pass the returned `cursor` as `after` to wait for the next one.
 
 ## Docs
 

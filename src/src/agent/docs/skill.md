@@ -11,25 +11,23 @@ requestrepo ({{ORIGIN}}) records every request to a session subdomain and lets y
 
 ```sh
 S=$(curl -s -X POST {{ORIGIN}}/api/v2/sessions)
-export RR_TOKEN=$(echo "$S" | jq -r .token) RR_DOMAIN=$(echo "$S" | jq -r .domain) RR_URL=$(echo "$S" | jq -r .url)
+export RR_TOKEN=$(jq -r .token <<<"$S") RR_DOMAIN=$(jq -r .domain <<<"$S") RR_URL=$(jq -r .url <<<"$S")
 rr() { curl -s -H "Authorization: Bearer $RR_TOKEN" "{{ORIGIN}}/api/v2$@"; }
 echo "$RR_DOMAIN"
 ```
 
 Use `$RR_URL` for HTTP callbacks and `$RR_DOMAIN` (or any name under it, such as `probe1.$RR_DOMAIN`) for DNS and mail. Unique sub-names per check tell you which one triggered a request. HTTP, HTTPS, DNS and mail to any address at the domain are all captured.
 
-## Wait for a callback
-
-Never sleep-and-poll. Long-poll instead; `wait` is in seconds (max 60):
+## See what arrived, and wait for callbacks
 
 ```sh
-R=$(rr "/requests?wait=60")                       # first capture
-CURSOR=$(echo "$R" | jq -r .cursor)
-R=$(rr "/requests?after=$CURSOR&wait=60")         # only newer ones
-echo "$R" | jq '.requests[] | {type, ip, method, path, domain, query_type}'
+rr "/requests?last=20&view=summary"                 # what came in so far, newest 20
+R=$(rr "/requests?after=now&wait=60&view=summary")  # block until the next one (max 60 s)
+CURSOR=$(jq -r .cursor <<<"$R")
+R=$(rr "/requests?after=$CURSOR&wait=60&view=summary")  # then the one after, and so on
 ```
 
-An empty `requests` array means nothing arrived in time. Filter with `type=http|dns|smtp`. Bodies are base64 in `raw` (`jq -r '.requests[].raw | @base64d'`).
+Never sleep-and-poll. Start the `after=now` wait before triggering the callback (or trigger it in the background). An empty `requests` array means nothing arrived in time; pass the same cursor again. `view=summary` gives one line per request (`summary`) and the body as text (`body_text`); drop it, or `GET /requests/<id>`, for headers and raw bytes. Filter with `type=http|dns|smtp`. Use `jq ... <<<"$R"`, not `echo "$R" | jq` (zsh's echo mangles `\n`).
 
 ## Serve a response
 

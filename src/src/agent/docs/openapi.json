@@ -102,7 +102,7 @@
         ],
         "operationId": "listRequests",
         "summary": "List captured requests, oldest first",
-        "description": "With `after`, returns only requests newer than that cursor. With `wait`, holds the response until a matching request arrives (long polling). Pass the returned `cursor` as `after` next time.",
+        "description": "Recipes: what came in so far, `last=20&view=summary`; wait for the next one, `after=now&wait=60` (start it before triggering the callback); follow everything, pass each response's `cursor` as the next `after`. Without `after`, `wait` only waits when nothing matches at all: existing history is returned at once.",
         "parameters": [
           {
             "name": "after",
@@ -110,7 +110,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Return only requests captured after the request with this ID (the previous `cursor`)."
+            "description": "Only requests captured after the request with this ID (the previous `cursor`), or `now` for only requests that have not arrived yet."
           },
           {
             "name": "wait",
@@ -121,6 +121,29 @@
               "maximum": 60
             },
             "description": "Seconds to wait for a request when none matches yet."
+          },
+          {
+            "name": "last",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "description": "Only the newest N matching requests, still oldest first. `has_more` then means older ones exist."
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "summary"
+              ],
+              "default": "full"
+            },
+            "description": "`summary`: one compact object per request (RequestSummary) instead of the full capture."
           },
           {
             "name": "type",
@@ -172,7 +195,14 @@
                     "requests": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/CapturedRequest"
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/CapturedRequest"
+                          },
+                          {
+                            "$ref": "#/components/schemas/RequestSummary"
+                          }
+                        ]
                       }
                     },
                     "cursor": {
@@ -180,7 +210,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "ID of the newest request returned, or the `after` given when nothing new arrived."
+                      "description": "ID of the newest request returned; when nothing arrived, the cursor that was in effect (`now` on an empty session). Always valid as the next `after`."
                     },
                     "pagination": {
                       "type": "object",
@@ -1039,6 +1069,56 @@
             "type": "boolean"
           },
           "already_suspended": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RequestSummary": {
+        "type": "object",
+        "required": [
+          "_id",
+          "type",
+          "date",
+          "summary"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "http",
+              "dns",
+              "smtp",
+              "tcp"
+            ]
+          },
+          "date": {
+            "type": "integer"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "examples": [
+              "GET /callback?id=1",
+              "A probe-1.abcd1234.{{DOMAIN}}"
+            ],
+            "description": "One line. DNS names are lowercased (resolvers randomize their case)."
+          },
+          "body_text": {
+            "type": "string",
+            "description": "HTTP or mail body as text, up to 1000 characters; binary bodies are described instead"
+          },
+          "body_truncated": {
             "type": "boolean"
           }
         }
