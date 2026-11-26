@@ -43,8 +43,6 @@ interface ReportAbuseDialogProps {
   onClose: () => void;
   // Prefills the subdomain, e.g. from /abuse?subdomain=...
   initialSubdomain?: string;
-  // Whether the dialog can be dismissed (it cannot when it is the whole page)
-  isDismissable?: boolean;
 }
 
 /** Reports a subdomain for abuse. A report suspends it immediately. */
@@ -52,7 +50,6 @@ export function ReportAbuseDialog({
   isOpen,
   onClose,
   initialSubdomain = "",
-  isDismissable = true,
 }: ReportAbuseDialogProps) {
   const domain = getDnsDomain();
   const enabled = isAbuseReportingEnabled();
@@ -73,15 +70,7 @@ export function ReportAbuseDialog({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={close}
-      size="md"
-      placement="center"
-      hideCloseButton={!isDismissable}
-      isDismissable={isDismissable}
-      isKeyboardDismissDisabled={!isDismissable}
-    >
+    <Modal isOpen={isOpen} onClose={close} size="md" placement="center">
       <ModalContent>
         {report.data ? (
           <>
@@ -102,11 +91,9 @@ export function ReportAbuseDialog({
               <Button variant="flat" onPress={reset}>
                 Report another
               </Button>
-              {isDismissable && (
-                <Button color="primary" onPress={close}>
-                  Done
-                </Button>
-              )}
+              <Button color="primary" onPress={close}>
+                Done
+              </Button>
             </ModalFooter>
           </>
         ) : (
@@ -116,7 +103,14 @@ export function ReportAbuseDialog({
               Report abuse
             </ModalHeader>
             {enabled ? (
-              <>
+              // A form, so Enter submits natively. A keydown handler on the input would
+              // stop Escape from reaching the modal.
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (label && !report.isPending) report.mutate();
+                }}
+              >
                 <ModalBody className="gap-4">
                   <p className="text-sm text-default-500">
                     Report a subdomain of{" "}
@@ -135,11 +129,6 @@ export function ReportAbuseDialog({
                     }
                     value={subdomain}
                     onValueChange={setSubdomain}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && label && !report.isPending) {
-                        report.mutate();
-                      }
-                    }}
                     // ARIA validation: the native kind keeps an old "invalid" state
                     // after the value becomes valid
                     validationBehavior="aria"
@@ -155,21 +144,19 @@ export function ReportAbuseDialog({
                   )}
                 </ModalBody>
                 <ModalFooter>
-                  {isDismissable && (
-                    <Button variant="light" onPress={close}>
-                      Cancel
-                    </Button>
-                  )}
+                  <Button variant="light" onPress={close}>
+                    Cancel
+                  </Button>
                   <Button
+                    type="submit"
                     color="danger"
                     isLoading={report.isPending}
                     isDisabled={!label}
-                    onPress={() => report.mutate()}
                   >
                     Report and suspend
                   </Button>
                 </ModalFooter>
-              </>
+              </form>
             ) : (
               <ModalBody className="pb-6">
                 <p className="text-sm text-default-500">

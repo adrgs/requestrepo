@@ -11,7 +11,6 @@ import { BlockedSubdomainOverlay } from "@/components/auth/BlockedSubdomainOverl
 import { RequestsPage } from "@/pages/RequestsPage";
 import { ResponseEditorPage } from "@/pages/ResponseEditorPage";
 import { DnsSettingsPage } from "@/pages/DnsSettingsPage";
-import { ReportAbusePage } from "@/pages/ReportAbusePage";
 
 // Redirect that preserves query params (for share links)
 function RedirectWithParams() {
@@ -67,11 +66,11 @@ function App() {
           <BlockedSubdomainOverlay subdomain={activeSubdomain} />
         )}
       <Routes>
-        {/* Outside the dashboard: reporting abuse needs no session */}
-        <Route path="/abuse" element={<ReportAbusePage />} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<RedirectWithParams />} />
           <Route path="requests" element={<RequestsPage />} />
+          {/* The dashboard with the report popup open (see Topbar) */}
+          <Route path="abuse" element={<RequestsPage />} />
           <Route path="response" element={<ResponseEditorPage />} />
           <Route path="dns" element={<DnsSettingsPage />} />
           {/* Catch-all: redirect unknown routes to /requests */}

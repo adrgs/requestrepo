@@ -106,8 +106,7 @@ requestrepo/
 │       ├── pages/          # Route components
 │       │   ├── RequestsPage.tsx
 │       │   ├── DnsSettingsPage.tsx
-│       │   ├── ResponseEditorPage.tsx
-│       │   └── ReportAbusePage.tsx   # /abuse: the report dialog, outside the dashboard
+│       │   └── ResponseEditorPage.tsx
 │       ├── stores/         # Zustand stores
 │       │   ├── authStore.ts
 │       │   ├── sessionStore.ts
