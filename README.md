@@ -17,7 +17,7 @@ A tool for analyzing HTTP, DNS, and SMTP requests with custom DNS records and re
 - **Request sharing**: Share individual requests via secure tokens
 - **Admin authentication**: Optional password protection for session creation
 - **Agent-ready API**: Drive everything with `curl` from Claude Code, Codex or any agent. Long polling, `llms.txt`, an OpenAPI description and an Agent Skill are served by every instance
-- **Abuse reporting**: Public, rate-limited reports suspend a subdomain at once; suspended subdomains are sinkholed so their victims can be identified
+- **Abuse reporting**: Rate-limited reports suspend a subdomain at once
 - **No external dependencies**: In-memory cache with LRU eviction (no Redis required)
 
 ## Quick Start
@@ -205,41 +205,24 @@ control, or a phishing page: with the flag button in the dashboard, at
 
 ```bash
 curl -X POST https://<your-domain>/api/v2/abuse/reports \
-  -H 'Content-Type: application/json' \
-  -d '{"subdomain":"abcd1234","category":"malware","reason":"Botnet beacon"}'
+  -H 'Content-Type: application/json' -d '{"subdomain":"abcd1234"}'
 ```
 
-`subdomain` accepts a label, any hostname under it, or a URL. Categories are `malware`,
-`phishing`, `csam`, `spam` and `other`; `reason` is optional (300 characters, seen only by the
-admin). Reports are rate limited to 3 per hour per IP address (an IPv6 /48 counts as one).
+`subdomain` accepts a label, any hostname under it, or a URL. Nothing else is asked for.
 
 **A report suspends the subdomain immediately.** Nobody has to be awake for a beacon to stop
 working, and the owner of a legitimate subdomain caught by mistake can simply create a new one.
-A suspended subdomain is a **sinkhole**: HTTP answers `410 Gone` (a short page for browsers)
-and serves nothing, DNS answers `NXDOMAIN`, mail is refused, and the owner's dashboard, API
-token and share links stop working with `subdomain_suspended`. Its incoming HTTP and DNS
-traffic is still recorded for the admin, because the sources of a botnet beacon are its
-victims; the admin can export them for a CERT.
+A suspended subdomain answers `410 Gone` (a short page for browsers) and serves nothing, DNS
+answers `NXDOMAIN`, mail is refused, and the owner's dashboard, API token and share links stop
+working with `subdomain_suspended`. Nothing sent to it is logged any more.
 
-**Managing suspensions.** Set `ABUSE_ADMIN_TOKEN` and open `/admin/abuse`, or use the API with
-`Authorization: Bearer <ABUSE_ADMIN_TOKEN>`. This token is separate from `ADMIN_TOKEN`, which
-only gates session creation.
+Reports are rate limited to 3 per hour per IP address (an IPv6 /48 counts as one). On a
+private instance (`ADMIN_TOKEN` set), reporting needs the admin token like everything else.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v2/abuse/admin/subdomains` | Suspended subdomains (`q`, `limit`, `offset`) |
-| `GET` | `/api/v2/abuse/admin/subdomains/{subdomain}` | One suspension with its recent reports |
-| `PUT` | `/api/v2/abuse/admin/subdomains/{subdomain}` | Suspend; body optional: `{"category"?, "note"?}` |
-| `DELETE` | `/api/v2/abuse/admin/subdomains/{subdomain}` | Lift the suspension |
-| `GET` | `/api/v2/abuse/admin/subdomains/{subdomain}/requests` | Captured traffic, including while suspended |
-| `GET` | `/api/v2/abuse/admin/subdomains/{subdomain}/sources` | Distinct source IPs, most active first |
-| `DELETE` | `/api/v2/abuse/admin/subdomains/{subdomain}/data` | Delete its files, DNS records and captured traffic |
-
-**Persistence.** Suspensions are saved to `abuse.json` in `DATA_DIR` (the `data` volume in
-Docker) and survive restarts; a file that cannot be read stops the server from starting
-instead of silently dropping them. At 5,000 suspensions the oldest one made by a report is
-lifted to make room; an admin's never is. Captured traffic lives in the in-memory cache like
-any other request, so export the sources of a suspended subdomain before a redeploy.
+**Lifting a suspension.** Suspensions are saved to `abuse.json` in `DATA_DIR` (the `data`
+volume in Docker), one per line, and survive restarts. To lift one, delete its line and
+restart. A file that cannot be read stops the server from starting instead of silently
+dropping suspensions. At 20,000 suspensions the oldest one is lifted to make room.
 
 ## Environment Variables
 
@@ -252,9 +235,8 @@ See [.env.example](.env.example) for all available options.
 | `SERVER_IP` | Yes | - | Public IP for DNS responses |
 | `SERVER_IPV6` | No | - | Public IPv6 address for AAAA responses (IPv4-only when unset) |
 | `ADMIN_TOKEN` | No | - | Password for session creation |
-| `ABUSE_REPORTING_ENABLED` | No | `true` | Accept public abuse reports, which suspend a subdomain immediately |
-| `ABUSE_ADMIN_TOKEN` | No | - | Token for `/admin/abuse` and the abuse admin API (16+ characters) |
-| `ABUSE_CONTACT` | No | - | Where to report abuse, shown to reporters and to owners of a suspended subdomain |
+| `ABUSE_REPORTING_ENABLED` | No | `true` | Accept abuse reports, which suspend a subdomain immediately |
+| `ABUSE_CONTACT` | No | - | Shown to owners of a suspended subdomain, for disputes |
 | `DATA_DIR` | No | `./data` | Directory for `abuse.json`, the saved blocklist (`/app/data` in Docker) |
 | `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
 | `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |

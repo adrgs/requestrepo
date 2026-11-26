@@ -36,9 +36,8 @@ services:
       - SERVER_IPV6=${SERVER_IPV6:-}
       # Optional - Auth
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
-      # Optional - Abuse reporting and review (see README "Reporting Abuse")
+      # Optional - Abuse reporting (see README "Reporting Abuse")
       - ABUSE_REPORTING_ENABLED=${ABUSE_REPORTING_ENABLED:-true}
-      - ABUSE_ADMIN_TOKEN=${ABUSE_ADMIN_TOKEN:-}
       - ABUSE_CONTACT=${ABUSE_CONTACT:-}
       # Optional - Ports
       - HTTP_PORT=${HTTP_PORT:-80}

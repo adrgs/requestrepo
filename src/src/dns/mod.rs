@@ -306,20 +306,13 @@ pub(crate) async fn process_dns_query(
     // Extract subdomain from hostname
     let subdomain = get_subdomain_from_hostname(&name);
 
-    // A suspended subdomain does not exist as far as DNS is concerned. Its records are not
-    // looked up, but the query is still recorded for the abuse admin, never broadcast.
-    if let Some(suspended) = subdomain
+    // A suspended subdomain does not exist as far as DNS is concerned. Answer before
+    // anything is looked up or logged.
+    if subdomain
         .as_deref()
-        .filter(|subdomain| abuse.is_blocked(subdomain))
+        .is_some_and(|subdomain| abuse.is_blocked(subdomain))
     {
-        let response = blocked_response(&request, query)?;
-        let reply = "NXDOMAIN (subdomain suspended)";
-        if let Err(e) =
-            log_dns_request(&request, data, addr, suspended, reply, &cache, &tx, false).await
-        {
-            error!("Failed to log DNS request: {}", e);
-        }
-        return Ok(response);
+        return blocked_response(&request, query);
     }
 
     // Build response first so we can include it in the log
@@ -330,8 +323,7 @@ pub(crate) async fn process_dns_query(
 
     // Log the DNS request if we have a valid subdomain
     if let Some(ref subdomain) = subdomain {
-        if let Err(e) =
-            log_dns_request(&request, data, addr, subdomain, &reply, &cache, &tx, true).await
+        if let Err(e) = log_dns_request(&request, data, addr, subdomain, &reply, &cache, &tx).await
         {
             error!("Failed to log DNS request: {}", e);
         }
@@ -433,7 +425,6 @@ pub(crate) fn default_aaaa(server_ipv6: Option<Ipv6Addr>, server_ip: &str) -> Op
     server_ipv6.or_else(|| server_ip.parse::<Ipv6Addr>().ok())
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn log_dns_request(
     request: &Message,
     raw_data: &[u8],
@@ -442,7 +433,6 @@ async fn log_dns_request(
     reply: &str,
     cache: &Arc<Cache>,
     tx: &Arc<broadcast::Sender<CacheMessage>>,
-    broadcast: bool,
 ) -> Result<()> {
     let query = request
         .queries
@@ -475,13 +465,11 @@ async fn log_dns_request(
     let list_key = format!("requests:{subdomain}");
     cache.rpush(&list_key, &request_json).await?;
 
-    if broadcast {
-        let _ = tx.send(CacheMessage {
-            cmd: "new_request".to_string(),
-            subdomain: subdomain.to_string(),
-            data: request_json,
-        });
-    }
+    let _ = tx.send(CacheMessage {
+        cmd: "new_request".to_string(),
+        subdomain: subdomain.to_string(),
+        data: request_json,
+    });
 
     Ok(())
 }

@@ -9,18 +9,11 @@ import {
   ModalContent,
   ModalFooter,
   ModalHeader,
-  Select,
-  SelectItem,
-  Textarea,
 } from "@heroui/react";
 import { CircleCheck, Flag } from "lucide-react";
 import { apiClient } from "@/api/client";
-import { ABUSE_CATEGORIES, extractSubdomain } from "@/lib/abuse";
+import { extractSubdomain } from "@/lib/abuse";
 import { getDnsDomain, isAbuseReportingEnabled } from "@/lib/config";
-import type { AbuseCategory } from "@/types";
-
-// The same limit the server enforces
-const REASON_MAX = 300;
 
 function describeError(error: unknown): string {
   if (error instanceof AxiosError && error.response) {
@@ -33,6 +26,9 @@ function describeError(error: unknown): string {
     }
     if (data?.code === "invalid_subdomain") {
       return `That is not a subdomain of ${getDnsDomain()}.`;
+    }
+    if (data?.code === "admin_required") {
+      return "This instance is private: sign in on the dashboard first.";
     }
     if (data?.error) return data.error;
   }
@@ -48,10 +44,7 @@ interface ReportAbuseDialogProps {
   isDismissable?: boolean;
 }
 
-/**
- * Reports a subdomain for abuse. A report suspends it immediately, so the dialog says so
- * plainly and asks for nothing beyond what an admin needs to understand it later.
- */
+/** Reports a subdomain for abuse. A report suspends it immediately. */
 export function ReportAbuseDialog({
   isOpen,
   onClose,
@@ -61,23 +54,15 @@ export function ReportAbuseDialog({
   const domain = getDnsDomain();
   const enabled = isAbuseReportingEnabled();
   const [subdomain, setSubdomain] = useState(initialSubdomain);
-  const [category, setCategory] = useState<AbuseCategory>("malware");
-  const [reason, setReason] = useState("");
 
   const report = useMutation({
-    mutationFn: () =>
-      apiClient.createAbuseReport({
-        subdomain,
-        category,
-        reason: reason.trim() || undefined,
-      }),
+    mutationFn: () => apiClient.createAbuseReport({ subdomain }),
   });
 
   const label = extractSubdomain(subdomain);
   const reset = () => {
     report.reset();
     setSubdomain("");
-    setReason("");
   };
   const close = () => {
     reset();
@@ -105,8 +90,9 @@ export function ReportAbuseDialog({
                   {report.data.subdomain}.{domain}
                 </span>{" "}
                 {report.data.already_suspended
-                  ? "was already suspended. Thank you for the report."
-                  : "no longer serves content or resolves. Thank you for the report."}
+                  ? "was already suspended."
+                  : "no longer serves content or resolves."}{" "}
+                Thank you for the report.
               </p>
             </ModalBody>
             <ModalFooter className="justify-center">
@@ -137,8 +123,7 @@ export function ReportAbuseDialog({
                   </p>
                   <Input
                     autoFocus
-                    label="Subdomain"
-                    labelPlacement="outside"
+                    aria-label="Subdomain"
                     placeholder={`abcd1234.${domain}`}
                     description={
                       label && `${label}.${domain}` !== subdomain.trim()
@@ -147,6 +132,11 @@ export function ReportAbuseDialog({
                     }
                     value={subdomain}
                     onValueChange={setSubdomain}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && label && !report.isPending) {
+                        report.mutate();
+                      }
+                    }}
                     // ARIA validation: the native kind keeps an old "invalid" state
                     // after the value becomes valid
                     validationBehavior="aria"
@@ -154,36 +144,6 @@ export function ReportAbuseDialog({
                     errorMessage={`Not a subdomain of ${domain}`}
                     autoComplete="off"
                     classNames={{ input: "font-mono" }}
-                  />
-                  <Select
-                    label="Category"
-                    labelPlacement="outside"
-                    selectedKeys={[category]}
-                    disallowEmptySelection
-                    onSelectionChange={(keys) => {
-                      const key = Array.from(keys)[0] as
-                        | AbuseCategory
-                        | undefined;
-                      if (key) setCategory(key);
-                    }}
-                  >
-                    {ABUSE_CATEGORIES.map((option) => (
-                      <SelectItem key={option.key}>{option.label}</SelectItem>
-                    ))}
-                  </Select>
-                  <Textarea
-                    label="Reason (optional)"
-                    labelPlacement="outside"
-                    placeholder="What did you see?"
-                    value={reason}
-                    onValueChange={setReason}
-                    maxLength={REASON_MAX}
-                    minRows={2}
-                    description={
-                      reason.length > REASON_MAX - 50
-                        ? `${reason.length}/${REASON_MAX}`
-                        : undefined
-                    }
                   />
                   {report.error && (
                     <p className="text-sm text-danger" role="alert">

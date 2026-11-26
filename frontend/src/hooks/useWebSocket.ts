@@ -84,7 +84,7 @@ export function useWebSocket() {
 
           case "suspended":
             // The session was suspended for abuse, and the server is saying why
-            markBlocked(message.subdomain, message.category);
+            markBlocked(message.subdomain);
             break;
 
           case "pong":
@@ -96,7 +96,7 @@ export function useWebSocket() {
               // A suspended session keeps its token: it is still valid, and works again
               // if the suspension is lifted. So it is marked, never removed.
               if (message.subdomain) {
-                markBlocked(message.subdomain, message.category);
+                markBlocked(message.subdomain);
               }
               pendingTokensRef.current = pendingTokensRef.current.filter(
                 (token) => getSubdomainFromToken(token) !== message.subdomain,

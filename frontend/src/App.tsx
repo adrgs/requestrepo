@@ -12,7 +12,6 @@ import { RequestsPage } from "@/pages/RequestsPage";
 import { ResponseEditorPage } from "@/pages/ResponseEditorPage";
 import { DnsSettingsPage } from "@/pages/DnsSettingsPage";
 import { ReportAbusePage } from "@/pages/ReportAbusePage";
-import { AbuseAdminPage } from "@/pages/AbuseAdminPage";
 
 // Redirect that preserves query params (for share links)
 function RedirectWithParams() {
@@ -65,16 +64,11 @@ function App() {
         activeSubdomain &&
         !showAuthOverlay &&
         !backendOffline && (
-          <BlockedSubdomainOverlay
-            subdomain={activeSubdomain}
-            category={activeBlock.category}
-          />
+          <BlockedSubdomainOverlay subdomain={activeSubdomain} />
         )}
       <Routes>
-        {/* Outside the dashboard on purpose: a visitor reporting abuse, or an admin
-            managing blocks, should not be handed a session and a WebSocket */}
+        {/* Outside the dashboard: reporting abuse needs no session */}
         <Route path="/abuse" element={<ReportAbusePage />} />
-        <Route path="/admin/abuse" element={<AbuseAdminPage />} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<RedirectWithParams />} />
           <Route path="requests" element={<RequestsPage />} />

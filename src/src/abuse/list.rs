@@ -15,75 +15,25 @@ use tracing::{error, info, warn};
 
 use super::{limiter::ReportLimiter, storage::Storage};
 
-/// Accepted reports per client network per window.
+/// Accepted reports per client per window.
 pub const REPORT_RATE_LIMIT: u32 = 3;
 pub const REPORT_RATE_WINDOW: StdDuration = StdDuration::from_secs(60 * 60);
 /// How often expired rate-limit buckets are dropped.
 const CLEANUP_INTERVAL: StdDuration = StdDuration::from_secs(60);
 
-/// Upper bound on suspended subdomains. The whole file is rewritten on every change and the
-/// report endpoint is anonymous, so growth must have a limit. When it is reached, the
-/// oldest suspension made by a report is lifted to make room; an admin's never is.
-const MAX_ENTRIES: usize = 5_000;
-
-/// Reports kept per entry, most recent first. `report_count` holds the true total.
-const REPORTS_PER_ENTRY: usize = 3;
+/// Upper bound on suspended subdomains. The report endpoint is anonymous and the whole file
+/// is rewritten on every change, so growth must have a limit. When it is reached, the
+/// oldest suspension is lifted to make room for the new one.
+const MAX_ENTRIES: usize = 20_000;
 
 const FILE_VERSION: u32 = 1;
 
-/// Why a subdomain was suspended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Category {
-    Malware,
-    Phishing,
-    Csam,
-    Spam,
-    Other,
-}
-
-impl Category {
-    pub const ALL: [Category; 5] = [
-        Category::Malware,
-        Category::Phishing,
-        Category::Csam,
-        Category::Spam,
-        Category::Other,
-    ];
-}
-
-/// Who suspended the subdomain.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Source {
-    Report,
-    Admin,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Report {
-    pub at: i64,
-    pub category: Category,
-    /// Reporter's network, such as `203.0.113.0/24`. The exact address is not kept.
-    pub network: String,
-    /// Optional short reason, shown to the admin only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-}
-
-/// A suspended subdomain. Being on the list is being suspended; lifting removes the entry.
+/// A suspended subdomain. Being on the list is being suspended; to lift a suspension,
+/// remove its line from `abuse.json` and restart.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
     pub subdomain: String,
-    pub category: Category,
-    pub source: Source,
     pub suspended_at: i64,
-    pub updated_at: i64,
-    pub report_count: u32,
-    #[serde(default)]
-    pub reports: Vec<Report>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub admin_note: Option<String>,
 }
 
 /// On-disk shape.
@@ -94,67 +44,17 @@ struct FileFormat {
     entries: Vec<Entry>,
 }
 
-/// Borrows from a snapshot, so saving does not have to clone every entry.
-#[derive(Serialize)]
-struct FileFormatRef<'a> {
-    version: u32,
-    entries: Vec<&'a Entry>,
-}
-
 #[derive(Default)]
 struct Snapshot {
     entries: HashMap<String, Arc<Entry>>,
-}
-
-impl Snapshot {
-    /// Makes room for one more entry by lifting the oldest suspension made by a report.
-    /// Suspensions an admin made are never lifted this way.
-    fn make_room(&mut self) -> bool {
-        if self.entries.len() < MAX_ENTRIES {
-            return true;
-        }
-        let oldest = self
-            .entries
-            .values()
-            .filter(|entry| entry.source == Source::Report)
-            .min_by_key(|entry| entry.updated_at)
-            .map(|entry| entry.subdomain.clone());
-        match oldest {
-            Some(subdomain) => {
-                warn!("Blocklist full: lifting the oldest reported suspension, {subdomain}");
-                self.entries.remove(&subdomain);
-                true
-            }
-            None => false,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum MutateError {
-    /// Every entry is an admin's suspension, so nothing can make room.
-    Full,
-}
-
-/// Result of a change. `persisted` is false when the change took effect in memory but could
-/// not be written to disk, in which case it is lost on restart.
-#[derive(Debug)]
-pub struct Applied<T> {
-    pub value: T,
-    pub persisted: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AdminError {
-    /// No admin token is configured, so there is nobody allowed to manage the blocklist.
-    NotConfigured,
-    Invalid,
 }
 
 /// How the blocklist behaves. Comes from the environment in production.
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub reporting_enabled: bool,
+    /// ADMIN_TOKEN of a private instance. When set, reporting needs it, like every other
+    /// way of using the instance does.
     pub admin_token: Option<String>,
 }
 
@@ -171,7 +71,15 @@ impl Settings {
     pub fn from_config() -> Self {
         Self {
             reporting_enabled: CONFIG.abuse_reporting_enabled,
-            admin_token: CONFIG.abuse_admin_token.clone(),
+            admin_token: CONFIG.admin_token.clone(),
+        }
+    }
+
+    /// Whether a report carrying `token` may be filed.
+    pub fn may_report(&self, token: Option<&str>) -> bool {
+        match &self.admin_token {
+            None => true,
+            Some(required) => token.is_some_and(|token| constant_time_eq(token, required)),
         }
     }
 }
@@ -231,16 +139,6 @@ impl AbuseList {
         self.state.load().entries.contains_key(subdomain)
     }
 
-    /// The entry for `subdomain`, if it is suspended.
-    pub fn suspension(&self, subdomain: &str) -> Option<Arc<Entry>> {
-        self.state.load().entries.get(subdomain).cloned()
-    }
-
-    /// Every entry, in no particular order.
-    pub fn entries(&self) -> Vec<Arc<Entry>> {
-        self.state.load().entries.values().cloned().collect()
-    }
-
     pub fn blocked_count(&self) -> usize {
         self.state.load().entries.len()
     }
@@ -254,25 +152,12 @@ impl AbuseList {
         self.persist_failures.load(Ordering::Relaxed)
     }
 
-    /// Checks the token supplied with an admin request.
-    pub fn verify_admin(&self, supplied: Option<&str>) -> Result<(), AdminError> {
-        let configured = self
-            .settings
-            .admin_token
-            .as_deref()
-            .ok_or(AdminError::NotConfigured)?;
-        match supplied {
-            Some(supplied) if constant_time_eq(supplied, configured) => Ok(()),
-            _ => Err(AdminError::Invalid),
-        }
-    }
-
     /// Applies the report rate limit for `ip`.
     pub fn check_report_rate(&self, ip: IpAddr) -> Result<(), StdDuration> {
         self.limiter.check(ip)
     }
 
-    /// Starts dropping expired rate-limit buckets. Without it, every network that ever
+    /// Starts dropping expired rate-limit buckets. Without it, every client that ever
     /// reported would be remembered for the life of the process.
     pub fn start_cleanup_task(self: Arc<Self>) {
         tokio::spawn(async move {
@@ -283,155 +168,119 @@ impl AbuseList {
         });
     }
 
-    /// Suspends `subdomain` because of a report, or adds the report to its suspension. The
-    /// value is true if this report is what suspended it.
-    pub async fn report(
-        &self,
-        subdomain: &str,
-        report: Report,
-    ) -> Result<Applied<bool>, MutateError> {
-        self.update(|snapshot| {
-            let (mut entry, newly) = match snapshot.entries.get(subdomain) {
-                Some(existing) => ((**existing).clone(), false),
-                None => {
-                    if !snapshot.make_room() {
-                        return None;
-                    }
-                    let entry = Entry {
-                        subdomain: subdomain.to_string(),
-                        category: report.category,
-                        source: Source::Report,
-                        suspended_at: report.at,
-                        updated_at: report.at,
-                        report_count: 0,
-                        reports: Vec::new(),
-                        admin_note: None,
-                    };
-                    (entry, true)
-                }
-            };
-            entry.report_count = entry.report_count.saturating_add(1);
-            entry.updated_at = report.at;
-            entry.reports.insert(0, report);
-            entry.reports.truncate(REPORTS_PER_ENTRY);
-            snapshot
-                .entries
-                .insert(subdomain.to_string(), Arc::new(entry));
-            Some(newly)
-        })
-        .await
-        .ok_or(MutateError::Full)
-    }
-
-    /// Suspends `subdomain` as an admin. The value is false if it already was suspended; a
-    /// category or note given then still replaces the old one, and the suspension becomes
-    /// the admin's, so the full list never lifts it.
-    pub async fn suspend(
-        &self,
-        subdomain: &str,
-        category: Option<Category>,
-        note: Option<String>,
-    ) -> Result<Applied<bool>, MutateError> {
+    /// Suspends `subdomain`. False if it already was suspended.
+    pub async fn suspend(&self, subdomain: &str) -> bool {
+        if self.is_blocked(subdomain) {
+            return false;
+        }
         let now = get_current_timestamp();
         self.update(|snapshot| {
-            let (mut entry, newly) = match snapshot.entries.get(subdomain) {
-                Some(existing) => ((**existing).clone(), false),
-                None => {
-                    if !snapshot.make_room() {
-                        return None;
-                    }
-                    let entry = Entry {
-                        subdomain: subdomain.to_string(),
-                        category: category.unwrap_or(Category::Other),
-                        source: Source::Admin,
-                        suspended_at: now,
-                        updated_at: now,
-                        report_count: 0,
-                        reports: Vec::new(),
-                        admin_note: None,
-                    };
-                    (entry, true)
+            if snapshot.entries.contains_key(subdomain) {
+                return false;
+            }
+            if snapshot.entries.len() >= MAX_ENTRIES {
+                let oldest = snapshot
+                    .entries
+                    .values()
+                    .min_by_key(|entry| entry.suspended_at)
+                    .map(|entry| entry.subdomain.clone());
+                if let Some(oldest) = oldest {
+                    warn!("Blocklist full: lifting the oldest suspension, {oldest}");
+                    snapshot.entries.remove(&oldest);
                 }
+            }
+            let entry = Entry {
+                subdomain: subdomain.to_string(),
+                suspended_at: now,
             };
-            entry.source = Source::Admin;
-            entry.updated_at = now;
-            if let Some(category) = category {
-                entry.category = category;
-            }
-            if note.is_some() {
-                entry.admin_note = note;
-            }
             snapshot
                 .entries
                 .insert(subdomain.to_string(), Arc::new(entry));
-            Some(newly)
+            true
         })
         .await
-        .ok_or(MutateError::Full)
-    }
-
-    /// Lifts the suspension of `subdomain`. The value is false if it was not suspended.
-    pub async fn lift(&self, subdomain: &str) -> Applied<bool> {
-        self.update(|snapshot| Some(snapshot.entries.remove(subdomain).is_some()))
-            .await
-            .expect("lifting a suspension cannot be refused")
     }
 
     /// Applies `change` to a copy of the current snapshot, saves it, and publishes it.
-    /// A `None` result abandons the change without saving.
     ///
     /// A failed save does not undo the change. It takes effect now and is reported, so a
     /// disk problem can never stop an abusive subdomain from being suspended.
-    async fn update<T>(
-        &self,
-        change: impl FnOnce(&mut Snapshot) -> Option<T>,
-    ) -> Option<Applied<T>> {
+    async fn update<T>(&self, change: impl FnOnce(&mut Snapshot) -> T) -> T {
         let _writer = self.write_lock.lock().await;
 
         let mut next = Snapshot {
             entries: self.state.load().entries.clone(),
         };
-        let value = change(&mut next)?;
+        let value = change(&mut next);
 
-        // Encoding a large list is CPU work: keep it off the async workers.
-        let next = Arc::new(next);
-        let contents = {
-            let next = next.clone();
-            tokio::task::spawn_blocking(move || encode(&next))
-                .await
-                .expect("encoding the blocklist cannot panic")
-        };
-        let persisted = match self.storage.save(&contents).await {
-            Ok(()) => true,
-            Err(e) => {
-                self.persist_failures.fetch_add(1, Ordering::Relaxed);
-                error!("The blocklist cannot be saved and will be lost on restart: {e}");
-                false
-            }
-        };
-        self.state.store(next);
-
-        Some(Applied { value, persisted })
+        let contents = encode(&next);
+        if let Err(e) = self.storage.save(&contents).await {
+            self.persist_failures.fetch_add(1, Ordering::Relaxed);
+            error!("The blocklist cannot be saved and will be lost on restart: {e}");
+        }
+        self.state.store(Arc::new(next));
+        value
     }
 }
 
-/// Serialises a snapshot. Entries are sorted so that saving an unchanged blocklist rewrites
-/// the same bytes.
+/// Serialises a snapshot, one entry per line so that lifting a suspension by hand is a
+/// matter of deleting a line. Sorted, so an unchanged list rewrites the same bytes.
 fn encode(snapshot: &Snapshot) -> Vec<u8> {
     let mut entries: Vec<&Entry> = snapshot.entries.values().map(Arc::as_ref).collect();
     entries.sort_unstable_by(|a, b| a.subdomain.cmp(&b.subdomain));
-    let file = FileFormatRef {
-        version: FILE_VERSION,
-        entries,
-    };
-    // Plain structs of strings and integers: there is no way for this to fail.
-    serde_json::to_vec(&file).expect("serialising the blocklist cannot fail")
+    let lines: Vec<String> = entries
+        .iter()
+        .map(|entry| serde_json::to_string(entry).expect("an entry always serialises"))
+        .collect();
+    format!(
+        "{{\"version\": {FILE_VERSION}, \"entries\": [\n{}\n]}}\n",
+        lines.join(",\n")
+    )
+    .into_bytes()
+}
+
+/// Drops a comma that directly precedes `]` or `}`, so that deleting the last line of the
+/// entry list by hand does not leave invalid JSON behind. Commas inside strings are kept:
+/// subdomain labels never contain brackets, and nothing else in the file is free text.
+fn without_trailing_commas(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut pending_comma = None;
+    for c in text.chars() {
+        match c {
+            ',' => {
+                if let Some(comma) = pending_comma.replace(String::from(",")) {
+                    out.push_str(&comma);
+                }
+            }
+            c if c.is_whitespace() => match pending_comma.as_mut() {
+                Some(pending) => pending.push(c),
+                None => out.push(c),
+            },
+            ']' | '}' => {
+                if let Some(pending) = pending_comma.take() {
+                    out.push_str(pending.trim_start_matches(','));
+                }
+                out.push(c);
+            }
+            c => {
+                if let Some(pending) = pending_comma.take() {
+                    out.push_str(&pending);
+                }
+                out.push(c);
+            }
+        }
+    }
+    if let Some(pending) = pending_comma {
+        out.push_str(&pending);
+    }
+    out
 }
 
 /// Parses and validates a saved blocklist. A malformed file is a version mismatch or an
 /// editing mistake, and must stop startup rather than drop suspensions.
 fn parse_file(text: &str, path: &Path) -> Result<Vec<Entry>> {
-    let file: FileFormat = serde_json::from_str(text)
+    let text = without_trailing_commas(text);
+    let file: FileFormat = serde_json::from_str(&text)
         .with_context(|| format!("Blocklist {} is not valid JSON", path.display()))?;
     if file.version != FILE_VERSION {
         return Err(anyhow::anyhow!(
@@ -470,29 +319,13 @@ fn parse_file(text: &str, path: &Path) -> Result<Vec<Entry>> {
             ));
         }
     }
-
-    Ok(entries
-        .into_iter()
-        .map(|mut entry| {
-            entry.reports.truncate(REPORTS_PER_ENTRY);
-            entry
-        })
-        .collect())
+    Ok(entries)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
-
-    fn sample_report() -> Report {
-        Report {
-            at: 1_700_000_000,
-            category: Category::Malware,
-            network: "203.0.113.0/24".to_string(),
-            reason: Some("Beacon for a miner dropper".to_string()),
-        }
-    }
 
     async fn load(dir: &TempDir) -> AbuseList {
         AbuseList::load(dir.path(), Settings::default())
@@ -502,31 +335,6 @@ mod tests {
 
     fn label(n: usize) -> String {
         format!("{n:08}")
-    }
-
-    fn entry(subdomain: &str, source: Source, updated_at: i64) -> Entry {
-        Entry {
-            subdomain: subdomain.to_string(),
-            category: Category::Other,
-            source,
-            suspended_at: updated_at,
-            updated_at,
-            report_count: 0,
-            reports: Vec::new(),
-            admin_note: None,
-        }
-    }
-
-    fn write_entries(dir: &TempDir, entries: &[Entry]) {
-        let file = FileFormatRef {
-            version: FILE_VERSION,
-            entries: entries.iter().collect(),
-        };
-        std::fs::write(
-            dir.path().join("abuse.json"),
-            serde_json::to_vec(&file).unwrap(),
-        )
-        .unwrap();
     }
 
     #[tokio::test]
@@ -539,138 +347,97 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_report_suspends_at_once_and_persists() {
+    async fn suspends_once_and_persists() {
         let dir = TempDir::new().unwrap();
         let list = load(&dir).await;
 
-        let applied = list.report("abcdefgh", sample_report()).await.unwrap();
-        assert!(applied.value);
-        assert!(applied.persisted);
+        assert!(list.suspend("abcdefgh").await);
+        assert_eq!(list.persist_failures(), 0);
         assert!(list.is_blocked("abcdefgh"));
+        assert!(!list.suspend("abcdefgh").await, "already suspended");
 
         // A restart must not bring the subdomain back
+        assert!(load(&dir).await.is_blocked("abcdefgh"));
+    }
+
+    #[tokio::test]
+    async fn the_file_has_one_entry_per_line_so_it_can_be_edited_by_hand() {
+        let dir = TempDir::new().unwrap();
+        let list = load(&dir).await;
+        list.suspend("aaaaaaaa").await;
+        list.suspend("bbbbbbbb").await;
+
+        let path = dir.path().join("abuse.json");
+        let text = std::fs::read_to_string(&path).unwrap();
+        // Deleting the first line's entry leaves valid JSON once its comma goes too
+        let edited = text.replace(
+            &format!("{},\n", text.lines().nth(1).unwrap().trim_end_matches(',')),
+            "",
+        );
+        std::fs::write(&path, edited).unwrap();
+
         let reloaded = load(&dir).await;
-        let entry = reloaded.suspension("abcdefgh").unwrap();
-        assert_eq!(entry.source, Source::Report);
-        assert_eq!(
-            entry.reports[0].reason.as_deref(),
-            Some("Beacon for a miner dropper")
-        );
+        assert!(!reloaded.is_blocked("aaaaaaaa"));
+        assert!(reloaded.is_blocked("bbbbbbbb"));
     }
 
     #[tokio::test]
-    async fn repeated_reports_count_up_and_keep_the_newest() {
+    async fn deleting_the_last_line_by_hand_is_fine_too() {
         let dir = TempDir::new().unwrap();
         let list = load(&dir).await;
+        list.suspend("aaaaaaaa").await;
+        list.suspend("bbbbbbbb").await;
 
-        for n in 0..10 {
-            let mut report = sample_report();
-            report.reason = Some(format!("report {n}"));
-            let applied = list.report("abcdefgh", report).await.unwrap();
-            assert_eq!(applied.value, n == 0);
-        }
-
-        let entry = list.suspension("abcdefgh").unwrap();
-        assert_eq!(entry.report_count, 10);
-        assert_eq!(entry.reports.len(), REPORTS_PER_ENTRY);
-        // Most recent first
-        assert_eq!(entry.reports[0].reason.as_deref(), Some("report 9"));
-    }
-
-    #[tokio::test]
-    async fn lift_removes_the_suspension_everywhere() {
-        let dir = TempDir::new().unwrap();
-        let list = load(&dir).await;
-        list.report("abcdefgh", sample_report()).await.unwrap();
-
-        assert!(list.lift("abcdefgh").await.value);
-        assert!(!list.is_blocked("abcdefgh"));
-        assert!(!list.lift("abcdefgh").await.value);
-        assert!(!load(&dir).await.is_blocked("abcdefgh"));
-
-        // A new report suspends it again
-        assert!(
-            list.report("abcdefgh", sample_report())
-                .await
-                .unwrap()
-                .value
-        );
-    }
-
-    #[tokio::test]
-    async fn admin_suspends_and_can_update_the_reason() {
-        let dir = TempDir::new().unwrap();
-        let list = load(&dir).await;
-
-        let applied = list
-            .suspend(
-                "abcdefgh",
-                Some(Category::Phishing),
-                Some("Seen in a phishing kit".to_string()),
-            )
-            .await
-            .unwrap();
-        assert!(applied.value);
-
-        let entry = load(&dir).await.suspension("abcdefgh").unwrap();
-        assert_eq!(entry.source, Source::Admin);
-        assert_eq!(entry.category, Category::Phishing);
-        assert_eq!(entry.admin_note.as_deref(), Some("Seen in a phishing kit"));
-
-        // Suspending again changes nothing but the reason
-        let again = list
-            .suspend("abcdefgh", Some(Category::Malware), None)
-            .await
-            .unwrap();
-        assert!(!again.value);
-        let entry = list.suspension("abcdefgh").unwrap();
-        assert_eq!(entry.category, Category::Malware);
-        assert_eq!(entry.admin_note.as_deref(), Some("Seen in a phishing kit"));
-
-        // An admin confirming a reported suspension makes it the admin's
-        list.report("reported", sample_report()).await.unwrap();
-        list.suspend("reported", None, None).await.unwrap();
-        assert_eq!(list.suspension("reported").unwrap().source, Source::Admin);
-    }
-
-    #[tokio::test]
-    async fn a_full_list_lifts_the_oldest_reported_suspension_never_an_admins() {
-        let dir = TempDir::new().unwrap();
-        let mut entries: Vec<Entry> = (0..MAX_ENTRIES - 2)
-            .map(|n| entry(&label(n), Source::Admin, 0))
+        let path = dir.path().join("abuse.json");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let edited: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.contains("bbbbbbbb"))
             .collect();
-        entries.push(entry("reported", Source::Report, 10));
-        entries.push(entry("oldrepor", Source::Report, 5));
-        write_entries(&dir, &entries);
-        let list = load(&dir).await;
+        std::fs::write(&path, edited.join("\n")).unwrap();
 
-        list.report("newcomer", sample_report()).await.unwrap();
-        assert!(list.is_blocked("newcomer"));
-        assert!(!list.is_blocked("oldrepor"), "the oldest one goes");
-        assert!(list.is_blocked("reported"));
+        let reloaded = load(&dir).await;
+        assert!(reloaded.is_blocked("aaaaaaaa"));
+        assert!(!reloaded.is_blocked("bbbbbbbb"));
+    }
 
-        // Promote the remaining reported ones to admin suspensions: nothing can go now
-        list.suspend("reported", None, None).await.unwrap();
-        list.suspend("newcomer", None, None).await.unwrap();
-        assert_eq!(
-            list.report("zzzzzzzz", sample_report()).await.unwrap_err(),
-            MutateError::Full
-        );
-        // Reporting a subdomain that is already suspended still works
-        assert!(list.report(&label(0), sample_report()).await.is_ok());
+    #[test]
+    fn trailing_commas_are_dropped_and_nothing_else_changes() {
+        assert_eq!(without_trailing_commas("[1, 2,\n]"), "[1, 2\n]");
+        assert_eq!(without_trailing_commas("{\"a\": 1, }"), "{\"a\": 1 }");
+        assert_eq!(without_trailing_commas("[1, 2]"), "[1, 2]");
+        assert_eq!(without_trailing_commas("[1,\n 2]"), "[1,\n 2]");
     }
 
     #[tokio::test]
-    async fn concurrent_reports_are_all_kept() {
+    async fn a_full_list_lifts_the_oldest_suspension() {
+        let dir = TempDir::new().unwrap();
+        let entries: Vec<String> = (0..MAX_ENTRIES)
+            .map(|n| format!(r#"{{"subdomain": "{}", "suspended_at": {n}}}"#, label(n)))
+            .collect();
+        std::fs::write(
+            dir.path().join("abuse.json"),
+            format!(r#"{{"version": 1, "entries": [{}]}}"#, entries.join(",")),
+        )
+        .unwrap();
+        let list = load(&dir).await;
+
+        list.suspend("newcomer").await;
+        assert!(list.is_blocked("newcomer"));
+        assert!(!list.is_blocked(&label(0)), "the oldest one goes");
+        assert!(list.is_blocked(&label(1)));
+        assert_eq!(list.blocked_count(), MAX_ENTRIES);
+    }
+
+    #[tokio::test]
+    async fn concurrent_suspensions_are_all_kept() {
         let dir = TempDir::new().unwrap();
         let list = Arc::new(load(&dir).await);
 
         let mut tasks = Vec::new();
         for n in 0..64 {
             let list = list.clone();
-            tasks.push(tokio::spawn(async move {
-                list.report(&label(n), sample_report()).await.unwrap()
-            }));
+            tasks.push(tokio::spawn(async move { list.suspend(&label(n)).await }));
         }
         for task in tasks {
             task.await.unwrap();
@@ -687,46 +454,16 @@ mod tests {
         std::fs::create_dir(dir.path().join("abuse.json.tmp")).unwrap();
         let list = load(&dir).await;
 
-        let applied = list.report("abcdefgh", sample_report()).await.unwrap();
-        assert!(!applied.persisted);
+        assert!(list.suspend("abcdefgh").await);
         assert!(list.is_blocked("abcdefgh"));
         assert_eq!(list.persist_failures(), 1);
-
-        assert!(!list.lift("abcdefgh").await.persisted);
-        assert!(!list.is_blocked("abcdefgh"));
-        assert_eq!(list.persist_failures(), 2);
-    }
-
-    #[tokio::test]
-    async fn verify_admin_distinguishes_unconfigured_from_wrong_token() {
-        let dir = TempDir::new().unwrap();
-
-        let open = load(&dir).await;
-        assert_eq!(open.verify_admin(None), Err(AdminError::NotConfigured));
-        assert_eq!(
-            open.verify_admin(Some("secret")),
-            Err(AdminError::NotConfigured)
-        );
-
-        let closed = AbuseList::load(
-            dir.path(),
-            Settings {
-                admin_token: Some("secret".to_string()),
-                ..Settings::default()
-            },
-        )
-        .await
-        .unwrap();
-        assert_eq!(closed.verify_admin(None), Err(AdminError::Invalid));
-        assert_eq!(closed.verify_admin(Some("wrong")), Err(AdminError::Invalid));
-        assert_eq!(closed.verify_admin(Some("secret")), Ok(()));
     }
 
     #[tokio::test]
     async fn corrupt_files_refuse_to_load_and_unreachable_labels_are_skipped() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("abuse.json");
-        let entry_json = serde_json::to_string(&entry("abcdefgh", Source::Admin, 0)).unwrap();
+        let entry = r#"{"subdomain": "abcdefgh", "suspended_at": 0}"#;
 
         let cases: Vec<(String, &str)> = vec![
             ("not json".to_string(), "not valid JSON"),
@@ -735,7 +472,7 @@ mod tests {
                 "expected 1",
             ),
             (
-                format!("{{\"version\": 1, \"entries\": [{entry_json}, {entry_json}]}}"),
+                format!("{{\"version\": 1, \"entries\": [{entry}, {entry}]}}"),
                 "more than once",
             ),
         ];
@@ -752,8 +489,8 @@ mod tests {
         std::fs::write(
             &path,
             format!(
-                "{{\"version\": 1, \"entries\": [{entry_json}, {}]}}",
-                entry_json.replace("abcdefgh", "not-a-label")
+                "{{\"version\": 1, \"entries\": [{entry}, {}]}}",
+                entry.replace("abcdefgh", "not-a-label")
             ),
         )
         .unwrap();

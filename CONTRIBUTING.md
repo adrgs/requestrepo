@@ -107,8 +107,7 @@ Key environment variables:
 - `SERVER_IPV6`: Your server's public IPv6 address (optional; AAAA records are only served when set)
 - `TLS_ENABLED`: Enable HTTPS with auto-TLS (optional)
 - `ADMIN_TOKEN`: Require password for session creation (optional)
-- `ABUSE_REPORTING_ENABLED`: Accept public abuse reports (optional, on by default)
-- `ABUSE_ADMIN_TOKEN`: Enables the abuse review page at `/admin/abuse` (optional)
+- `ABUSE_REPORTING_ENABLED`: Accept abuse reports, which suspend a subdomain (optional, on by default)
 - `DATA_DIR`: Where the saved blocklist lives (optional, `./data`)
 
 See `.env.example` for all available options.

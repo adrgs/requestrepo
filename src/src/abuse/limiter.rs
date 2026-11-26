@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -112,21 +112,10 @@ fn bucket_key(ip: IpAddr) -> IpAddr {
     }
 }
 
-/// The reporter's network in CIDR notation (`203.0.113.0/24` or `2001:db8::/48`). Reports
-/// keep this instead of the exact address.
-pub fn network_label(ip: IpAddr) -> String {
-    match bucket_key(ip) {
-        IpAddr::V4(v4) => {
-            let [a, b, c, _] = v4.octets();
-            format!("{}/24", Ipv4Addr::new(a, b, c, 0))
-        }
-        IpAddr::V6(v6) => format!("{v6}/48"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::Ipv4Addr;
 
     const WINDOW: Duration = Duration::from_secs(3600);
     const V4: IpAddr = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 7));
@@ -203,16 +192,6 @@ mod tests {
 
         assert_eq!(limiter.check_at(mapped, now), Ok(()));
         assert_eq!(limiter.check_at(V4, now), Err(WINDOW));
-    }
-
-    #[test]
-    fn network_label_widens_the_address() {
-        assert_eq!(network_label(V4), "198.51.100.0/24");
-        assert_eq!(network_label(ipv6(1, 2)), "2001:db8:1::/48");
-        assert_eq!(
-            network_label(IpAddr::V6(Ipv4Addr::new(198, 51, 100, 7).to_ipv6_mapped())),
-            "198.51.100.0/24"
-        );
     }
 
     #[test]

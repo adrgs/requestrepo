@@ -111,79 +111,15 @@ export interface PaginatedResponse<T> {
   };
 }
 
-// Abuse reporting. A report suspends the subdomain immediately.
-export type AbuseCategory = "malware" | "phishing" | "csam" | "spam" | "other";
-
-export interface AbuseReport {
-  at: number;
-  category: AbuseCategory;
-  // Reporter's network, such as "203.0.113.0/24"
-  network: string;
-  reason?: string;
-}
-
-export interface AbuseEntrySummary {
-  subdomain: string;
-  category: AbuseCategory;
-  source: "report" | "admin";
-  suspended_at: number;
-  updated_at: number;
-  report_count: number;
-}
-
-export interface AbuseEntry extends AbuseEntrySummary {
-  reports: AbuseReport[];
-  admin_note?: string;
-  // Requests stored for the subdomain, including those received while suspended
-  captured_requests: number;
-}
-
+// Abuse reporting: a report suspends the subdomain immediately
 export interface CreateAbuseReportPayload {
   subdomain: string;
-  category: AbuseCategory;
-  reason?: string;
 }
 
 export interface AbuseReportResponse {
   subdomain: string;
   suspended: boolean;
   already_suspended: boolean;
-  message: string;
-}
-
-export interface AbuseEntriesResponse {
-  subdomains: AbuseEntrySummary[];
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-    has_more: boolean;
-  };
-}
-
-export interface AbuseSuspendResponse {
-  subdomain: string;
-  suspended: boolean;
-  already_suspended: boolean;
-  // False when the change took effect but could not be saved to disk
-  persisted: boolean;
-  entry: AbuseEntry | null;
-}
-
-export interface AbuseSource {
-  ip: string;
-  country?: string;
-  requests: number;
-  first_seen: number;
-  last_seen: number;
-  types: string[];
-}
-
-export interface AbuseSourcesResponse {
-  subdomain: string;
-  total_requests: number;
-  unique_sources: number;
-  sources: AbuseSource[];
 }
 
 // WebSocket types
@@ -200,12 +136,11 @@ export type WebSocketServerMessage =
   | { cmd: "deleted"; subdomain: string; data: { _id: string } }
   | { cmd: "cleared"; subdomain: string }
   // Sent to a live dashboard when its session gets suspended for abuse
-  | { cmd: "suspended"; subdomain: string; category?: AbuseCategory }
+  | { cmd: "suspended"; subdomain: string }
   | {
       cmd: "error";
       code: string;
       message: string;
       // Set when the code is "subdomain_suspended"
       subdomain?: string;
-      category?: AbuseCategory;
     };

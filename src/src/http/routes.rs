@@ -146,7 +146,7 @@ pub async fn catch_all(
             &headers,
             &body,
         );
-        record_http_request(&state, &subdomain, &request_log, true).await;
+        record_http_request(&state, &subdomain, &request_log).await;
 
         // Extract the file path from the URL
         // For main domain path-based routing (/r/subdomain/path): strips /r/subdomain prefix
@@ -164,7 +164,7 @@ pub async fn catch_all(
 
 /// Builds the log entry for an HTTP request to `subdomain`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn http_request_log(
+fn http_request_log(
     subdomain: &str,
     peer: std::net::SocketAddr,
     is_tls: bool,
@@ -234,26 +234,18 @@ pub(crate) fn http_request_log(
     }
 }
 
-/// Appends a request to the subdomain's log. `broadcast` tells live dashboards about it;
-/// it is false for a suspended subdomain, whose log only the abuse admin can read.
-pub(crate) async fn record_http_request(
-    state: &AppState,
-    subdomain: &str,
-    request_log: &HttpRequestLog,
-    broadcast: bool,
-) {
+/// Appends a request to the subdomain's log and tells live dashboards about it.
+async fn record_http_request(state: &AppState, subdomain: &str, request_log: &HttpRequestLog) {
     let request_json = serde_json::to_string(request_log).unwrap_or_default();
     let _ = state
         .cache
         .rpush(&format!("requests:{subdomain}"), &request_json)
         .await;
-    if broadcast {
-        let _ = state.tx.send(crate::models::CacheMessage {
-            cmd: "new_request".to_string(),
-            subdomain: subdomain.to_string(),
-            data: request_json,
-        });
-    }
+    let _ = state.tx.send(crate::models::CacheMessage {
+        cmd: "new_request".to_string(),
+        subdomain: subdomain.to_string(),
+        data: request_json,
+    });
 }
 
 /// Serve static files from in-memory cache

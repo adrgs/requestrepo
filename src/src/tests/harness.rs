@@ -15,7 +15,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 
-pub const ADMIN: &str = "abuse-admin-token-for-tests";
+/// ADMIN_TOKEN of a private instance.
+pub const ADMIN: &str = "instance-admin-token-for-tests";
 pub const JSON: &[(&str, &str)] = &[("Content-Type", "application/json")];
 
 pub struct TestServer {
@@ -25,8 +26,8 @@ pub struct TestServer {
     pub data_dir: TempDir,
 }
 
-/// Settings with an admin token.
-pub fn admin_settings() -> Settings {
+/// Settings of a private instance, which has an ADMIN_TOKEN.
+pub fn private_settings() -> Settings {
     Settings {
         admin_token: Some(ADMIN.to_string()),
         ..Settings::default()
@@ -104,10 +105,6 @@ impl TestServer {
         self.request(method, &self.main_host(), target, &headers, body)
             .await
     }
-
-    pub async fn admin(&self, method: &str, target: &str, body: &str) -> Reply {
-        self.api(ADMIN, method, target, body).await
-    }
 }
 
 pub struct Reply {
@@ -158,8 +155,13 @@ pub async fn http(
     let _ = stream.write_all(body.as_bytes()).await;
 
     let mut raw = Vec::new();
-    // A failed read says nothing on its own: say which request it belonged to
+    // A server that answers without reading the body closes the connection, which a client
+    // still sending one sees as a reset after the response. Only a reset before a whole
+    // response is a failure; say which request it belonged to.
     if let Err(e) = stream.read_to_end(&mut raw).await {
+        if raw.windows(4).any(|window| window == b"\r\n\r\n") {
+            return parse_response(&raw);
+        }
         panic!(
             "reading the response to {method} {target} failed after {} bytes: {e}",
             raw.len()

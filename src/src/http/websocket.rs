@@ -78,11 +78,7 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                         // A block notice puts its reason at the top level, where the dashboard
                         // reads it. It is not a request, so it has nothing to carry in `data`.
                         let ws_msg = if msg.cmd == "suspended" {
-                            json!({
-                                "cmd": "suspended",
-                                "subdomain": subdomain,
-                                "category": data.get("category").cloned().unwrap_or(Value::Null),
-                            })
+                            json!({ "cmd": "suspended", "subdomain": subdomain })
                         } else {
                             json!({
                                 "cmd": cmd,
@@ -168,24 +164,23 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                 // invalid token, and the owner could never get back in after
                                 // the block is lifted.
                                 let verified = verify_jwt(token).map(|subdomain| {
-                                    let blocked = state.abuse.suspension(&subdomain);
-                                    (subdomain, blocked.map(|entry| entry.category))
+                                    let suspended = state.abuse.is_blocked(&subdomain);
+                                    (subdomain, suspended)
                                 });
 
                                 match verified {
-                                    Some((subdomain, Some(category))) => {
+                                    Some((subdomain, true)) => {
                                         let response = json!({
                                             "cmd": "error",
                                             "code": "subdomain_suspended",
                                             "subdomain": subdomain,
-                                            "category": category,
                                             "message": "This subdomain has been blocked"
                                         });
                                         if tx.send(response.to_string()).await.is_err() {
                                             break;
                                         }
                                     }
-                                    Some((subdomain, None)) => {
+                                    Some((subdomain, false)) => {
                                         {
                                             let mut sessions = sessions_for_receive.lock().await;
                                             sessions.insert(subdomain.clone());

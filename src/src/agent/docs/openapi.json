@@ -43,10 +43,6 @@
     {
       "name": "abuse",
       "description": "Reporting abused subdomains"
-    },
-    {
-      "name": "abuse-admin",
-      "description": "Managing suspensions (operator only)"
     }
   ],
   "paths": {
@@ -619,7 +615,7 @@
         ],
         "operationId": "reportAbuse",
         "summary": "Report a subdomain used for abuse; it is suspended immediately",
-        "description": "Rate limited to 3 reports per hour per IPv4 address or IPv6 /48. Must be sent as application/json.",
+        "description": "Rate limited to 3 reports per hour per IPv4 address or IPv6 /48. Must be sent as application/json. On a private instance, send its admin token as a Bearer header.",
         "security": [
           {}
         ],
@@ -668,290 +664,8 @@
           },
           "429": {
             "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/abuse/admin/subdomains": {
-      "get": {
-        "tags": [
-          "abuse-admin"
-        ],
-        "operationId": "listSuspensions",
-        "summary": "Suspended subdomains, most recently changed first",
-        "security": [
-          {
-            "abuseAdmin": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500,
-              "default": 50
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Suspensions"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
           },
           "403": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/abuse/admin/subdomains/{subdomain}": {
-      "parameters": [
-        {
-          "name": "subdomain",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "description": "Label, hostname or URL"
-        }
-      ],
-      "get": {
-        "tags": [
-          "abuse-admin"
-        ],
-        "operationId": "getSuspension",
-        "summary": "One suspension with its recent reports",
-        "security": [
-          {
-            "abuseAdmin": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Suspension"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "abuse-admin"
-        ],
-        "operationId": "suspend",
-        "summary": "Suspend a subdomain, or update the reason of a suspension",
-        "security": [
-          {
-            "abuseAdmin": []
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "category": {
-                    "$ref": "#/components/schemas/AbuseCategory"
-                  },
-                  "note": {
-                    "type": "string",
-                    "maxLength": 300
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Suspended"
-          },
-          "200": {
-            "description": "Already suspended; reason updated"
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "abuse-admin"
-        ],
-        "operationId": "liftSuspension",
-        "summary": "Lift the suspension",
-        "security": [
-          {
-            "abuseAdmin": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Lifted"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/abuse/admin/subdomains/{subdomain}/requests": {
-      "get": {
-        "tags": [
-          "abuse-admin"
-        ],
-        "operationId": "listSuspendedTraffic",
-        "summary": "Traffic a suspended subdomain captured, including while suspended",
-        "security": [
-          {
-            "abuseAdmin": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "subdomain",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Label, hostname or URL"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Requests"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/abuse/admin/subdomains/{subdomain}/sources": {
-      "get": {
-        "tags": [
-          "abuse-admin"
-        ],
-        "operationId": "listSuspendedSources",
-        "summary": "Distinct source IPs that contacted a suspended subdomain",
-        "security": [
-          {
-            "abuseAdmin": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "subdomain",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Label, hostname or URL"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Sources"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/abuse/admin/subdomains/{subdomain}/data": {
-      "delete": {
-        "tags": [
-          "abuse-admin"
-        ],
-        "operationId": "purgeSubdomainData",
-        "summary": "Delete the subdomain's files, DNS records and captured requests",
-        "security": [
-          {
-            "abuseAdmin": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "subdomain",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Label, hostname or URL"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Purged"
-          },
-          "401": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -969,11 +683,6 @@
         "type": "http",
         "scheme": "bearer",
         "description": "ADMIN_TOKEN, on instances that require one to create sessions"
-      },
-      "abuseAdmin": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "ABUSE_ADMIN_TOKEN"
       }
     },
     "responses": {
@@ -1271,30 +980,17 @@
           }
         }
       },
-      "AbuseCategory": {
-        "type": "string",
-        "enum": [
-          "malware",
-          "phishing",
-          "csam",
-          "spam",
-          "other"
-        ]
-      },
       "AbusePolicy": {
         "type": "object",
         "properties": {
           "reporting_enabled": {
             "type": "boolean"
           },
+          "requires_admin_token": {
+            "type": "boolean"
+          },
           "effect": {
             "type": "string"
-          },
-          "categories": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AbuseCategory"
-            }
           },
           "rate_limit": {
             "type": "object"
@@ -1316,21 +1012,17 @@
       "AbuseReport": {
         "type": "object",
         "required": [
-          "subdomain",
-          "category"
+          "subdomain"
         ],
         "additionalProperties": false,
         "properties": {
           "subdomain": {
             "type": "string",
-            "description": "Label, hostname or URL"
+            "description": "Label, any hostname under it, or URL"
           },
-          "category": {
-            "$ref": "#/components/schemas/AbuseCategory"
-          },
-          "reason": {
+          "admin_token": {
             "type": "string",
-            "maxLength": 300
+            "description": "Private instances only, if no header can be sent"
           }
         }
       },
@@ -1345,9 +1037,6 @@
           },
           "already_suspended": {
             "type": "boolean"
-          },
-          "message": {
-            "type": "string"
           }
         }
       }

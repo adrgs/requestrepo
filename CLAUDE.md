@@ -78,7 +78,7 @@ requestrepo/
 │       ├── smtp/           # SMTP server
 │       ├── tcp/            # Custom TCP port handling
 │       ├── ip2country/     # IP geolocation (DB-IP)
-│       ├── abuse/          # Abuse reports, suspension sinkhole (public + admin API)
+│       ├── abuse/          # Abuse reports and suspensions
 │       ├── agent/          # llms.txt, agent guide, Agent Skill, OpenAPI (docs/ is the source)
 │       ├── models/         # Shared data structures
 │       ├── utils/          # JWT auth, config
@@ -107,8 +107,7 @@ requestrepo/
 │       │   ├── RequestsPage.tsx
 │       │   ├── DnsSettingsPage.tsx
 │       │   ├── ResponseEditorPage.tsx
-│       │   ├── ReportAbusePage.tsx   # /abuse, public, outside the dashboard
-│       │   └── AbuseAdminPage.tsx    # /admin/abuse, suspensions (ABUSE_ADMIN_TOKEN)
+│       │   └── ReportAbusePage.tsx   # /abuse: the report dialog, outside the dashboard
 │       ├── stores/         # Zustand stores
 │       │   ├── authStore.ts
 │       │   ├── sessionStore.ts
@@ -164,21 +163,20 @@ requestrepo/
 - Graceful fallback if database unavailable
 
 ### Abuse (`abuse/`)
-- A report suspends a subdomain immediately (rate limited: 3/hour per IPv4 address or IPv6
-  /48). Being on the list is being suspended; lifting removes the entry. Reports carry only a
-  category and an optional 300-char reason: no free-form URLs or contact fields to abuse.
-- Suspended = sinkhole: HTTP 410 (`sinkhole_suspended_subdomains`, the outermost middleware in
-  `http/mod.rs`; HTML for browsers, text otherwise), DNS NXDOMAIN, SMTP 550, token refused with
-  `subdomain_suspended` everywhere, including open long polls (never `invalid_token`: the
-  frontend deletes sessions with an invalid token). HTTP and DNS traffic is still recorded (not
-  broadcast) so the admin can export the sources. A new ingress point needs `is_blocked()`.
+- A report (`POST /api/v2/abuse/reports`, body `{"subdomain"}` only) suspends a subdomain
+  immediately. Rate limited to 3/hour per IPv4 address or IPv6 /48; on a private instance
+  (`ADMIN_TOKEN` set) it needs the admin token. There is deliberately no admin API: to lift a
+  suspension, delete its line from `DATA_DIR/abuse.json` and restart.
+- Suspended: HTTP 410 (`refuse_suspended_subdomains`, the outermost middleware in
+  `http/mod.rs`; HTML for browsers, text otherwise; body never read), DNS NXDOMAIN, SMTP 550,
+  token refused with `subdomain_suspended` everywhere including open long polls (never
+  `invalid_token`: the frontend deletes sessions with an invalid token). Nothing is logged.
+  A new ingress point needs the same `is_blocked()` check.
 - `list.rs`: `ArcSwap` snapshot, lock-free reads; changes are clone-modify-save-swap under a
-  write lock, saved to `DATA_DIR/abuse.json`. At 5,000 entries the oldest report-made
-  suspension is lifted; admin suspensions never are.
-- `routes.rs`: public `GET /api/v2/abuse`, `POST /api/v2/abuse/reports`; admin
-  `/api/v2/abuse/admin/subdomains/...` with `ABUSE_ADMIN_TOKEN` as Bearer only (no cookie).
-  None is CORS-enabled and reports must be `application/json`, so no site can make its
-  visitors' browsers file reports.
+  write lock. The file has one entry per line and tolerates a trailing comma, so hand edits
+  are safe. At 20,000 entries the oldest suspension is lifted.
+- The report route is not CORS-enabled and must be `application/json`, so no site can make
+  its visitors' browsers file reports.
 
 ### Agent documents (`agent/`)
 - Served by `catch_all` on the main domain only (never on a session subdomain, whose paths
@@ -212,12 +210,7 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 | `GET` | `/requests/{id}` | Get single request |
 | `DELETE` | `/requests/{id}` | Delete single request |
 | `GET` | `/abuse` | Abuse reporting policy (public) |
-| `POST` | `/abuse/reports` | Report a subdomain, which suspends it (public, rate limited, no CORS) |
-| `GET` | `/abuse/admin/subdomains` | Suspended subdomains: `q`, `limit`, `offset` (ABUSE_ADMIN_TOKEN) |
-| `GET`/`PUT`/`DELETE` | `/abuse/admin/subdomains/{subdomain}` | One suspension / suspend / lift |
-| `GET` | `/abuse/admin/subdomains/{subdomain}/requests` | Captured traffic, including while suspended |
-| `GET` | `/abuse/admin/subdomains/{subdomain}/sources` | Distinct source IPs |
-| `DELETE` | `/abuse/admin/subdomains/{subdomain}/data` | Purge files, DNS records, requests |
+| `POST` | `/abuse/reports` | `{"subdomain"}`: suspends it at once (rate limited, no CORS) |
 | `GET` | `/ws` | WebSocket upgrade |
 
 ### WebSocket Protocol
@@ -233,7 +226,7 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 { cmd: "pong" }
 { cmd: "request", subdomain: string, data: Request }
 { cmd: "requests", subdomain: string, data: Request[] }
-{ cmd: "suspended", subdomain: string, category?: string }  // the session was suspended for abuse
+{ cmd: "suspended", subdomain: string }  // the session was suspended for abuse
 { cmd: "error", code: string, message: string }
 ```
 
@@ -330,9 +323,8 @@ interface Request {
 | `IP_CERT_CHECK_HOURS` | `6` | How often to check IP cert expiry |
 | `IP_CERT_RENEWAL_HOURS` | `96` | Renew IP cert when fewer than this many hours remain |
 | `ADMIN_TOKEN` | - | Require password for session creation |
-| `ABUSE_REPORTING_ENABLED` | `true` | Accept public abuse reports (each suspends a subdomain) |
-| `ABUSE_ADMIN_TOKEN` | - | Token for the abuse admin page and API (16+ chars) |
-| `ABUSE_CONTACT` | - | Contact for reporters and for owners of a suspended subdomain |
+| `ABUSE_REPORTING_ENABLED` | `true` | Accept abuse reports (each suspends a subdomain) |
+| `ABUSE_CONTACT` | - | Shown to owners of a suspended subdomain, for disputes |
 | `DATA_DIR` | `./data` | Directory of `abuse.json`, the saved blocklist (`/app/data` in Docker) |
 | `SESSION_RATE_LIMIT` | `10` | Max sessions per IP per window |
 | `SESSION_RATE_WINDOW_SECS` | `60` | Rate limit window in seconds |
@@ -404,7 +396,7 @@ Tests are in `src/src/tests/`:
 - `auth_tests.rs` - JWT validation
 - `certs_tests.rs` - Certificate management
 - `harness.rs` - Real server on a loopback port plus a bare HTTP/WebSocket client
-- `abuse_tests.rs` - Reporting, suspension, sinkhole, over HTTP, WebSocket and DNS
+- `abuse_tests.rs` - Reporting and suspension, over HTTP, WebSocket and DNS
 - `agent_api_tests.rs` - Session creation, cursor/long polling, single files, agent documents
 - `acme_staging_tests.rs` - ACME integration (requires network)
 

@@ -13,16 +13,9 @@ import { useAuthStore } from "@/stores/authStore";
 
 interface AdminAuthOverlayProps {
   onSubmit: (password: string) => Promise<void>;
-  // What the password is for; defaults to creating sessions
-  title?: string;
-  description?: string;
 }
 
-export function AdminAuthOverlay({
-  onSubmit,
-  title = "Authentication Required",
-  description = "This RequestRepo instance requires an admin password to create sessions.",
-}: AdminAuthOverlayProps) {
+export function AdminAuthOverlay({ onSubmit }: AdminAuthOverlayProps) {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -66,11 +59,14 @@ export function AdminAuthOverlay({
           <ModalHeader className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <Lock className="h-5 w-5" />
-              <span>{title}</span>
+              <span>Authentication Required</span>
             </div>
           </ModalHeader>
           <ModalBody>
-            <p className="text-sm text-default-500 mb-4">{description}</p>
+            <p className="text-sm text-default-500 mb-4">
+              This RequestRepo instance requires an admin password to create
+              sessions.
+            </p>
 
             <Input
               type={showPassword ? "text" : "password"}

@@ -258,10 +258,10 @@ fn verify_token_or_error(
         ))
     })?;
 
-    match abuse.suspension(&subdomain) {
-        Some(entry) => Err(Box::new(suspended_rejection(&entry))),
-        None => Ok(subdomain),
+    if abuse.is_blocked(&subdomain) {
+        return Err(Box::new(suspended_rejection()));
     }
+    Ok(subdomain)
 }
 
 fn token_error(status: StatusCode, error: &str, code: &str) -> Response {
@@ -1177,8 +1177,8 @@ pub async fn list_requests(
         .await;
         // The session may have been suspended while it waited: what arrives from then on is
         // for the abuse admin only.
-        if let Some(entry) = state.abuse.suspension(&subdomain) {
-            return suspended_rejection(&entry);
+        if state.abuse.is_blocked(&subdomain) {
+            return suspended_rejection();
         }
         if arrived != Ok(true) {
             // Timed out: answer with what there is, which is nothing new.
@@ -1558,8 +1558,8 @@ pub async fn get_shared_request(
     };
 
     // Links to a blocked subdomain's requests stop working with its token
-    if let Some(entry) = state.abuse.suspension(&claims.subdomain) {
-        return suspended_rejection(&entry);
+    if state.abuse.is_blocked(&claims.subdomain) {
+        return suspended_rejection();
     }
 
     // Find the request

@@ -708,7 +708,6 @@ async fn log_smtp_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::abuse::Category;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     /// Runs one SMTP conversation against `handle_smtp_connection` over a real socket and
@@ -751,10 +750,7 @@ mod tests {
                 .await
                 .unwrap(),
         );
-        abuse
-            .suspend(blocked, Some(Category::Malware), None)
-            .await
-            .unwrap();
+        abuse.suspend(blocked).await;
         let cache = Arc::new(Cache::new());
         let domain = &CONFIG.server_domain;
 
@@ -804,10 +800,7 @@ mod tests {
                 .await
                 .unwrap(),
         );
-        abuse
-            .suspend(blocked, Some(Category::Malware), None)
-            .await
-            .unwrap();
+        abuse.suspend(blocked).await;
         let cache = Arc::new(Cache::new());
         let domain = &CONFIG.server_domain;
 

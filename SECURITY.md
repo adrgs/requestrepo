@@ -48,12 +48,10 @@ If a `requestrepo.com` subdomain is being used for abuse, such as a malware beac
 phishing page, it does not take a vulnerability report:
 
 - Open [requestrepo.com/abuse](https://requestrepo.com/abuse), or
-- Send `POST https://requestrepo.com/api/v2/abuse/reports` with the subdomain, a category and
-  a short description. The format is in the [README](README.md#reporting-abuse) and at
+- Send `POST https://requestrepo.com/api/v2/abuse/reports` with `{"subdomain": "..."}`. The format is in the [README](README.md#reporting-abuse) and at
   [requestrepo.com/docs/abuse.md](https://requestrepo.com/docs/abuse.md).
 
-A report suspends the subdomain immediately. Its traffic keeps being recorded so that
-compromised hosts contacting it can be identified and notified.
+A report suspends the subdomain immediately.
 
 ## Response Process
 

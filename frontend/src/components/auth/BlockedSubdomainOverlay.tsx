@@ -13,12 +13,9 @@ import { useBlockedStore } from "@/stores/blockedStore";
 import { useSessionStore } from "@/stores/sessionStore";
 import { apiClient, isAdminRequiredError } from "@/api/client";
 import { getAbuseContact } from "@/lib/config";
-import { categoryLabel } from "@/lib/abuse";
-import type { AbuseCategory } from "@/types";
 
 interface BlockedSubdomainOverlayProps {
   subdomain: string;
-  category?: AbuseCategory;
 }
 
 /**
@@ -27,7 +24,6 @@ interface BlockedSubdomainOverlayProps {
  */
 export function BlockedSubdomainOverlay({
   subdomain,
-  category,
 }: BlockedSubdomainOverlayProps) {
   const [isReplacing, setIsReplacing] = useState(false);
   const sessions = useSessionStore((s) => s.sessions);
@@ -82,10 +78,8 @@ export function BlockedSubdomainOverlay({
         <ModalBody className="pb-6">
           <p className="text-sm text-default-500">
             <span className="font-mono text-foreground">{subdomain}</span> was
-            reported for abuse
-            {category ? ` (${categoryLabel(category).toLowerCase()})` : ""} and
-            suspended. It no longer serves responses or resolves, and new
-            requests to it are not shown here.
+            reported for abuse and suspended. It no longer serves responses or
+            resolves, and new requests to it are not shown here.
           </p>
           <p className="text-sm text-default-500">
             If you were using it for legitimate testing, take a new URL and
