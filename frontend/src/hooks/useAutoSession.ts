@@ -2,7 +2,10 @@ import { useEffect, useRef } from "react";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
+import { AxiosError } from "axios";
+import { toast } from "sonner";
 import { apiClient, isAdminRequiredError } from "@/api/client";
+import { getSubdomainFromToken } from "@/lib/jwt";
 
 /**
  * Automatically creates a session if none exists.
@@ -36,29 +39,20 @@ export function useAutoSession() {
 
     // Handle shared session token (full session share)
     if (sharedToken) {
-      try {
-        // Decode JWT to get subdomain
-        const parts = sharedToken.split(".");
-        if (parts.length >= 2) {
-          const payload = JSON.parse(atob(parts[1]));
-          const subdomain = payload.subdomain;
-
-          // Check if session already exists (use getState for fresh data)
-          const currentSessions = useSessionStore.getState().sessions;
-          if (
-            subdomain &&
-            !currentSessions.some((s) => s.subdomain === subdomain)
-          ) {
-            addSession({
-              subdomain,
-              token: sharedToken,
-              createdAt: new Date().toISOString(),
-            });
-          }
-          setActiveSession(subdomain);
+      const subdomain = getSubdomainFromToken(sharedToken);
+      if (subdomain) {
+        // Check if session already exists (use getState for fresh data)
+        const currentSessions = useSessionStore.getState().sessions;
+        if (!currentSessions.some((s) => s.subdomain === subdomain)) {
+          addSession({
+            subdomain,
+            token: sharedToken,
+            createdAt: new Date().toISOString(),
+          });
         }
-      } catch (e) {
-        console.error("Invalid share token:", e);
+        setActiveSession(subdomain);
+      } else {
+        console.error("Invalid share token");
       }
       // Clean URL
       window.history.replaceState({}, "", window.location.pathname);
@@ -71,7 +65,7 @@ export function useAutoSession() {
       apiClient
         .getSharedRequest(requestParam)
         .then((requestData) => {
-          if (requestData) {
+          {
             const subdomain = requestData.uid;
 
             // Get FRESH sessions from store, not stale closure
@@ -88,12 +82,18 @@ export function useAutoSession() {
               // User doesn't have the session, show the shared request
               setSharedRequest(requestData);
             }
-          } else {
-            console.error("Failed to load shared request");
           }
         })
-        .catch((e) => {
-          console.error("Invalid request share token:", e);
+        .catch((error: unknown) => {
+          const code =
+            error instanceof AxiosError
+              ? (error.response?.data as { code?: string } | undefined)?.code
+              : undefined;
+          toast.error(
+            code === "subdomain_suspended"
+              ? "This shared request is no longer available: its subdomain was suspended for abuse."
+              : "This share link is invalid or has expired.",
+          );
         });
       // Clean URL
       window.history.replaceState({}, "", window.location.pathname);

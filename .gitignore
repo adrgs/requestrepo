@@ -146,6 +146,9 @@ eggs/
 .eggs/
 lib/
 lib64/
+# `lib/` above comes from a Python template. The frontend keeps its shared code in
+# src/lib, and without this exception new files there are silently left out of commits.
+!frontend/src/lib/
 parts/
 sdist/
 var/
@@ -292,5 +295,10 @@ cython_debug/
 ip2country/vendor/*
 backend/ip2country
 dns/ip2country
+
+# Runtime state written by the backend (subdomain blocklist): DATA_DIR at the repo root,
+# and the default ./data when the backend is started from src/
+/data/
+/src/data/
 
 pyrightconfig.json

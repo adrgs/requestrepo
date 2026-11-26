@@ -78,6 +78,8 @@ requestrepo/
 │       ├── smtp/           # SMTP server
 │       ├── tcp/            # Custom TCP port handling
 │       ├── ip2country/     # IP geolocation (DB-IP)
+│       ├── abuse/          # Abuse reports and suspensions
+│       ├── agent/          # llms.txt, agent guide, Agent Skill, OpenAPI (docs/ is the source)
 │       ├── models/         # Shared data structures
 │       ├── utils/          # JWT auth, config
 │       └── tests/          # Integration tests
@@ -104,11 +106,13 @@ requestrepo/
 │       ├── pages/          # Route components
 │       │   ├── RequestsPage.tsx
 │       │   ├── DnsSettingsPage.tsx
-│       │   └── ResponseEditorPage.tsx
+│       │   ├── ResponseEditorPage.tsx
+│       │   └── ReportAbusePage.tsx   # /abuse: the report dialog, outside the dashboard
 │       ├── stores/         # Zustand stores
 │       │   ├── authStore.ts
 │       │   ├── sessionStore.ts
 │       │   ├── requestStore.ts
+│       │   ├── blockedStore.ts
 │       │   ├── themeStore.ts
 │       │   └── uiStore.ts
 │       └── types/          # TypeScript definitions
@@ -158,6 +162,35 @@ requestrepo/
 - Country code lookup for incoming IPs
 - Graceful fallback if database unavailable
 
+### Abuse (`abuse/`)
+- A report (`POST /api/v2/abuse/reports`, body `{"subdomain"}` only) suspends a subdomain
+  immediately. Rate limited to 3/hour per IPv4 address or IPv6 /48; on a private instance
+  (`ADMIN_TOKEN` set) it needs the admin token. There is deliberately no admin API: to lift a
+  suspension, delete its line from `DATA_DIR/abuse.json` and restart.
+- Suspended: HTTP 410 (`refuse_suspended_subdomains`, the outermost middleware in
+  `http/mod.rs`; HTML for browsers, text otherwise; body never read), DNS NXDOMAIN, SMTP 550,
+  token refused with `subdomain_suspended` everywhere including open long polls (never
+  `invalid_token`: the frontend deletes sessions with an invalid token). Nothing is logged,
+  and suspending purges its files, DNS records and requests.
+  A new ingress point needs the same `is_blocked()` check.
+- `list.rs`: `ArcSwap` snapshot, lock-free reads; changes are clone-modify-save-swap under a
+  write lock. The file has one entry per line and tolerates a trailing comma; a file that
+  cannot be parsed is renamed aside and the list starts empty (never refuse to start: the
+  box is also the domain's nameserver). At 50,000 entries new reports are refused (never lift automatically: a flood of
+  reports would bring a real abuser back). Only subdomains in use (a `files:` or `requests:`
+  cache entry) can be reported; the rate limit is checked first so this is no oracle.
+- The report route is not CORS-enabled and must be `application/json`, so no site can make
+  its visitors' browsers file reports.
+
+### Agent documents (`agent/`)
+- Served by `catch_all` on the main domain only (never on a session subdomain, whose paths
+  belong to the session): `/llms.txt`, `/docs/api.md`, `/docs/abuse.md`, `/skill.md`,
+  `/openapi.json`, `/.well-known/api-catalog` (RFC 9727), `/robots.txt` (Content Signals),
+  `/sitemap.xml`. `/` and `/abuse` answer `Accept: text/markdown`; HTML gets `Link` headers.
+- Sources are in `agent/docs/`, rendered once with `{{ORIGIN}}`, `{{DOMAIN}}`, `{{SCHEME}}`.
+  **When you change an endpoint, update `docs/api.md` and `docs/openapi.json` too**;
+  `agent::tests` checks that placeholders render and `$ref`s resolve.
+
 ## API Reference
 
 ### REST Endpoints
@@ -166,7 +199,7 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/sessions` | Create new session (returns JWT + subdomain) |
+| `POST` | `/sessions` | Create new session; body optional (returns token, subdomain, domain, url, email) |
 | `GET` | `/sessions/share` | Get share token for current session |
 | `GET` | `/sessions/shared/{token}` | Access shared session (read-only) |
 | `GET` | `/dns` | Get DNS records for session |
@@ -174,10 +207,14 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 | `GET` | `/files` | List response files |
 | `PUT` | `/files` | Update response files |
 | `GET` | `/files/{path}` | Get single file content |
-| `GET` | `/requests` | List all captured requests |
+| `PUT` | `/files/{path}` | Create/replace one file: `{"body"` or `"raw", "status_code"?, "headers"?}` |
+| `DELETE` | `/files/{path}` | Delete one file |
+| `GET` | `/requests` | List captured requests; `after` (cursor), `wait` (long poll, ≤60 s), `type`, `limit`, `offset` |
 | `DELETE` | `/requests` | Delete all requests |
 | `GET` | `/requests/{id}` | Get single request |
 | `DELETE` | `/requests/{id}` | Delete single request |
+| `GET` | `/abuse` | Abuse reporting policy (public) |
+| `POST` | `/abuse/reports` | `{"subdomain"}`: suspends it at once (rate limited, no CORS) |
 | `GET` | `/ws` | WebSocket upgrade |
 
 ### WebSocket Protocol
@@ -193,6 +230,7 @@ All endpoints under `/api/v2/` require JWT authentication via `Authorization: Be
 { cmd: "pong" }
 { cmd: "request", subdomain: string, data: Request }
 { cmd: "requests", subdomain: string, data: Request[] }
+{ cmd: "suspended", subdomain: string }  // the session was suspended for abuse
 { cmd: "error", code: string, message: string }
 ```
 
@@ -289,6 +327,9 @@ interface Request {
 | `IP_CERT_CHECK_HOURS` | `6` | How often to check IP cert expiry |
 | `IP_CERT_RENEWAL_HOURS` | `96` | Renew IP cert when fewer than this many hours remain |
 | `ADMIN_TOKEN` | - | Require password for session creation |
+| `ABUSE_REPORTING_ENABLED` | `true` | Accept abuse reports (each suspends a subdomain) |
+| `ABUSE_CONTACT` | - | Shown to owners of a suspended subdomain, for disputes |
+| `DATA_DIR` | `./data` | Directory of `abuse.json`, the saved blocklist (`/app/data` in Docker) |
 | `SESSION_RATE_LIMIT` | `10` | Max sessions per IP per window |
 | `SESSION_RATE_WINDOW_SECS` | `60` | Rate limit window in seconds |
 | `RUST_LOG` | `info` | Log level (trace, debug, info, warn, error) |
@@ -358,6 +399,9 @@ Tests are in `src/src/tests/`:
 - `http_tests.rs` - HTTP route tests
 - `auth_tests.rs` - JWT validation
 - `certs_tests.rs` - Certificate management
+- `harness.rs` - Real server on a loopback port plus a bare HTTP/WebSocket client
+- `abuse_tests.rs` - Reporting and suspension, over HTTP, WebSocket and DNS
+- `agent_api_tests.rs` - Session creation, cursor/long polling, single files, agent documents
 - `acme_staging_tests.rs` - ACME integration (requires network)
 
 ### Frontend

@@ -42,6 +42,17 @@ attacker-controlled content back to the session owner. Behaviour that is part of
 is not by itself a vulnerability. If you believe a case crosses the line into an actual
 security boundary being broken, please explain why in the report.
 
+## Reporting an Abused Subdomain
+
+If a `requestrepo.com` subdomain is being used for abuse, such as a malware beacon or a
+phishing page, it does not take a vulnerability report:
+
+- Open [requestrepo.com/abuse](https://requestrepo.com/abuse), or
+- Send `POST https://requestrepo.com/api/v2/abuse/reports` with `{"subdomain": "..."}`. The format is in the [README](README.md#reporting-abuse) and at
+  [requestrepo.com/docs/abuse.md](https://requestrepo.com/docs/abuse.md).
+
+A report suspends the subdomain immediately.
+
 ## Response Process
 
 - We aim to acknowledge new reports within 72 hours

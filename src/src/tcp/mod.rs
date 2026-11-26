@@ -10,6 +10,7 @@ use tokio::sync::{broadcast, Semaphore};
 use tokio::time::timeout;
 use tracing::{error, info};
 
+use crate::abuse::AbuseList;
 use crate::cache::Cache;
 use crate::ip2country::lookup_country;
 use crate::models::{CacheMessage, TcpRequestLog};
@@ -21,13 +22,19 @@ pub struct Server {
     tx: Arc<broadcast::Sender<CacheMessage>>,
     port_allocations: Arc<RwLock<HashMap<String, u16>>>,
     allocated_ports: Arc<RwLock<HashMap<u16, String>>>,
+    abuse: Arc<AbuseList>,
 }
 
 impl Server {
-    pub fn new(cache: Arc<Cache>, tx: Arc<broadcast::Sender<CacheMessage>>) -> Self {
+    pub fn new(
+        cache: Arc<Cache>,
+        tx: Arc<broadcast::Sender<CacheMessage>>,
+        abuse: Arc<AbuseList>,
+    ) -> Self {
         Self {
             cache,
             tx,
+            abuse,
             port_allocations: Arc::new(RwLock::new(HashMap::new())),
             allocated_ports: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -75,6 +82,10 @@ impl Server {
     }
 
     fn allocate_port(&self, subdomain: &str) -> Result<u16> {
+        if self.abuse.is_blocked(subdomain) {
+            return Err(anyhow!("Subdomain {subdomain} is blocked"));
+        }
+
         let mut allocations = self
             .port_allocations
             .write()
@@ -132,6 +143,7 @@ impl Server {
 
         let cache = self.cache.clone();
         let tx = self.tx.clone();
+        let abuse = self.abuse.clone();
         let subdomain_clone = subdomain.clone();
         let semaphore = Arc::new(Semaphore::new(100));
 
@@ -141,6 +153,7 @@ impl Server {
                     Ok((socket, addr)) => {
                         let cache = cache.clone();
                         let tx = tx.clone();
+                        let abuse = abuse.clone();
                         let subdomain = subdomain_clone.clone();
 
                         match semaphore.clone().try_acquire_owned() {
@@ -148,7 +161,7 @@ impl Server {
                                 tokio::spawn(async move {
                                     let _permit = permit;
                                     if let Err(e) = handle_tcp_connection(
-                                        socket, addr, port, &subdomain, cache, tx,
+                                        socket, addr, port, &subdomain, cache, tx, abuse,
                                     )
                                     .await
                                     {
@@ -182,7 +195,13 @@ async fn handle_tcp_connection(
     subdomain: &str,
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
+    abuse: Arc<AbuseList>,
 ) -> Result<()> {
+    // A listener started before the subdomain was blocked keeps accepting, so check here.
+    if abuse.is_blocked(subdomain) {
+        return Ok(());
+    }
+
     let mut buffer = [0u8; 8192];
 
     let client_ip = addr.ip().to_string();

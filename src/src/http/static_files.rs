@@ -114,6 +114,8 @@ impl StaticFiles {
             "DOMAIN": &CONFIG.server_domain,
             "SENTRY_DSN_FRONTEND": CONFIG.sentry_dsn_frontend.as_deref().unwrap_or(""),
             "DANGEROUSLY_ALLOW_SAME_ORIGIN_USER_CONTENT": CONFIG.dangerously_allow_same_origin_user_content,
+            "ABUSE_REPORTING_ENABLED": CONFIG.abuse_reporting_enabled,
+            "ABUSE_CONTACT": CONFIG.abuse_contact.as_deref().unwrap_or(""),
         });
 
         // Serialize to JSON (handles basic escaping)

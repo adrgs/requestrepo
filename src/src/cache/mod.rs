@@ -141,7 +141,7 @@ impl Cache {
         }
 
         // Compress the data
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
         encoder.write_all(value.as_bytes())?;
         let compressed_data = encoder.finish()?;
         let compressed_size = compressed_data.len();
@@ -313,6 +313,21 @@ impl Cache {
         }
 
         Ok(Vec::new())
+    }
+
+    /// Whether `key` holds a value or a non-empty list. Cheap: nothing is decompressed.
+    pub fn contains(&self, key: &str) -> bool {
+        let in_kv = self
+            .kv_store
+            .read()
+            .map(|store| store.contains_key(key))
+            .unwrap_or(false);
+        in_kv
+            || self
+                .request_store
+                .read()
+                .map(|store| store.get(key).is_some_and(|e| !e.items.is_empty()))
+                .unwrap_or(false)
     }
 
     /// Get length of list

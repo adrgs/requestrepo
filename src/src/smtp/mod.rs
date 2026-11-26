@@ -10,6 +10,7 @@ use tokio::sync::{broadcast, Semaphore};
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 
+use crate::abuse::AbuseList;
 use crate::cache::Cache;
 use crate::ip2country::lookup_country;
 use crate::models::{CacheMessage, SmtpAttachment, SmtpRequestLog};
@@ -40,11 +41,16 @@ const MAX_RECIPIENTS: usize = 100;
 pub struct Server {
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
+    abuse: Arc<AbuseList>,
 }
 
 impl Server {
-    pub fn new(cache: Arc<Cache>, tx: Arc<broadcast::Sender<CacheMessage>>) -> Self {
-        Self { cache, tx }
+    pub fn new(
+        cache: Arc<Cache>,
+        tx: Arc<broadcast::Sender<CacheMessage>>,
+        abuse: Arc<AbuseList>,
+    ) -> Self {
+        Self { cache, tx, abuse }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -58,6 +64,7 @@ impl Server {
                 Ok((socket, addr)) => {
                     let cache = self.cache.clone();
                     let tx = self.tx.clone();
+                    let abuse = self.abuse.clone();
 
                     match semaphore.clone().try_acquire_owned() {
                         Ok(permit) => {
@@ -66,7 +73,7 @@ impl Server {
                                 // Apply overall connection timeout
                                 match timeout(
                                     CONNECTION_TIMEOUT,
-                                    handle_smtp_connection(socket, addr, cache, tx),
+                                    handle_smtp_connection(socket, addr, cache, tx, abuse),
                                 )
                                 .await
                                 {
@@ -132,6 +139,12 @@ async fn read_line_limited<R: AsyncBufRead + Unpin>(
     }
 }
 
+/// The subdomain an address belongs to, unless that subdomain is blocked.
+fn recipient_subdomain(email: &str, abuse: &AbuseList) -> Option<String> {
+    let subdomain = extract_subdomain_from_email(email)?;
+    (!abuse.is_blocked(&subdomain)).then_some(subdomain)
+}
+
 /// Extract subdomain from an email address like "user@subdomain.domain.com"
 fn extract_subdomain_from_email(email: &str) -> Option<String> {
     // Remove angle brackets if present: <user@domain> -> user@domain
@@ -152,6 +165,7 @@ async fn handle_smtp_connection(
     addr: SocketAddr,
     cache: Arc<Cache>,
     tx: Arc<broadcast::Sender<CacheMessage>>,
+    abuse: Arc<AbuseList>,
 ) -> Result<()> {
     let client_ip = addr.ip().to_string();
 
@@ -244,7 +258,7 @@ async fn handle_smtp_connection(
                 if subdomain.is_none() {
                     let all_recipients = extract_all_recipients(&email_data);
                     for recipient in all_recipients {
-                        if let Some(extracted) = extract_subdomain_from_email(&recipient) {
+                        if let Some(extracted) = recipient_subdomain(&recipient, &abuse) {
                             info!(
                                 "SMTP connection from {} matched subdomain from email headers: {}",
                                 addr, extracted
@@ -352,6 +366,22 @@ async fn handle_smtp_connection(
                             }
 
                             let recipient = arg[3..].trim().to_string();
+
+                            // Refuse mail for a blocked subdomain at the envelope, so that
+                            // it is neither accepted nor logged
+                            if let Some(extracted) = extract_subdomain_from_email(&recipient) {
+                                if abuse.is_blocked(&extracted) {
+                                    transaction_log.push_str(
+                                        "S: 550 5.7.1 Recipient address rejected: subdomain is suspended\n",
+                                    );
+                                    writer
+                                        .write_all(
+                                            b"550 5.7.1 Recipient address rejected: subdomain is suspended\r\n",
+                                        )
+                                        .await?;
+                                    continue;
+                                }
+                            }
 
                             // Extract subdomain from the first valid recipient
                             if subdomain.is_none() {
@@ -673,4 +703,127 @@ async fn log_smtp_request(
     let _ = tx.send(message);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Runs one SMTP conversation against `handle_smtp_connection` over a real socket and
+    /// returns everything the server said. The client sends its lines up front; the server
+    /// reads them one at a time either way.
+    async fn conversation(cache: Arc<Cache>, abuse: Arc<AbuseList>, lines: Vec<String>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, _) = broadcast::channel(16);
+        let server = tokio::spawn(async move {
+            let (stream, peer) = listener.accept().await.unwrap();
+            handle_smtp_connection(stream, peer, cache, Arc::new(tx), abuse)
+                .await
+                .ok();
+        });
+
+        let mut client = TcpStream::connect(addr).await.unwrap();
+        let script: String = lines.iter().map(|line| format!("{line}\r\n")).collect();
+        client.write_all(script.as_bytes()).await.unwrap();
+        client.shutdown().await.unwrap();
+
+        let mut said = String::new();
+        client.read_to_string(&mut said).await.unwrap();
+        server.await.unwrap();
+        said
+    }
+
+    async fn stored_requests(cache: &Cache, subdomain: &str) -> usize {
+        cache.llen(&format!("requests:{subdomain}")).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn mail_to_a_blocked_subdomain_is_refused_at_the_envelope() {
+        let blocked = "aaaaaaaa";
+        let allowed = "bbbbbbbb";
+        // Kept alive for the test: the blocklist saves into it
+        let _dir = tempfile::TempDir::new().unwrap();
+        let abuse = Arc::new(
+            AbuseList::load(_dir.path(), crate::abuse::Settings::default())
+                .await
+                .unwrap(),
+        );
+        abuse.suspend(blocked).await;
+        let cache = Arc::new(Cache::new());
+        let domain = &CONFIG.server_domain;
+
+        let said = conversation(
+            cache.clone(),
+            abuse.clone(),
+            vec![
+                "EHLO tester".to_string(),
+                "MAIL FROM:<attacker@example.org>".to_string(),
+                format!("RCPT TO:<victim@{blocked}.{domain}>"),
+                format!("RCPT TO:<victim@{allowed}.{domain}>"),
+                "DATA".to_string(),
+                format!("To: <someone@{blocked}.{domain}>"),
+                "Subject: hello".to_string(),
+                String::new(),
+                "body".to_string(),
+                ".".to_string(),
+                "QUIT".to_string(),
+            ],
+        )
+        .await;
+
+        // One recipient refused, the other accepted, and the message delivered
+        let refused: Vec<&str> = said
+            .lines()
+            .filter(|line| line.starts_with("550"))
+            .collect();
+        assert_eq!(
+            refused,
+            ["550 5.7.1 Recipient address rejected: subdomain is suspended"]
+        );
+        // Accepted for MAIL and for the one recipient that was allowed
+        assert_eq!(said.matches("250 OK\r\n").count(), 2, "{said}");
+        assert!(said.contains("250 OK: Message received"), "{said}");
+
+        // Logged for the subdomain that was allowed to receive it, never for the blocked one
+        assert_eq!(stored_requests(&cache, allowed).await, 1);
+        assert_eq!(stored_requests(&cache, blocked).await, 0);
+    }
+
+    #[tokio::test]
+    async fn mail_is_never_attributed_to_a_blocked_subdomain_from_its_headers() {
+        let blocked = "aaaaaaaa";
+        let _dir = tempfile::TempDir::new().unwrap();
+        let abuse = Arc::new(
+            AbuseList::load(_dir.path(), crate::abuse::Settings::default())
+                .await
+                .unwrap(),
+        );
+        abuse.suspend(blocked).await;
+        let cache = Arc::new(Cache::new());
+        let domain = &CONFIG.server_domain;
+
+        // The envelope names no subdomain of ours; only the To: header does
+        let said = conversation(
+            cache.clone(),
+            abuse,
+            vec![
+                "EHLO tester".to_string(),
+                "MAIL FROM:<attacker@example.org>".to_string(),
+                "RCPT TO:<someone@elsewhere.org>".to_string(),
+                "DATA".to_string(),
+                format!("To: <x@{blocked}.{domain}>"),
+                "Subject: hi".to_string(),
+                String::new(),
+                "body".to_string(),
+                ".".to_string(),
+                "QUIT".to_string(),
+            ],
+        )
+        .await;
+
+        assert!(said.contains("250 OK: Message received"), "{said}");
+        assert_eq!(stored_requests(&cache, blocked).await, 0);
+    }
 }

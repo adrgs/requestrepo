@@ -74,8 +74,9 @@ RUN groupadd -g 1000 requestrepo && \
 
 WORKDIR /app
 
-# Create certificate directory for Let's Encrypt certs
-RUN mkdir -p /app/certs && chown requestrepo:requestrepo /app/certs
+# Create directories for Let's Encrypt certs and for state that must survive restarts
+# (the subdomain blocklist)
+RUN mkdir -p /app/certs /app/data && chown requestrepo:requestrepo /app/certs /app/data
 
 # Copy Rust binary
 COPY --from=rust-builder /app/target/release/requestrepo /app/requestrepo
@@ -100,14 +101,15 @@ ENV SMTP_PORT=25
 ENV DOMAIN=requestrepo.com
 ENV TLS_ENABLED=false
 ENV CERT_DIR=/app/certs
+ENV DATA_DIR=/app/data
 ENV CERT_RENEWAL_DAYS=7
 ENV CERT_CHECK_HOURS=12
 
 # Expose ports
 EXPOSE 80 443 53/udp 53/tcp 25
 
-# Define volume for persistent certificate storage
-VOLUME /app/certs
+# Define volumes for persistent storage
+VOLUME /app/certs /app/data
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

@@ -16,7 +16,7 @@ import {
 } from "@/types";
 import { formatDate, copyToClipboard, getFlagClass } from "@/lib/utils";
 import { decodeBase64Safe } from "@/lib/base64";
-import { getBaseDomain, getDnsDomain } from "@/lib/config";
+import { getBaseDomain, getDnsDomain, getSubdomainUrl } from "@/lib/config";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -37,27 +37,33 @@ function downloadAttachment(attachment: SmtpAttachment) {
   URL.revokeObjectURL(url);
 }
 
-const PYTHON_EXAMPLE = `from requestrepo import Requestrepo  # pip install requestrepo
+const PYTHON_EXAMPLE = `from requestrepo import RequestRepo  # pip install requestrepo
 
-# Create a session (use admin_token if your instance requires it)
-repo = Requestrepo(
-    token="TOKEN_HERE",  # Or omit to create a new session
-    admin_token="",  # Optional: for protected instances
-)
+# This session; leave out the token to create a new one
+repo = RequestRepo("TOKEN_HERE"CONNECTION_HERE)
+print(repo.url)  # SUBDOMAIN_HERE
 
-print(repo.subdomain)  # SUBDOMAIN_HERE
-print(f"{repo.subdomain}.{repo.domain}")  # Full domain
+# Wait for an HTTP request (RequestRepoTimeoutError after 30 s)
+req = repo.wait_for_http(timeout=30)
+print(req.method, req.path, req.headers, req.text)
 
-# Wait for a new HTTP request (blocks until one arrives)
-request = repo.get_http_request()
-print(request.method, request.path, request.headers)
-
-# Set a custom HTTP response
-repo.set_file("index.html", b"<h1>Hello from RequestRepo!</h1>", status_code=200)
+# Serve a custom response
+repo.set_response("index.html", "<h1>Hello!</h1>",
+                  headers={"Content-Type": "text/html"})
 
 # Add DNS records
-repo.add_dns("*", "A", "1.2.3.4")  # Wildcard for all sub-subdomains
-repo.add_dns("www", "TXT", "verification=abc123")  # Specific subdomain`;
+repo.add_dns("*", "A", "1.2.3.4")
+repo.add_dns("www", "TXT", "verification=abc123")`;
+
+/** Arguments that point the Python client at this instance, when it is not requestrepo.com. */
+function pythonConnectionArgs(): string {
+  if (typeof window === "undefined") return "";
+  const { hostname, port, protocol } = window.location;
+  if (hostname === "requestrepo.com") return "";
+  const scheme = protocol.replace(":", "");
+  const effectivePort = port || (scheme === "https" ? "443" : "80");
+  return `, host="${hostname}", port=${effectivePort}, protocol="${scheme}"`;
+}
 
 export function RequestsPage() {
   const { resolvedTheme } = useTheme();
@@ -100,10 +106,9 @@ export function RequestsPage() {
   ]);
 
   const handleCopyCode = () => {
-    const code = PYTHON_EXAMPLE.replace(
-      /TOKEN_HERE/g,
-      session?.token || "",
-    ).replace(/SUBDOMAIN_HERE/g, subdomain);
+    const code = PYTHON_EXAMPLE.replace(/TOKEN_HERE/g, session?.token || "")
+      .replace(/SUBDOMAIN_HERE/g, getSubdomainUrl(subdomain))
+      .replace(/CONNECTION_HERE/g, pythonConnectionArgs());
     copyToClipboard(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -165,6 +170,13 @@ export function RequestsPage() {
             <span className="text-primary">DNS</span> tab to add DNS records for
             this subdomain.
           </p>
+          <p className="mt-3 text-default-500">
+            Using an AI coding agent such as Claude Code or Codex? Point it at{" "}
+            <a className="text-primary hover:underline" href="/llms.txt">
+              /llms.txt
+            </a>
+            , or use the robot button in the top bar to hand it this session.
+          </p>
         </div>
 
         <div className="flex-1">
@@ -199,7 +211,9 @@ export function RequestsPage() {
                       ? session.token
                       : "********************************"
                     : "<your_token>",
-                ).replace(/SUBDOMAIN_HERE/g, subdomain)}
+                )
+                  .replace(/SUBDOMAIN_HERE/g, getSubdomainUrl(subdomain))
+                  .replace(/CONNECTION_HERE/g, pythonConnectionArgs())}
                 loading={
                   <div className="p-4 text-default-500">Loading editor...</div>
                 }

@@ -1,0 +1,29 @@
+# requestrepo
+
+> requestrepo captures HTTP requests, DNS queries and SMTP mail sent to a throwaway subdomain of {{DOMAIN}}, and lets you script the HTTP responses and DNS records that subdomain serves. Everything is available over a plain JSON REST API, so an agent can use it with curl alone: no SDK, no MCP server, no browser.
+
+Typical uses: testing webhooks and integrations, inspecting exactly what a client or server sends, checking that an email or DNS lookup actually happens, and serving a custom response or DNS record during development or an authorized security assessment.
+
+The whole loop is three calls. Create a session, point something at its domain, then read what arrived:
+
+```sh
+S=$(curl -s -X POST {{ORIGIN}}/api/v2/sessions)
+TOKEN=$(echo "$S" | jq -r .token); URL=$(echo "$S" | jq -r .url)
+curl -s "${URL}hello?x=1"
+curl -s -H "Authorization: Bearer $TOKEN" "{{ORIGIN}}/api/v2/requests?wait=30" | jq '.requests[] | {type, method, path, ip}'
+```
+
+## Docs
+
+- [Agent guide and API reference]({{ORIGIN}}/docs/api.md): Sessions, reading captured traffic (cursor and long polling), custom responses, DNS records, sharing, errors. Start here.
+- [OpenAPI description]({{ORIGIN}}/openapi.json): Machine-readable description of every endpoint.
+- [Agent Skill]({{ORIGIN}}/skill.md): A SKILL.md for Claude Code, Codex and other agents that load skills. Save it as `requestrepo/SKILL.md` in your skills directory.
+
+## Abuse
+
+- [Reporting abuse]({{ORIGIN}}/docs/abuse.md): How to report a subdomain used for malware, phishing or other abuse, over the API or at {{ORIGIN}}/abuse.
+
+## Optional
+
+- [API catalog]({{ORIGIN}}/.well-known/api-catalog): RFC 9727 linkset pointing at the API description and docs.
+- [Source code](https://github.com/adrgs/requestrepo): requestrepo is open source and self-hostable.

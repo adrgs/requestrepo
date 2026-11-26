@@ -111,6 +111,17 @@ export interface PaginatedResponse<T> {
   };
 }
 
+// Abuse reporting: a report suspends the subdomain immediately
+export interface CreateAbuseReportPayload {
+  subdomain: string;
+}
+
+export interface AbuseReportResponse {
+  subdomain: string;
+  suspended: boolean;
+  already_suspended: boolean;
+}
+
 // WebSocket types
 export type WebSocketClientMessage =
   | { cmd: "connect"; token: string }
@@ -124,4 +135,12 @@ export type WebSocketServerMessage =
   | { cmd: "requests"; subdomain: string; data: Request[] }
   | { cmd: "deleted"; subdomain: string; data: { _id: string } }
   | { cmd: "cleared"; subdomain: string }
-  | { cmd: "error"; code: string; message: string };
+  // Sent to a live dashboard when its session gets suspended for abuse
+  | { cmd: "suspended"; subdomain: string }
+  | {
+      cmd: "error";
+      code: string;
+      message: string;
+      // Set when the code is "subdomain_suspended"
+      subdomain?: string;
+    };

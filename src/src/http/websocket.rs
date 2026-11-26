@@ -64,9 +64,6 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                     };
 
                     if is_subscribed {
-                        // Parse data from string to JSON object (fix double-encoding)
-                        let data = serde_json::from_str::<Value>(&msg.data).unwrap_or(Value::Null);
-
                         // Map cmd names: new_request -> request, delete_request -> deleted
                         let cmd = match msg.cmd.as_str() {
                             "new_request" => "request",
@@ -75,14 +72,36 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                             other => other,
                         };
 
-                        let ws_msg = json!({
-                            "cmd": cmd,
-                            "subdomain": subdomain,
-                            "data": data
-                        });
+                        // A block notice puts its reason at the top level, where the dashboard
+                        // reads it. It is not a request, so it has nothing to carry in `data`.
+                        let ws_msg = if msg.cmd == "suspended" {
+                            json!({ "cmd": "suspended", "subdomain": subdomain }).to_string()
+                        } else {
+                            // `data` is already JSON: splice it in rather than parse and
+                            // re-serialize it once per connected dashboard. Checking that it
+                            // is valid JSON allocates nothing.
+                            let data = if serde_json::from_str::<serde::de::IgnoredAny>(&msg.data)
+                                .is_ok()
+                            {
+                                msg.data.as_str()
+                            } else {
+                                "null"
+                            };
+                            format!(
+                                r#"{{"cmd":{},"subdomain":{},"data":{}}}"#,
+                                Value::from(cmd),
+                                Value::from(subdomain.as_str()),
+                                data
+                            )
+                        };
 
-                        if tx_for_broadcast.send(ws_msg.to_string()).await.is_err() {
+                        if tx_for_broadcast.send(ws_msg).await.is_err() {
                             break;
+                        }
+
+                        if msg.cmd == "suspended" {
+                            // The owner no longer hears about this subdomain's traffic.
+                            sessions_for_broadcast.lock().await.remove(&subdomain);
                         }
                     }
                 }
@@ -148,8 +167,28 @@ async fn handle_socket_v2(socket: WebSocket, state: AppState) {
                                     }
                                 };
 
-                                match verify_jwt(token) {
-                                    Some(subdomain) => {
+                                // A blocked subdomain gets its own error code. It must not read
+                                // as `invalid_token`: the dashboard drops sessions with an
+                                // invalid token, and the owner could never get back in after
+                                // the block is lifted.
+                                let verified = verify_jwt(token).map(|subdomain| {
+                                    let suspended = state.abuse.is_blocked(&subdomain);
+                                    (subdomain, suspended)
+                                });
+
+                                match verified {
+                                    Some((subdomain, true)) => {
+                                        let response = json!({
+                                            "cmd": "error",
+                                            "code": "subdomain_suspended",
+                                            "subdomain": subdomain,
+                                            "message": "This subdomain has been blocked"
+                                        });
+                                        if tx.send(response.to_string()).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Some((subdomain, false)) => {
                                         {
                                             let mut sessions = sessions_for_receive.lock().await;
                                             sessions.insert(subdomain.clone());

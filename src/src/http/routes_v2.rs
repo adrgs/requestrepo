@@ -13,12 +13,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::time::{Duration, Instant};
+use tokio::sync::broadcast;
 
+use crate::abuse::{routes::suspended_rejection, AbuseList};
+use crate::cache::Cache;
 use crate::http::AppState;
 use crate::models::{DnsRecord, DnsRecords, FileTree};
 use crate::utils::config::CONFIG;
 use crate::utils::{
-    auth::{can_create_session, is_admin_token_required},
+    auth::{bearer_token, can_create_session, extract_admin_token, is_admin_token_required},
     generate_jwt, generate_share_jwt, get_current_timestamp, get_random_subdomain, verify_jwt,
     verify_share_jwt, write_basic_file,
 };
@@ -37,7 +41,118 @@ pub struct PaginatedTokenQuery {
     pub token: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    /// Only requests captured after the request with this ID (a cursor)
+    pub after: Option<String>,
+    /// Seconds to wait for a new request when there is none yet (long polling)
+    pub wait: Option<u64>,
+    /// Only requests of this type: http, dns, smtp or tcp
+    pub r#type: Option<String>,
 }
+
+/// `scheme://host[:port]` as clients reach this server, with the port only when it is not
+/// the scheme's default.
+pub(crate) fn public_origin(host: &str) -> String {
+    let (scheme, port, default_port) = if CONFIG.tls_enabled {
+        ("https", CONFIG.https_port, 443)
+    } else {
+        ("http", CONFIG.http_port, 80)
+    };
+    if port == default_port {
+        format!("{scheme}://{host}")
+    } else {
+        format!("{scheme}://{host}:{port}")
+    }
+}
+
+/// Parses a JSON request body, answering every problem with a JSON error, as the rest of the
+/// API does. With `require_content_type`, the body must be sent as `application/json`: a
+/// cross-site form cannot send that without a CORS preflight.
+pub(crate) fn json_body<T: serde::de::DeserializeOwned>(
+    headers: &axum::http::HeaderMap,
+    body: &[u8],
+    require_content_type: bool,
+) -> Result<T, Box<Response>> {
+    let is_json = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .trim()
+                .to_ascii_lowercase()
+                .starts_with("application/json")
+        });
+    if require_content_type && !is_json {
+        return Err(Box::new(
+            (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                Json(json!({
+                    "error": "Send the body as JSON with Content-Type: application/json",
+                    "code": "unsupported_media_type"
+                })),
+            )
+                .into_response(),
+        ));
+    }
+    serde_json::from_slice(body).map_err(|e| {
+        Box::new(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Invalid JSON body: {e}"),
+                    "code": "invalid_body"
+                })),
+            )
+                .into_response(),
+        )
+    })
+}
+
+/// Long polls held open at once, in total and per session. Each holds a connection (and,
+/// over HTTPS, one of a fixed number of connection permits), so they must be bounded. Past
+/// either limit a request is answered at once, as if it had not asked to wait.
+const MAX_LONG_POLLS: usize = 256;
+const MAX_LONG_POLLS_PER_SESSION: usize = 4;
+
+/// Counts a long poll in, and out again when dropped.
+struct LongPollSlot {
+    subdomain: String,
+}
+
+fn long_polls() -> &'static std::sync::Mutex<HashMap<String, usize>> {
+    static POLLS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, usize>>> =
+        std::sync::OnceLock::new();
+    POLLS.get_or_init(Default::default)
+}
+
+impl LongPollSlot {
+    fn acquire(subdomain: &str) -> Option<Self> {
+        let mut polls = long_polls().lock().unwrap_or_else(|e| e.into_inner());
+        let total: usize = polls.values().sum();
+        let mine = polls.get(subdomain).copied().unwrap_or(0);
+        if total >= MAX_LONG_POLLS || mine >= MAX_LONG_POLLS_PER_SESSION {
+            return None;
+        }
+        polls.insert(subdomain.to_string(), mine + 1);
+        Some(Self {
+            subdomain: subdomain.to_string(),
+        })
+    }
+}
+
+impl Drop for LongPollSlot {
+    fn drop(&mut self) {
+        let mut polls = long_polls().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(count) = polls.get_mut(&self.subdomain) {
+            *count -= 1;
+            if *count == 0 {
+                polls.remove(&self.subdomain);
+            }
+        }
+    }
+}
+
+/// Longest a client may hold a long poll open.
+const MAX_WAIT_SECS: u64 = 60;
 
 // Pagination constants
 const MAX_LIMIT: usize = 1000;
@@ -47,6 +162,25 @@ const DEFAULT_LIMIT: usize = 100;
 pub struct SessionResponse {
     pub token: String,
     pub subdomain: String,
+    /// Hostname that captures HTTP, DNS and SMTP traffic for this session
+    pub domain: String,
+    /// Base URL for HTTP traffic
+    pub url: String,
+    /// Any address at this domain is captured, e.g. `anything@<domain>`
+    pub email: String,
+}
+
+impl SessionResponse {
+    fn new(token: String, subdomain: String) -> Self {
+        let domain = format!("{subdomain}.{}", CONFIG.server_domain);
+        Self {
+            url: format!("{}/", public_origin(&domain)),
+            email: format!("anything@{domain}"),
+            domain,
+            token,
+            subdomain,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -55,7 +189,7 @@ pub struct ErrorResponse {
     pub code: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct CreateSessionRequest {
     pub admin_token: Option<String>,
 }
@@ -64,14 +198,26 @@ pub struct CreateSessionRequest {
 // Helper Functions
 // ============================================================================
 
-/// Extract admin token from request body or cookie (body takes precedence)
-fn extract_admin_token(body_token: Option<&str>, cookies: &CookieJar) -> Option<String> {
-    // Body takes precedence
-    if let Some(token) = body_token {
-        return Some(token.to_string());
-    }
-    // Fallback to cookie
-    cookies.get("admin_token").map(|c| c.value().to_string())
+/// How many times `pick_subdomain` draws before giving up. A draw only has to miss the
+/// blocklist, so even a blocklist holding every entry it can would be missed almost
+/// immediately; the bound exists so a misconfigured tiny label space cannot spin forever.
+const SUBDOMAIN_DRAWS: usize = 16;
+
+/// A fresh session label that is not suspended.
+fn pick_subdomain(abuse: &AbuseList) -> Option<String> {
+    pick_unblocked(get_random_subdomain, |subdomain| {
+        abuse.is_blocked(subdomain)
+    })
+}
+
+/// Draws labels until one is not blocked, giving up after `SUBDOMAIN_DRAWS`.
+fn pick_unblocked(
+    mut draw: impl FnMut() -> String,
+    is_blocked: impl Fn(&str) -> bool,
+) -> Option<String> {
+    (0..SUBDOMAIN_DRAWS)
+        .map(|_| draw())
+        .find(|subdomain| !is_blocked(subdomain))
 }
 
 /// Build the admin token cookie string with security settings
@@ -80,49 +226,91 @@ fn build_admin_cookie(token: &str) -> String {
     format!("admin_token={token}; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=2592000{secure}")
 }
 
-/// Extract token from query param or Authorization header
-fn extract_token(query: &TokenQuery, headers: &axum::http::HeaderMap) -> Option<String> {
-    // Try query param first
-    if let Some(token) = &query.token {
-        return Some(token.clone());
-    }
-
-    // Try Authorization header (Bearer token)
-    if let Some(auth) = headers.get("authorization") {
-        if let Ok(auth_str) = auth.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                return Some(token.to_string());
-            }
-        }
-    }
-
-    None
-}
-
-/// Verify token and return subdomain, or return error response
+/// Verify token (query param or `Authorization: Bearer`) and return subdomain, or return
+/// error response
+///
+/// A token for a blocked subdomain is rejected here rather than in `verify_jwt` itself:
+/// to the caller it must read as "blocked", not as "invalid", because an invalid token
+/// is one the frontend discards.
 fn verify_token_or_error(
-    query: &TokenQuery,
+    token: Option<&str>,
     headers: &axum::http::HeaderMap,
-) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    let token = extract_token(query, headers).ok_or_else(|| {
-        (
+    abuse: &AbuseList,
+) -> Result<String, Box<Response>> {
+    // Query param first, then Authorization header
+    let token = token
+        .map(str::to_string)
+        .or_else(|| bearer_token(headers))
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| {
+            Box::new(token_error(
+                StatusCode::UNAUTHORIZED,
+                "No token provided",
+                "missing_token",
+            ))
+        })?;
+
+    let subdomain = verify_jwt(&token).ok_or_else(|| {
+        Box::new(token_error(
             StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "No token provided".to_string(),
-                code: "missing_token".to_string(),
-            }),
-        )
+            "Invalid or expired token",
+            "invalid_token",
+        ))
     })?;
 
-    verify_jwt(&token).ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid or expired token".to_string(),
-                code: "invalid_token".to_string(),
-            }),
-        )
-    })
+    if abuse.is_blocked(&subdomain) {
+        return Err(Box::new(suspended_rejection()));
+    }
+    Ok(subdomain)
+}
+
+fn token_error(status: StatusCode, error: &str, code: &str) -> Response {
+    (
+        status,
+        Json(ErrorResponse {
+            error: error.to_string(),
+            code: code.to_string(),
+        }),
+    )
+        .into_response()
+}
+
+/// A page of a subdomain's request log: the number of stored entries (including deleted
+/// ones, which are kept as empty objects) and the parsed, non-deleted requests.
+pub(crate) async fn paginated_requests(
+    cache: &Cache,
+    subdomain: &str,
+    limit: usize,
+    offset: usize,
+) -> (usize, Vec<serde_json::Value>) {
+    let key = format!("requests:{subdomain}");
+    let total = cache.llen(&key).await.unwrap_or(0);
+    let requests = cache
+        .lrange(&key, offset as isize, (offset + limit - 1) as isize)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .filter(|v| !v.as_object().map(|o| o.is_empty()).unwrap_or(true))
+        .collect();
+    (total, requests)
+}
+
+/// Deletes the per-record entries (`dns:{type}:{fqdn}`) that the DNS server answers from.
+/// The subdomain's record list (`dns:{subdomain}`) is left for the caller to replace or delete.
+pub(crate) async fn delete_dns_record_entries(cache: &Cache, subdomain: &str) {
+    let records = cache
+        .get(&format!("dns:{subdomain}"))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|json| serde_json::from_str::<Vec<DnsRecord>>(&json).ok())
+        .unwrap_or_default();
+
+    for record in &records {
+        let fqdn = format!("{}.{}.{}.", record.domain, subdomain, CONFIG.server_domain);
+        let _ = cache.delete(&format!("dns:{}:{fqdn}", record.r#type)).await;
+    }
 }
 
 /// Validate a DNS domain name for security and RFC compliance
@@ -224,17 +412,37 @@ pub async fn create_session(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     cookies: CookieJar,
-    Json(body): Json<CreateSessionRequest>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
 ) -> Response {
     let client_ip = addr.ip().to_string();
+
+    // The body is optional, so `curl -X POST .../api/v2/sessions` is enough
+    let body: CreateSessionRequest = if body.iter().all(u8::is_ascii_whitespace) {
+        CreateSessionRequest::default()
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(body) => body,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!("Body must be empty or a JSON object: {e}"),
+                        "code": "invalid_body"
+                    })),
+                )
+                    .into_response()
+            }
+        }
+    };
 
     // Check rate limit
     if let Err(response) = check_rate_limit(&state, &client_ip).await {
         return response.into_response();
     }
 
-    // Extract admin token from body or cookie
-    let admin_token = extract_admin_token(body.admin_token.as_deref(), &cookies);
+    // Extract admin token from body, cookie or Authorization header
+    let admin_token = extract_admin_token(body.admin_token.as_deref(), &cookies, &headers);
 
     // Check admin token if required
     if !can_create_session(admin_token.as_deref()) {
@@ -248,7 +456,17 @@ pub async fn create_session(
             .into_response();
     }
 
-    let subdomain = get_random_subdomain();
+    // A blocked subdomain must never be handed out as a fresh session
+    let Some(subdomain) = pick_subdomain(&state.abuse) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Could not allocate a subdomain",
+                "code": "subdomain_unavailable"
+            })),
+        )
+            .into_response();
+    };
     let token = match generate_jwt(&subdomain) {
         Ok(t) => t,
         Err(e) => {
@@ -278,7 +496,7 @@ pub async fn create_session(
     // Build response
     let mut response = (
         StatusCode::CREATED,
-        Json(SessionResponse { token, subdomain }),
+        Json(SessionResponse::new(token, subdomain)),
     )
         .into_response();
 
@@ -385,9 +603,9 @@ pub async fn get_dns(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let dns_key = format!("dns:{subdomain}");
@@ -406,9 +624,9 @@ pub async fn update_dns(
     headers: axum::http::HeaderMap,
     Json(records): Json<DnsRecords>,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let dns_record_types = ["A", "AAAA", "CNAME", "TXT"];
@@ -452,24 +670,7 @@ pub async fn update_dns(
     }
 
     // Clear old records
-    if let Ok(Some(old_records_json)) = state.cache.get(&format!("dns:{subdomain}")).await {
-        if let Ok(old_records) =
-            serde_json::from_str::<Vec<HashMap<String, String>>>(&old_records_json)
-        {
-            for old_record in old_records {
-                if let (Some(record_type), Some(short_domain)) =
-                    (old_record.get("type"), old_record.get("domain"))
-                {
-                    let old_fqdn =
-                        format!("{}.{}.{}.", short_domain, subdomain, CONFIG.server_domain);
-                    let _ = state
-                        .cache
-                        .delete(&format!("dns:{record_type}:{old_fqdn}"))
-                        .await;
-                }
-            }
-        }
-    }
+    delete_dns_record_entries(&state.cache, &subdomain).await;
 
     // Store new records
     let mut final_records = Vec::new();
@@ -521,9 +722,9 @@ pub async fn get_files(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let files_key = format!("files:{subdomain}");
@@ -562,9 +763,9 @@ pub async fn update_files(
     headers: axum::http::HeaderMap,
     Json(files): Json<FileTree>,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Calculate total size of all files (raw content is base64 encoded)
@@ -613,9 +814,9 @@ pub async fn get_file(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     let files_key = format!("files:{subdomain}");
@@ -648,94 +849,449 @@ pub async fn get_file(
     }
 }
 
+/// Body of `PUT /api/v2/files/*path`. Give the content as text in `body`, or base64 in `raw`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutFileRequest {
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub raw: Option<String>,
+    #[serde(default)]
+    pub headers: Option<Vec<crate::models::Header>>,
+    #[serde(default)]
+    pub status_code: Option<u16>,
+}
+
+/// A path in a session's file tree, as the tree stores it: no leading slash.
+fn file_key(path: &str) -> Option<String> {
+    let path = path.trim_start_matches('/');
+    let valid = !path.is_empty()
+        && path.len() <= 1024
+        && !path.split('/').any(|part| part == ".." || part == ".")
+        && !path.contains('\0');
+    valid.then(|| path.to_string())
+}
+
+/// The Content-Type a new file gets when the request names none.
+fn default_content_type(path: &str) -> &'static str {
+    let extension = path
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("js" | "mjs") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("json") => "application/json",
+        Some("xml") => "application/xml",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        _ => "text/plain; charset=utf-8",
+    }
+}
+
+fn file_error(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
+    (status, Json(json!({ "error": error.into(), "code": code }))).into_response()
+}
+
+/// Serializes read-modify-write of file trees, so that two single-file updates sent at the
+/// same time cannot drop one another. Held only for a cache read and write.
+fn file_tree_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(Default::default)
+}
+
+async fn load_file_tree(cache: &Cache, subdomain: &str) -> FileTree {
+    cache
+        .get(&format!("files:{subdomain}"))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|json| serde_json::from_str::<FileTree>(&json).ok())
+        .unwrap_or(FileTree {
+            files: HashMap::new(),
+        })
+}
+
+async fn save_file_tree(
+    cache: &Cache,
+    subdomain: &str,
+    files: &FileTree,
+) -> Result<(), Box<Response>> {
+    let total_size: usize = files.files.values().map(|file| file.raw.len()).sum();
+    let max_size = CONFIG.max_subdomain_size_bytes;
+    if total_size > max_size {
+        return Err(Box::new(file_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "file_tree_too_large",
+            format!(
+                "Total file size exceeds limit of {} MB",
+                max_size / 1024 / 1024
+            ),
+        )));
+    }
+    cache
+        .set(
+            &format!("files:{subdomain}"),
+            &serde_json::to_string(files).unwrap_or_default(),
+        )
+        .await
+        .map_err(|e| {
+            Box::new(file_error(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "storage_error",
+                format!("Storage limit exceeded: {e}"),
+            ))
+        })
+}
+
+/// PUT /api/v2/files/*path - Create or replace one file of the response tree
+///
+/// `{"body": "hello"}` is enough: the status defaults to 200 and the headers to a
+/// Content-Type guessed from the extension plus `Access-Control-Allow-Origin: *`.
+pub async fn put_file(
+    State(state): State<AppState>,
+    Path(path): Path<String>,
+    Query(query): Query<TokenQuery>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
+    let request: PutFileRequest = match json_body(&headers, &body, false) {
+        Ok(request) => request,
+        Err(response) => return *response,
+    };
+    let Some(key) = file_key(&path) else {
+        return file_error(StatusCode::BAD_REQUEST, "invalid_path", "Invalid file path");
+    };
+
+    let raw = match (request.body, request.raw) {
+        (Some(_), Some(_)) => {
+            return file_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_body",
+                "Give either `body` (text) or `raw` (base64), not both",
+            )
+        }
+        (Some(text), None) => BASE64.encode(text),
+        (None, Some(raw)) => {
+            if BASE64.decode(&raw).is_err() {
+                return file_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_raw",
+                    "`raw` must be standard base64",
+                );
+            }
+            raw
+        }
+        (None, None) => String::new(),
+    };
+    let status_code = request.status_code.unwrap_or(200);
+    if !(100..=599).contains(&status_code) {
+        return file_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_status_code",
+            "status_code must be between 100 and 599",
+        );
+    }
+    let response_headers = request.headers.unwrap_or_else(|| {
+        vec![
+            crate::models::Header {
+                header: "Access-Control-Allow-Origin".to_string(),
+                value: "*".to_string(),
+            },
+            crate::models::Header {
+                header: "Content-Type".to_string(),
+                value: default_content_type(&key).to_string(),
+            },
+        ]
+    });
+
+    let _tree = file_tree_lock().lock().await;
+    let mut files = load_file_tree(&state.cache, &subdomain).await;
+    let file = crate::models::Response {
+        raw,
+        headers: response_headers,
+        status_code,
+    };
+    let created = files.files.insert(key.clone(), file.clone()).is_none();
+    if let Err(response) = save_file_tree(&state.cache, &subdomain, &files).await {
+        return *response;
+    }
+
+    (
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+        Json(json!({
+            "path": key,
+            "url": format!(
+                "{}/{key}",
+                public_origin(&format!("{subdomain}.{}", CONFIG.server_domain))
+            ),
+            "file": file,
+        })),
+    )
+        .into_response()
+}
+
+/// DELETE /api/v2/files/*path - Remove one file of the response tree
+pub async fn delete_file(
+    State(state): State<AppState>,
+    Path(path): Path<String>,
+    Query(query): Query<TokenQuery>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
+    let Some(key) = file_key(&path) else {
+        return file_error(StatusCode::BAD_REQUEST, "invalid_path", "Invalid file path");
+    };
+
+    let _tree = file_tree_lock().lock().await;
+    let mut files = load_file_tree(&state.cache, &subdomain).await;
+    if files.files.remove(&key).is_none() {
+        return file_error(StatusCode::NOT_FOUND, "not_found", "File not found");
+    }
+    if let Err(response) = save_file_tree(&state.cache, &subdomain, &files).await {
+        return *response;
+    }
+    (
+        StatusCode::OK,
+        Json(json!({ "path": key, "deleted": true })),
+    )
+        .into_response()
+}
+
 // ============================================================================
 // Request Routes
 // ============================================================================
 
-/// GET /api/v2/requests - List requests with pagination
+/// GET /api/v2/requests - List requests
 ///
 /// Query params:
 /// - token: JWT token (or use Authorization header)
 /// - limit: Max results (default 100, max 1000)
-/// - offset: Skip first N results (default 0)
+/// - offset: Skip first N results (default 0). Ignored with `after`.
+/// - after: Only requests captured after the request with this ID, oldest first. Pass the
+///   `cursor` of the previous response to get only what is new.
+/// - wait: When nothing matches yet, hold the response up to this many seconds (max 60)
+///   until a request arrives. With `after`, this is a long poll for the next request.
+/// - type: Only `http`, `dns`, `smtp` or `tcp` requests
 pub async fn list_requests(
     State(state): State<AppState>,
     Query(query): Query<PaginatedTokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    // Extract and verify token
-    let token = query.token.clone().or_else(|| {
-        headers
-            .get("authorization")
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "))
-            .map(|s| s.to_string())
-    });
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
+    };
 
-    let subdomain = match token {
-        Some(t) => match verify_jwt(&t) {
-            Some(s) => s,
-            None => {
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({
-                        "error": "Invalid or expired token",
-                        "code": "invalid_token"
-                    })),
-                )
-                    .into_response();
-            }
-        },
-        None => {
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    let offset = query.offset.unwrap_or(0);
+    let kind = match query.r#type.as_deref().map(str::to_lowercase) {
+        None => None,
+        Some(kind) if ["http", "dns", "smtp", "tcp"].contains(&kind.as_str()) => Some(kind),
+        Some(other) => {
             return (
-                StatusCode::UNAUTHORIZED,
+                StatusCode::BAD_REQUEST,
                 Json(json!({
-                    "error": "No token provided",
-                    "code": "missing_token"
+                    "error": format!("Unknown type '{other}': use http, dns, smtp or tcp"),
+                    "code": "invalid_type"
                 })),
             )
-                .into_response();
+                .into_response()
+        }
+    };
+    let mut wait = Duration::from_secs(query.wait.unwrap_or(0).min(MAX_WAIT_SECS));
+    let _slot = if wait.is_zero() {
+        None
+    } else {
+        let slot = LongPollSlot::acquire(&subdomain);
+        if slot.is_none() {
+            wait = Duration::ZERO;
+        }
+        slot
+    };
+    let filter = PageFilter {
+        after: query.after.as_deref(),
+        kind: kind.as_deref(),
+        limit,
+        offset,
+    };
+
+    // Subscribe before the first read, so a request that arrives in between is not missed.
+    let mut updates = state.tx.subscribe();
+    let deadline = Instant::now() + wait;
+
+    let page = loop {
+        let page = match fetch_page(&state.cache, &subdomain, &filter).await {
+            Some(page) => page,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({
+                        "error": "No request has the ID given in `after`: it was deleted or \
+                                  evicted. List without `after` to start over.",
+                        "code": "cursor_not_found"
+                    })),
+                )
+                    .into_response()
+            }
+        };
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if !page.requests.is_empty() || remaining.is_zero() {
+            break page;
+        }
+
+        // Nothing yet: wait for this session's next request, or for the deadline.
+        let arrived = tokio::time::timeout(remaining, async {
+            loop {
+                match updates.recv().await {
+                    // A new request, or the session's suspension, which must end the wait
+                    Ok(msg)
+                        if msg.subdomain == subdomain
+                            && (msg.cmd == "new_request" || msg.cmd == "suspended") =>
+                    {
+                        return true
+                    }
+                    Ok(_) => {}
+                    // Missed some messages: one of them may have been ours, so look.
+                    Err(broadcast::error::RecvError::Lagged(_)) => return true,
+                    Err(broadcast::error::RecvError::Closed) => return false,
+                }
+            }
+        })
+        .await;
+        // The session may have been suspended while it waited: what arrives from then on is
+        // for the abuse admin only.
+        if state.abuse.is_blocked(&subdomain) {
+            return suspended_rejection();
+        }
+        if arrived != Ok(true) {
+            // Timed out: answer with what there is, which is nothing new.
+            break page;
         }
     };
 
-    let key = format!("requests:{subdomain}");
-
-    // Get total count (before filtering empty objects)
-    let total_raw = state.cache.llen(&key).await.unwrap_or(0);
-
-    // Apply pagination limits
-    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-    let offset = query.offset.unwrap_or(0);
-
-    // Fetch paginated range
-    let requests = match state
-        .cache
-        .lrange(&key, offset as isize, (offset + limit - 1) as isize)
-        .await
-    {
-        Ok(list) => list
-            .into_iter()
-            .filter_map(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .filter(|v| !v.as_object().map(|o| o.is_empty()).unwrap_or(true))
-            .collect::<Vec<_>>(),
-        Err(_) => Vec::new(),
-    };
-
-    let has_more = offset + limit < total_raw;
+    // The cursor to pass as `after` next time: the newest request returned, or the cursor
+    // that was given when nothing new arrived.
+    let cursor = page
+        .requests
+        .last()
+        .and_then(|r| r.get("_id"))
+        .and_then(|id| id.as_str())
+        .map(str::to_string)
+        .or_else(|| query.after.clone());
+    let mut pagination = json!({
+        "total": page.total,
+        "limit": limit,
+        "has_more": page.has_more
+    });
+    if query.after.is_none() {
+        pagination["offset"] = json!(offset);
+    }
 
     (
         StatusCode::OK,
         Json(json!({
-            "requests": requests,
-            "pagination": {
-                "total": total_raw,
-                "limit": limit,
-                "offset": offset,
-                "has_more": has_more
-            }
+            "requests": page.requests,
+            "cursor": cursor,
+            "pagination": pagination,
         })),
     )
         .into_response()
+}
+
+struct PageFilter<'a> {
+    after: Option<&'a str>,
+    kind: Option<&'a str>,
+    limit: usize,
+    offset: usize,
+}
+
+struct RequestPage {
+    /// Matching requests in total, before `limit` (and `offset`) apply
+    total: usize,
+    has_more: bool,
+    requests: Vec<serde_json::Value>,
+}
+
+/// One page of a session's requests. `None` if `after` names a request that is not stored.
+async fn fetch_page(
+    cache: &Cache,
+    subdomain: &str,
+    filter: &PageFilter<'_>,
+) -> Option<RequestPage> {
+    // The common case, a plain page, reads only that page.
+    if filter.after.is_none() && filter.kind.is_none() {
+        let (total, requests) =
+            paginated_requests(cache, subdomain, filter.limit, filter.offset).await;
+        return Some(RequestPage {
+            total,
+            has_more: filter.offset.saturating_add(filter.limit) < total,
+            requests,
+        });
+    }
+
+    let all = all_requests(cache, subdomain).await;
+    // With a cursor: everything after it. Without: everything, paged by `offset` below.
+    let start = match filter.after {
+        Some(after) => {
+            all.iter()
+                .position(|r| r.get("_id").and_then(|id| id.as_str()) == Some(after))?
+                + 1
+        }
+        None => 0,
+    };
+    let matching: Vec<_> = all
+        .into_iter()
+        .skip(start)
+        .filter(|r| filter.kind.is_none_or(|kind| is_type(r, kind)))
+        .collect();
+    let total = matching.len();
+    let offset = if filter.after.is_some() {
+        0
+    } else {
+        filter.offset
+    };
+    Some(RequestPage {
+        total,
+        has_more: offset.saturating_add(filter.limit) < total,
+        requests: matching
+            .into_iter()
+            .skip(offset)
+            .take(filter.limit)
+            .collect(),
+    })
+}
+
+/// Every stored, non-deleted request of a session, oldest first.
+async fn all_requests(cache: &Cache, subdomain: &str) -> Vec<serde_json::Value> {
+    cache
+        .lrange(&format!("requests:{subdomain}"), 0, -1)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .filter(|v| !v.as_object().map(|o| o.is_empty()).unwrap_or(true))
+        .collect()
+}
+
+fn is_type(request: &serde_json::Value, kind: &str) -> bool {
+    request.get("type").and_then(|t| t.as_str()) == Some(kind)
 }
 
 /// GET /api/v2/requests/:id - Get single request
@@ -745,9 +1301,9 @@ pub async fn get_request(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Find request by ID
@@ -794,9 +1350,9 @@ pub async fn delete_request(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Find request by scanning the list (indices are not stable due to eviction)
@@ -869,9 +1425,9 @@ pub async fn delete_all_requests(
     Query(query): Query<TokenQuery>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Delete the requests list
@@ -916,9 +1472,9 @@ pub async fn share_request(
         return response.into_response();
     }
 
-    let subdomain = match verify_token_or_error(&query, &headers) {
-        Ok(s) => s,
-        Err(e) => return e.into_response(),
+    let subdomain = match verify_token_or_error(query.token.as_deref(), &headers, &state.abuse) {
+        Ok(subdomain) => subdomain,
+        Err(response) => return *response,
     };
 
     // Verify the request exists
@@ -1001,6 +1557,11 @@ pub async fn get_shared_request(
         }
     };
 
+    // Links to a blocked subdomain's requests stop working with its token
+    if state.abuse.is_blocked(&claims.subdomain) {
+        return suspended_rejection();
+    }
+
     // Find the request
     let requests = match state
         .cache
@@ -1045,6 +1606,20 @@ pub async fn get_shared_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pick_unblocked_skips_blocked_labels() {
+        let draws = ["11111111", "22222222", "33333333", "44444444"];
+        let mut next = draws.iter();
+        let picked = pick_unblocked(
+            || next.next().unwrap().to_string(),
+            |subdomain| subdomain != "44444444",
+        );
+        assert_eq!(picked.as_deref(), Some("44444444"));
+
+        // When every draw is blocked it gives up instead of drawing forever
+        assert_eq!(pick_unblocked(|| "11111111".to_string(), |_| true), None);
+    }
 
     #[test]
     fn test_validate_dns_domain_valid() {

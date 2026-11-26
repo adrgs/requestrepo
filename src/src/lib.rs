@@ -1,3 +1,5 @@
+mod abuse;
+mod agent;
 mod cache;
 pub(crate) mod certs;
 mod dns;
@@ -32,6 +34,18 @@ pub async fn run() -> Result<()> {
     // Start the cache cleanup task
     cache::Cache::start_cleanup_task(cache.clone());
 
+    // Never fails: an unreadable blocklist is set aside and an empty one used instead.
+    let abuse = match abuse::AbuseList::load(&CONFIG.data_dir, abuse::Settings::from_config()).await
+    {
+        Ok(list) => Arc::new(list),
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "Could not load the subdomain blocklist: {e:#}"
+            ))
+        }
+    };
+    abuse::AbuseList::start_cleanup_task(abuse.clone());
+
     let (tx, _) = broadcast::channel(1024);
     let tx = Arc::new(tx);
 
@@ -41,7 +55,7 @@ pub async fn run() -> Result<()> {
     // Load static frontend files into memory (shared between HTTP and HTTPS)
     let static_files = http::load_static_files().await;
 
-    let dns_server = dns::Server::new(cache.clone(), tx.clone());
+    let dns_server = dns::Server::new(cache.clone(), tx.clone(), abuse.clone());
     let dns_handle = tokio::spawn(async move {
         if let Err(e) = dns_server.run().await {
             error!("DNS server error: {}", e);
@@ -61,6 +75,7 @@ pub async fn run() -> Result<()> {
         tx.clone(),
         static_files.clone(),
         http_challenge_handler.clone(),
+        abuse.clone(),
     );
     let http_handle = tokio::spawn(async move {
         if let Err(e) = http_server.run().await {
@@ -68,14 +83,14 @@ pub async fn run() -> Result<()> {
         }
     });
 
-    let smtp_server = smtp::Server::new(cache.clone(), tx.clone());
+    let smtp_server = smtp::Server::new(cache.clone(), tx.clone(), abuse.clone());
     let smtp_handle = tokio::spawn(async move {
         if let Err(e) = smtp_server.run().await {
             error!("SMTP server error: {}", e);
         }
     });
 
-    let tcp_server = tcp::Server::new(cache.clone(), tx.clone());
+    let tcp_server = tcp::Server::new(cache.clone(), tx.clone(), abuse.clone());
     let tcp_handle = tokio::spawn(async move {
         if let Err(e) = tcp_server.run().await {
             error!("TCP server error: {}", e);
@@ -100,6 +115,7 @@ pub async fn run() -> Result<()> {
                     cert_manager.tls_manager(),
                     static_files.clone(),
                     None, // ACME challenges are served on HTTP, not HTTPS
+                    abuse.clone(),
                 );
 
                 Some(tokio::spawn(async move {

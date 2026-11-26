@@ -69,6 +69,11 @@ pub async fn health(
                 "memory_used_mb": format!("{:.2}", memory_used_mb),
                 "memory_limit_mb": format!("{:.2}", memory_limit_mb),
                 "memory_usage_pct": format!("{:.1}", (memory_used_mb / memory_limit_mb) * 100.0)
+            },
+            "abuse": {
+                "suspended": state.abuse.blocked_count(),
+                // Changes that took effect but could not be saved, so they are lost on restart
+                "persist_failures": state.abuse.persist_failures(),
             }
         })),
     )
@@ -131,83 +136,17 @@ pub async fn catch_all(
     }
 
     if let Some(subdomain) = subdomain.clone() {
-        let body_bytes = body.to_vec();
-
-        let request_id = generate_request_id();
-
-        // Use actual connection IP - cannot be spoofed
-        let client_ip = connect_info.0.ip().to_string();
-        let client_port = Some(connect_info.0.port());
-
-        let country = lookup_country(&client_ip);
-
-        // Extract query string and build full URL
-        let query_string = uri.query().map(|s| format!("?{s}"));
-
-        // Determine scheme and protocol from actual TLS state (cannot be spoofed by clients)
-        let scheme = if is_tls { "https" } else { "http" };
-        let protocol = if is_tls {
-            "HTTPS/1.1".to_string()
-        } else {
-            "HTTP/1.1".to_string()
-        };
-        let full_url = format!(
-            "{}://{}{}{}",
-            scheme,
+        let request_log = http_request_log(
+            &subdomain,
+            connect_info.0,
+            is_tls,
             host,
-            path,
-            query_string.as_deref().unwrap_or("")
+            &method,
+            &uri,
+            &headers,
+            &body,
         );
-
-        let request_log = HttpRequestLog {
-            _id: request_id.clone(),
-            r#type: "http".to_string(),
-            raw: BASE64.encode(&body_bytes),
-            uid: subdomain.clone(),
-            method: method.to_string(),
-            path: path.to_string(),
-            query: query_string,
-            fragment: None, // Fragments are not sent to server in HTTP
-            url: full_url,
-            protocol,
-            headers: headers
-                .iter()
-                .map(|(k, v)| {
-                    // Title-case header names for display (e.g., "accept" -> "Accept")
-                    let name = k
-                        .as_str()
-                        .split('-')
-                        .map(|part| {
-                            let mut chars = part.chars();
-                            match chars.next() {
-                                Some(first) => first.to_uppercase().chain(chars).collect(),
-                                None => String::new(),
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join("-");
-                    (name, v.to_str().unwrap_or("").to_string())
-                })
-                .collect(),
-            date: get_current_timestamp(),
-            ip: Some(client_ip),
-            port: client_port,
-            country,
-        };
-
-        let request_json = serde_json::to_string(&request_log).unwrap_or_default();
-
-        // Push request to list
-        let list_key = format!("requests:{subdomain}");
-        let _ = state.cache.rpush(&list_key, &request_json).await;
-
-        let message = crate::models::CacheMessage {
-            cmd: "new_request".to_string(),
-            subdomain: subdomain.clone(),
-            data: request_json,
-        };
-
-        let _ = state.tx.send(message);
+        record_http_request(&state, &subdomain, &request_log).await;
 
         // Extract the file path from the URL
         // For main domain path-based routing (/r/subdomain/path): strips /r/subdomain prefix
@@ -216,8 +155,97 @@ pub async fn catch_all(
         return serve_file(state, subdomain, &file_path, on_main_domain).await;
     }
 
-    // No subdomain - serve static dashboard files from memory cache
-    serve_static_file(&state, path)
+    // No subdomain: the main domain. Agent-facing documents first, then the dashboard.
+    if let Some(response) = crate::agent::serve(&method, path, &headers) {
+        return response;
+    }
+    crate::agent::with_discovery_headers(serve_static_file(&state, path), path)
+}
+
+/// Builds the log entry for an HTTP request to `subdomain`.
+#[allow(clippy::too_many_arguments)]
+fn http_request_log(
+    subdomain: &str,
+    peer: std::net::SocketAddr,
+    is_tls: bool,
+    host: &str,
+    method: &axum::http::Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> HttpRequestLog {
+    // Use actual connection IP - cannot be spoofed
+    let client_ip = peer.ip().to_string();
+    let country = lookup_country(&client_ip);
+    let path = uri.path();
+
+    // Extract query string and build full URL
+    let query_string = uri.query().map(|s| format!("?{s}"));
+
+    // Determine scheme and protocol from actual TLS state (cannot be spoofed by clients)
+    let scheme = if is_tls { "https" } else { "http" };
+    let protocol = if is_tls {
+        "HTTPS/1.1".to_string()
+    } else {
+        "HTTP/1.1".to_string()
+    };
+    let full_url = format!(
+        "{}://{}{}{}",
+        scheme,
+        host,
+        path,
+        query_string.as_deref().unwrap_or("")
+    );
+
+    HttpRequestLog {
+        _id: generate_request_id(),
+        r#type: "http".to_string(),
+        raw: BASE64.encode(body),
+        uid: subdomain.to_string(),
+        method: method.to_string(),
+        path: path.to_string(),
+        query: query_string,
+        fragment: None, // Fragments are not sent to server in HTTP
+        url: full_url,
+        protocol,
+        headers: headers
+            .iter()
+            .map(|(k, v)| {
+                // Title-case header names for display (e.g., "accept" -> "Accept")
+                let name = k
+                    .as_str()
+                    .split('-')
+                    .map(|part| {
+                        let mut chars = part.chars();
+                        match chars.next() {
+                            Some(first) => first.to_uppercase().chain(chars).collect(),
+                            None => String::new(),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("-");
+                (name, v.to_str().unwrap_or("").to_string())
+            })
+            .collect(),
+        date: get_current_timestamp(),
+        ip: Some(client_ip),
+        port: Some(peer.port()),
+        country,
+    }
+}
+
+/// Appends a request to the subdomain's log and tells live dashboards about it.
+async fn record_http_request(state: &AppState, subdomain: &str, request_log: &HttpRequestLog) {
+    let request_json = serde_json::to_string(request_log).unwrap_or_default();
+    let _ = state
+        .cache
+        .rpush(&format!("requests:{subdomain}"), &request_json)
+        .await;
+    let _ = state.tx.send(crate::models::CacheMessage {
+        cmd: "new_request".to_string(),
+        subdomain: subdomain.to_string(),
+        data: request_json,
+    });
 }
 
 /// Serve static files from in-memory cache
@@ -331,9 +359,11 @@ async fn serve_file(
     let mut files: HashMap<String, ResponseModel> =
         serde_json::from_str(&files_json).unwrap_or_default();
 
-    // If files are empty or missing index.html, create it automatically
-    // This handles the case where backend restarted but JWT is still valid
-    if files.is_empty() || !files.contains_key("index.html") {
+    // Without an index.html (a subdomain nobody set up, or one whose files were lost in a
+    // restart) serve the default page. It is never stored: any request to any random name
+    // lands here, and storing it would let anyone fill memory with file trees that the
+    // cache never evicts.
+    if !files.contains_key("index.html") {
         let default_response = ResponseModel {
             raw: BASE64.encode("Request logged successfully."),
             headers: vec![
@@ -349,14 +379,6 @@ async fn serve_file(
             status_code: 200,
         };
         files.insert("index.html".to_string(), default_response);
-
-        // Save the auto-created files back to cache
-        if let Ok(files_str) = serde_json::to_string(&files) {
-            let _ = state
-                .cache
-                .set(&format!("files:{subdomain}"), &files_str)
-                .await;
-        }
     }
 
     if let Some(file) = resolve_file_path(&files, path) {

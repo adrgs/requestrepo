@@ -1,11 +1,15 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type {
   SessionCreateResponse,
   DnsRecord,
   FileTree,
   PaginatedResponse,
   Request,
+  AbuseReportResponse,
+  CreateAbuseReportPayload,
 } from "@/types";
+import { getSubdomainFromToken } from "@/lib/jwt";
+import { useBlockedStore } from "@/stores/blockedStore";
 
 const api = axios.create({
   baseURL: "/api/v2",
@@ -41,6 +45,35 @@ export function isAdminRequiredError(error: unknown): boolean {
   }
   return false;
 }
+
+function bearerToken(
+  config: InternalAxiosRequestConfig | undefined,
+): string | null {
+  const value = config?.headers?.get("Authorization");
+  return typeof value === "string" && value.startsWith("Bearer ")
+    ? value.slice("Bearer ".length)
+    : null;
+}
+
+// A suspended subdomain is refused on every request made with its token. Remember it here,
+// once, so that every caller gets the same behaviour without each having to check.
+api.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    if (error instanceof AxiosError && error.response?.status === 403) {
+      const data = error.response.data as { code?: string } | undefined;
+      if (data?.code === "subdomain_suspended") {
+        const subdomain = getSubdomainFromToken(
+          bearerToken(error.config) ?? "",
+        );
+        if (subdomain) {
+          useBlockedStore.getState().markBlocked(subdomain);
+        }
+      }
+    }
+    return Promise.reject(error);
+  },
+);
 
 // Session API
 export async function createSession(
@@ -166,15 +199,22 @@ export async function createShareToken(
 }
 
 // Get a shared request by share token (public endpoint, no auth required)
-export async function getSharedRequest(
-  shareToken: string,
-): Promise<Request | null> {
-  try {
-    const { data } = await api.get<Request>(`/requests/shared/${shareToken}`);
-    return data;
-  } catch {
-    return null;
-  }
+export async function getSharedRequest(shareToken: string): Promise<Request> {
+  const { data } = await api.get<Request>(`/requests/shared/${shareToken}`);
+  return data;
+}
+
+// Abuse API
+
+// Report a subdomain, which suspends it immediately. Public and rate limited.
+export async function createAbuseReport(
+  payload: CreateAbuseReportPayload,
+): Promise<AbuseReportResponse> {
+  const { data } = await api.post<AbuseReportResponse>(
+    "/abuse/reports",
+    payload,
+  );
+  return data;
 }
 
 export const apiClient = {
@@ -189,4 +229,5 @@ export const apiClient = {
   getSharedRequest,
   deleteRequest,
   deleteAllRequests,
+  createAbuseReport,
 };

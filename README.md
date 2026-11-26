@@ -16,6 +16,8 @@ A tool for analyzing HTTP, DNS, and SMTP requests with custom DNS records and re
 - **IP Geolocation**: Country detection for incoming requests (via DB-IP)
 - **Request sharing**: Share individual requests via secure tokens
 - **Admin authentication**: Optional password protection for session creation
+- **Agent-ready API**: Drive everything with `curl` from Claude Code, Codex or any agent. Long polling, `llms.txt`, an OpenAPI description and an Agent Skill are served by every instance
+- **Abuse reporting**: Rate-limited reports suspend a subdomain at once
 - **No external dependencies**: In-memory cache with LRU eviction (no Redis required)
 
 ## Quick Start
@@ -32,10 +34,12 @@ docker run -d \
   -e TLS_ENABLED=true \
   -e ACME_EMAIL=admin@yourdomain.com \
   -v requestrepo-certs:/app/certs \
+  -v requestrepo-data:/app/data \
   ghcr.io/adrgs/requestrepo:latest
 ```
 
-This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25).
+This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25). The `certs` volume
+keeps the TLS certificates and the `data` volume keeps the abuse blocklist across restarts.
 
 ## Using Docker Compose
 
@@ -163,6 +167,68 @@ requestrepo/
 └── ip2country/         # IP geolocation database
 ```
 
+## Using requestrepo from AI agents
+
+Every instance documents itself for agents on its main domain, so Claude Code, Codex or any
+other agent can use it with `curl` alone: no SDK and no MCP server.
+
+| Path | What it is |
+|------|------------|
+| `/llms.txt` | Index for language models ([llmstxt.org](https://llmstxt.org)) with a three-call quickstart |
+| `/docs/api.md` | The agent guide: sessions, long polling, responses, DNS, errors |
+| `/skill.md` | An [Agent Skill](https://agentskills.io); save it as `requestrepo/SKILL.md` in your skills directory |
+| `/openapi.json` | OpenAPI 3.1 description of the API |
+| `/.well-known/api-catalog` | [RFC 9727](https://www.rfc-editor.org/rfc/rfc9727) API catalog |
+| `/robots.txt`, `/sitemap.xml` | With [Content Signals](https://contentsignals.org) |
+
+`/` and `/abuse` also answer `Accept: text/markdown` with the matching guide, and HTML pages
+carry `Link` headers pointing at the documents above. These paths are only served on the
+main domain; on a session subdomain every path still belongs to the session.
+
+```bash
+S=$(curl -s -X POST https://<your-domain>/api/v2/sessions)      # no body needed
+TOKEN=$(echo "$S" | jq -r .token); URL=$(echo "$S" | jq -r .url)
+curl -s "${URL}callback"
+# Long poll: returns as soon as something arrives (or after 60 s)
+curl -s -H "Authorization: Bearer $TOKEN" "https://<your-domain>/api/v2/requests?wait=60"
+```
+
+Pass the `cursor` of one response as `after` in the next to receive only new requests.
+`PUT /api/v2/files/<path>` with `{"body": "..."}` sets a single response without base64.
+In the dashboard, the robot button copies a prompt that hands the current session to an agent.
+
+## Reporting Abuse
+
+Anyone can report a subdomain that is used for abuse, such as a malware beacon, command and
+control, or a phishing page: with the flag button in the dashboard, at
+`https://<your-domain>/abuse`, or over the API:
+
+```bash
+curl -X POST https://<your-domain>/api/v2/abuse/reports \
+  -H 'Content-Type: application/json' -d '{"subdomain":"abcd1234"}'
+```
+
+`subdomain` accepts a label, any hostname under it, or a URL. Nothing else is asked for. Only
+a subdomain that is in use (it was handed out as a session, or has received traffic) can be
+reported, so reports cannot be used to fill the list with names that never existed.
+
+**A report suspends the subdomain immediately.** Nobody has to be awake for a beacon to stop
+working, and the owner of a legitimate subdomain caught by mistake can simply create a new one.
+A suspended subdomain answers `410 Gone` (a short page for browsers) and serves nothing, DNS
+answers `NXDOMAIN`, mail is refused, and the owner's dashboard, API token and share links stop
+working with `subdomain_suspended`. Its response files, DNS records and captured requests are
+deleted at once (a response may be the next stage of a loader), and nothing sent to it is
+logged any more.
+
+Reports are rate limited to 3 per hour per IP address (an IPv6 /48 counts as one). On a
+private instance (`ADMIN_TOKEN` set), reporting needs the admin token like everything else.
+
+**Lifting a suspension.** Suspensions are saved to `abuse.json` in `DATA_DIR` (the `data`
+volume in Docker), one per line, and survive restarts. To lift one, delete its line and
+restart. A file that cannot be read or parsed is renamed to `abuse.json.invalid-<time>` and
+the server starts with an empty list, so a bad edit can never keep it from starting. At 50,000 suspensions (about 2 MB) new reports are refused; nothing is
+ever lifted automatically. Checking a request against the list takes about 20 ns.
+
 ## Environment Variables
 
 See [.env.example](.env.example) for all available options.
@@ -174,6 +240,9 @@ See [.env.example](.env.example) for all available options.
 | `SERVER_IP` | Yes | - | Public IP for DNS responses |
 | `SERVER_IPV6` | No | - | Public IPv6 address for AAAA responses (IPv4-only when unset) |
 | `ADMIN_TOKEN` | No | - | Password for session creation |
+| `ABUSE_REPORTING_ENABLED` | No | `true` | Accept abuse reports, which suspend a subdomain immediately |
+| `ABUSE_CONTACT` | No | - | Shown to owners of a suspended subdomain, for disputes |
+| `DATA_DIR` | No | `./data` | Directory for `abuse.json`, the saved blocklist (`/app/data` in Docker) |
 | `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
 | `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |
 | `IP_CERT_ENABLED` | No | `false` | Enable IP address TLS certificates (HTTP-01) |
