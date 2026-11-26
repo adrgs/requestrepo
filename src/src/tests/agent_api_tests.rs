@@ -223,6 +223,31 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(2));
     }
 
+    // --- Unused subdomains -------------------------------------------------
+
+    #[tokio::test]
+    async fn traffic_to_an_unused_subdomain_stores_no_file_tree() {
+        let server = server().await;
+        let label = get_random_subdomain();
+        let host = server.subdomain_host(&label);
+
+        let reply = server.request("GET", &host, "/", &[], "").await;
+        assert_eq!(reply.status, 200);
+        assert_eq!(reply.body, "Request logged successfully.");
+        assert_eq!(
+            server.cache.get(&format!("files:{label}")).await.unwrap(),
+            None,
+            "a default file tree must not be stored for a name nobody set up"
+        );
+
+        // Its owner still gets the default tree, stored, when the session reads its files
+        let token = generate_jwt(&label).unwrap();
+        let files = server.api(&token, "GET", "/api/v2/files", "").await;
+        assert_eq!(files.status, 200);
+        assert!(files.json()["index.html"].is_object());
+        assert!(server.cache.contains(&format!("files:{label}")));
+    }
+
     // --- Response files ----------------------------------------------------
 
     #[tokio::test]

@@ -359,9 +359,11 @@ async fn serve_file(
     let mut files: HashMap<String, ResponseModel> =
         serde_json::from_str(&files_json).unwrap_or_default();
 
-    // If files are empty or missing index.html, create it automatically
-    // This handles the case where backend restarted but JWT is still valid
-    if files.is_empty() || !files.contains_key("index.html") {
+    // Without an index.html (a subdomain nobody set up, or one whose files were lost in a
+    // restart) serve the default page. It is never stored: any request to any random name
+    // lands here, and storing it would let anyone fill memory with file trees that the
+    // cache never evicts.
+    if !files.contains_key("index.html") {
         let default_response = ResponseModel {
             raw: BASE64.encode("Request logged successfully."),
             headers: vec![
@@ -377,14 +379,6 @@ async fn serve_file(
             status_code: 200,
         };
         files.insert("index.html".to_string(), default_response);
-
-        // Save the auto-created files back to cache
-        if let Ok(files_str) = serde_json::to_string(&files) {
-            let _ = state
-                .cache
-                .set(&format!("files:{subdomain}"), &files_str)
-                .await;
-        }
     }
 
     if let Some(file) = resolve_file_path(&files, path) {
