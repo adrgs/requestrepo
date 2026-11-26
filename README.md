@@ -187,13 +187,14 @@ main domain; on a session subdomain every path still belongs to the session.
 
 ```bash
 S=$(curl -s -X POST https://<your-domain>/api/v2/sessions)      # no body needed
-TOKEN=$(echo "$S" | jq -r .token); URL=$(echo "$S" | jq -r .url)
+TOKEN=$(jq -r .token <<<"$S"); URL=$(jq -r .url <<<"$S")
 curl -s "${URL}callback"
-# Long poll: returns as soon as something arrives (or after 60 s)
-curl -s -H "Authorization: Bearer $TOKEN" "https://<your-domain>/api/v2/requests?wait=60"
+curl -s -H "Authorization: Bearer $TOKEN" "https://<your-domain>/api/v2/requests?last=20&view=summary"
+# Wait for the next capture only (up to 60 s), ignoring history
+curl -s -H "Authorization: Bearer $TOKEN" "https://<your-domain>/api/v2/requests?after=now&wait=60&view=summary"
 ```
 
-Pass the `cursor` of one response as `after` in the next to receive only new requests.
+Pass the `cursor` of one response as `after` in the next to follow every new request.
 `PUT /api/v2/files/<path>` with `{"body": "..."}` sets a single response without base64.
 In the dashboard, the robot button copies a prompt that hands the current session to an agent.
 

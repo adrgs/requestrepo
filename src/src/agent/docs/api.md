@@ -31,43 +31,59 @@ A convenient shell setup:
 
 ```sh
 S=$(curl -s -X POST {{ORIGIN}}/api/v2/sessions)
-export RR_TOKEN=$(echo "$S" | jq -r .token) RR_DOMAIN=$(echo "$S" | jq -r .domain) RR_URL=$(echo "$S" | jq -r .url)
+export RR_TOKEN=$(jq -r .token <<<"$S") RR_DOMAIN=$(jq -r .domain <<<"$S") RR_URL=$(jq -r .url <<<"$S")
 rr() { curl -s -H "Authorization: Bearer $RR_TOKEN" "{{ORIGIN}}/api/v2$@"; }
 ```
 
 ## 2. Read what was captured
 
+Three recipes cover almost everything. Add `view=summary` to get one compact object per request instead of the full capture.
+
+**What has come in so far** (the newest 20, oldest first):
+
 ```sh
-rr "/requests"                     # everything, oldest first (limit=100 by default, max 1000)
-rr "/requests?type=dns"            # only http | dns | smtp | tcp
-rr "/requests?limit=20&offset=40"  # paging
+rr "/requests?last=20&view=summary"
 ```
 
 ```json
 {
-  "requests": [ { "_id": "6f0c...", "type": "http", "method": "GET", "path": "/hello", ... } ],
-  "cursor": "6f0c...",
-  "pagination": { "total": 1, "limit": 100, "offset": 0, "has_more": false }
+  "requests": [
+    { "_id": "6f0c...", "type": "http", "date": 1795708400, "ip": "203.0.113.7", "country": "DE",
+      "summary": "POST /callback?id=1", "body_text": "{\"ok\": true}" },
+    { "_id": "71a2...", "type": "dns", "date": 1795708402, "ip": "172.217.45.20",
+      "summary": "A probe-1.abcd1234.{{DOMAIN}}" }
+  ],
+  "cursor": "71a2...",
+  "pagination": { "total": 2, "limit": 100, "has_more": false }
 }
 ```
 
-### Wait for the next request (long polling)
-
-Do not poll in a tight loop. Pass `wait` (seconds, at most 60): when nothing matches yet, the server holds the response until something arrives or the time is up. Pass the previous response's `cursor` as `after` to receive only what is new:
+**Wait for the next one**, ignoring anything already there. `after=now` plus `wait` (seconds, at most 60) holds the response until something new arrives:
 
 ```sh
-# Block until the first request arrives (or 30 s pass)
-R=$(rr "/requests?wait=30")
-CURSOR=$(echo "$R" | jq -r .cursor)
-
-# Then: only requests newer than the cursor, waiting up to 60 s for one
-R=$(rr "/requests?after=$CURSOR&wait=60")
-CURSOR=$(echo "$R" | jq -r .cursor)
+R=$(rr "/requests?after=now&wait=60&view=summary")
 ```
 
-- An empty `requests` array after a `wait` means nothing arrived in time; `cursor` is unchanged, so call again with the same `after`.
-- If `after` names a request that was deleted or evicted, the answer is `404` with code `cursor_not_found`; list without `after` to start over.
-- One request: `rr "/requests/<id>"`. Delete one: `rr "/requests/<id>" -X DELETE`. Delete all: `rr "/requests" -X DELETE`.
+Start this *before* you trigger whatever should call back, or run the trigger in the background, so the callback cannot arrive before you are listening.
+
+**Follow everything**, without gaps or repeats: pass each response's `cursor` as the next `after`.
+
+```sh
+CURSOR=now
+while true; do
+  R=$(rr "/requests?after=$CURSOR&wait=60&view=summary")
+  jq -c '.requests[]' <<<"$R"
+  CURSOR=$(jq -r .cursor <<<"$R")
+done
+```
+
+- `cursor` is the newest request in the response. When nothing arrived in time, `requests` is empty and `cursor` is unchanged, so passing it again is always right.
+- Without `after`, `wait` only waits when the session has no matching requests at all: existing history is returned at once.
+- Filter with `type=http|dns|smtp|tcp`. Plain paging: `limit` (default 100, max 1000) and `offset`, oldest first.
+- `view=summary` gives `summary` (one line: method and path, query type and name lowercased, or mail sender, recipient and subject) and `body_text` (the body as text, up to 1000 characters, with `body_truncated`). For headers and raw bytes, get the full capture: `rr "/requests/<id>"`.
+- If `after` names a request that was deleted or evicted, the answer is `404 cursor_not_found`; use `after=now` to start over.
+- Delete one: `rr "/requests/<id>" -X DELETE`. Delete all: `rr "/requests" -X DELETE`.
+- In scripts, feed JSON to `jq` with `<<<"$R"` or a pipe from `curl`, not `echo "$R"`: zsh's `echo` turns `\n` inside the JSON into real newlines.
 
 ### Captured request fields
 
@@ -82,9 +98,9 @@ Every request has `_id`, `type`, `date` (Unix seconds), `ip`, `country` (two-let
 
 ```sh
 # Decoded body of every HTTP request
-rr "/requests?type=http" | jq -r '.requests[].raw | @base64d'
+rr "/requests?type=http&view=summary" | jq -r '.requests[].body_text // empty'
 # Every distinct name that was looked up
-rr "/requests?type=dns" | jq -r '.requests[].domain' | sort -u
+rr "/requests?type=dns&view=summary" | jq -r '.requests[].summary' | sort -u
 ```
 
 ## 3. Choose what the subdomain answers

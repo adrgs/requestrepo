@@ -123,7 +123,8 @@ export function Topbar() {
       `Use requestrepo through its HTTP API with curl. Docs: ${origin}/llms.txt`,
       `My session captures HTTP, DNS and SMTP sent to ${activeSession.subdomain}.${getDnsDomain()} (${getSubdomainUrl(activeSession.subdomain)}/).`,
       `Authenticate with: Authorization: Bearer ${activeSession.token}`,
-      `Wait for new captures with GET ${origin}/api/v2/requests?after=<cursor>&wait=60 instead of polling.`,
+      `See what arrived: GET ${origin}/api/v2/requests?last=20&view=summary`,
+      `Wait for the next capture: GET ${origin}/api/v2/requests?after=now&wait=60&view=summary (start it before triggering the callback; pass the returned cursor as after for the one after).`,
     ].join("\n");
     copyToClipboard(prompt);
     toast.success("Prompt for your AI agent copied", {
