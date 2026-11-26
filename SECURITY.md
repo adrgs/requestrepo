@@ -45,16 +45,15 @@ security boundary being broken, please explain why in the report.
 ## Reporting an Abused Subdomain
 
 If a `requestrepo.com` subdomain is being used for abuse, such as a malware beacon or a
-phishing page, it does not take a vulnerability report to get it blocked:
+phishing page, it does not take a vulnerability report:
 
 - Open [requestrepo.com/abuse](https://requestrepo.com/abuse), or
-- Send `POST https://requestrepo.com/api/v2/abuse/reports` with the subdomain, a category
-  and a short description. The request format is in the
-  [README](README.md#reporting-abuse).
+- Send `POST https://requestrepo.com/api/v2/abuse/reports` with the subdomain, a category and
+  a short description. The format is in the [README](README.md#reporting-abuse) and at
+  [requestrepo.com/docs/abuse.md](https://requestrepo.com/docs/abuse.md).
 
-A report blocks the subdomain at once: its requests are refused, its name stops resolving
-and its owner can no longer use it. Only report a subdomain you have actually seen in
-abusive traffic. The maintainers can lift a block that was made in error.
+A report suspends the subdomain immediately. Its traffic keeps being recorded so that
+compromised hosts contacting it can be identified and notified.
 
 ## Response Process
 

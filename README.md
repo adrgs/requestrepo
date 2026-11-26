@@ -16,7 +16,8 @@ A tool for analyzing HTTP, DNS, and SMTP requests with custom DNS records and re
 - **IP Geolocation**: Country detection for incoming requests (via DB-IP)
 - **Request sharing**: Share individual requests via secure tokens
 - **Admin authentication**: Optional password protection for session creation
-- **Abuse reporting**: Public, rate-limited reports that block a subdomain; whoever holds the admin token can list, lift and purge blocks
+- **Agent-ready API**: Drive everything with `curl` from Claude Code, Codex or any agent. Long polling, `llms.txt`, an OpenAPI description and an Agent Skill are served by every instance
+- **Abuse reporting**: Public, rate-limited reports suspend a subdomain at once; suspended subdomains are sinkholed so their victims can be identified
 - **No external dependencies**: In-memory cache with LRU eviction (no Redis required)
 
 ## Quick Start
@@ -38,7 +39,7 @@ docker run -d \
 ```
 
 This starts all services: HTTP (80), HTTPS (443), DNS (53), SMTP (25). The `certs` volume
-keeps the TLS certificates and the `data` volume keeps blocked subdomains across restarts.
+keeps the TLS certificates and the `data` volume keeps the abuse blocklist across restarts.
 
 ## Using Docker Compose
 
@@ -166,51 +167,79 @@ requestrepo/
 └── ip2country/         # IP geolocation database
 ```
 
+## Using requestrepo from AI agents
+
+Every instance documents itself for agents on its main domain, so Claude Code, Codex or any
+other agent can use it with `curl` alone: no SDK and no MCP server.
+
+| Path | What it is |
+|------|------------|
+| `/llms.txt` | Index for language models ([llmstxt.org](https://llmstxt.org)) with a three-call quickstart |
+| `/docs/api.md` | The agent guide: sessions, long polling, responses, DNS, errors |
+| `/skill.md` | An [Agent Skill](https://agentskills.io); save it as `requestrepo/SKILL.md` in your skills directory |
+| `/openapi.json` | OpenAPI 3.1 description of the API |
+| `/.well-known/api-catalog` | [RFC 9727](https://www.rfc-editor.org/rfc/rfc9727) API catalog |
+| `/robots.txt`, `/sitemap.xml` | With [Content Signals](https://contentsignals.org) |
+
+`/` and `/abuse` also answer `Accept: text/markdown` with the matching guide, and HTML pages
+carry `Link` headers pointing at the documents above. These paths are only served on the
+main domain; on a session subdomain every path still belongs to the session.
+
+```bash
+S=$(curl -s -X POST https://<your-domain>/api/v2/sessions)      # no body needed
+TOKEN=$(echo "$S" | jq -r .token); URL=$(echo "$S" | jq -r .url)
+curl -s "${URL}callback"
+# Long poll: returns as soon as something arrives (or after 60 s)
+curl -s -H "Authorization: Bearer $TOKEN" "https://<your-domain>/api/v2/requests?wait=60"
+```
+
+Pass the `cursor` of one response as `after` in the next to receive only new requests.
+`PUT /api/v2/files/<path>` with `{"body": "..."}` sets a single response without base64.
+In the dashboard, the robot button copies a prompt that hands the current session to an agent.
+
 ## Reporting Abuse
 
-Anyone can report a subdomain of this instance that is being used for abuse, for example
-as a malware beacon or to host phishing pages. A report **blocks the subdomain at once**:
-
-- Requests to it are refused with `410 Gone`; nothing is logged or served.
-- Its name does not resolve (`NXDOMAIN`).
-- Mail to it is refused, and its owner's token stops working.
-
-Subdomain names are random, so only report one you have actually seen in traffic. Each
-network (an IPv4 address, or an IPv6 /64) can file up to **3 reports per hour**.
-
-**To report**, open `https://<your-domain>/abuse`, or call the endpoint:
+Anyone can report a subdomain that is used for abuse, such as a malware beacon, command and
+control, or a phishing page: with the flag button in the dashboard, at
+`https://<your-domain>/abuse`, or over the API:
 
 ```bash
 curl -X POST https://<your-domain>/api/v2/abuse/reports \
   -H 'Content-Type: application/json' \
-  -d '{"subdomain":"abcdefgh","category":"malware","description":"What the subdomain is used for"}'
+  -d '{"subdomain":"abcd1234","category":"malware","reason":"Botnet beacon"}'
 ```
 
-`subdomain` accepts a label, a hostname or a URL. Categories are `malware`, `phishing`,
-`csam`, `spam`, `copyright` and `other`. `evidence_url` (an http(s) link) and `contact` are
-optional.
+`subdomain` accepts a label, any hostname under it, or a URL. Categories are `malware`,
+`phishing`, `csam`, `spam` and `other`; `reason` is optional (300 characters, seen only by the
+admin). Reports are rate limited to 3 per hour per IP address (an IPv6 /48 counts as one).
 
-**To manage blocks**, open `/admin/abuse` or call the API with the admin token as
-`Authorization: Bearer <ADMIN_TOKEN>`:
+**A report suspends the subdomain immediately.** Nobody has to be awake for a beacon to stop
+working, and the owner of a legitimate subdomain caught by mistake can simply create a new one.
+A suspended subdomain is a **sinkhole**: HTTP answers `410 Gone` (a short page for browsers)
+and serves nothing, DNS answers `NXDOMAIN`, mail is refused, and the owner's dashboard, API
+token and share links stop working with `subdomain_suspended`. Its incoming HTTP and DNS
+traffic is still recorded for the admin, because the sources of a botnet beacon are its
+victims; the admin can export them for a CERT.
+
+**Managing suspensions.** Set `ABUSE_ADMIN_TOKEN` and open `/admin/abuse`, or use the API with
+`Authorization: Bearer <ABUSE_ADMIN_TOKEN>`. This token is separate from `ADMIN_TOKEN`, which
+only gates session creation.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/v2/abuse/admin/entries` | Blocked subdomains, newest first (`q`, `limit`, `offset`) |
-| `GET` | `/api/v2/abuse/admin/entries/{subdomain}` | One entry with its reports |
-| `POST` | `/api/v2/abuse/admin/entries/{subdomain}/block` | Block directly (`category`, `note`; body optional) |
-| `DELETE` | `/api/v2/abuse/admin/entries/{subdomain}` | Lift the block |
-| `DELETE` | `/api/v2/abuse/admin/entries/{subdomain}/data` | Delete its files, DNS records and captured requests |
-| `GET` | `/api/v2/abuse/admin/entries/{subdomain}/requests` | What it captured before the block |
+| `GET` | `/api/v2/abuse/admin/subdomains` | Suspended subdomains (`q`, `limit`, `offset`) |
+| `GET` | `/api/v2/abuse/admin/subdomains/{subdomain}` | One suspension with its recent reports |
+| `PUT` | `/api/v2/abuse/admin/subdomains/{subdomain}` | Suspend; body optional: `{"category"?, "note"?}` |
+| `DELETE` | `/api/v2/abuse/admin/subdomains/{subdomain}` | Lift the suspension |
+| `GET` | `/api/v2/abuse/admin/subdomains/{subdomain}/requests` | Captured traffic, including while suspended |
+| `GET` | `/api/v2/abuse/admin/subdomains/{subdomain}/sources` | Distinct source IPs, most active first |
+| `DELETE` | `/api/v2/abuse/admin/subdomains/{subdomain}/data` | Delete its files, DNS records and captured traffic |
 
-**Persistence.** Blocks are saved to `abuse.json` in `DATA_DIR` (the `data` volume in
-Docker) and survive a restart. Without an `ADMIN_TOKEN` there is nobody allowed to lift a
-block through the API, so it is done by removing the entry from that file and restarting. A
-blocklist that cannot be read stops the server from starting instead of silently dropping
-blocks. `GET /health` reports the number of blocked subdomains and of changes that could
-not be saved.
-
-Set `ABUSE_CONTACT` to tell reporters, and owners of a blocked subdomain, where to reach
-you. Set `ABUSE_REPORTING_ENABLED=false` to switch the public report endpoint off.
+**Persistence.** Suspensions are saved to `abuse.json` in `DATA_DIR` (the `data` volume in
+Docker) and survive restarts; a file that cannot be read stops the server from starting
+instead of silently dropping them. At 5,000 suspensions the oldest one made by a report is
+lifted to make room; an admin's never is. Captured traffic lives in the in-memory cache like
+any other request, so export the sources of a suspended subdomain before a redeploy.
 
 ## Environment Variables
 
@@ -222,9 +251,10 @@ See [.env.example](.env.example) for all available options.
 | `DOMAIN` | Yes | - | Base domain (e.g., `requestrepo.com`) |
 | `SERVER_IP` | Yes | - | Public IP for DNS responses |
 | `SERVER_IPV6` | No | - | Public IPv6 address for AAAA responses (IPv4-only when unset) |
-| `ADMIN_TOKEN` | No | - | Password for session creation. Also unlocks managing blocked subdomains |
-| `ABUSE_REPORTING_ENABLED` | No | `true` | Accept public abuse reports that block a subdomain |
-| `ABUSE_CONTACT` | No | - | Where to report abuse, and where the owner of a blocked subdomain can ask for a review |
+| `ADMIN_TOKEN` | No | - | Password for session creation |
+| `ABUSE_REPORTING_ENABLED` | No | `true` | Accept public abuse reports, which suspend a subdomain immediately |
+| `ABUSE_ADMIN_TOKEN` | No | - | Token for `/admin/abuse` and the abuse admin API (16+ characters) |
+| `ABUSE_CONTACT` | No | - | Where to report abuse, shown to reporters and to owners of a suspended subdomain |
 | `DATA_DIR` | No | `./data` | Directory for `abuse.json`, the saved blocklist (`/app/data` in Docker) |
 | `TLS_ENABLED` | No | `false` | Enable HTTPS with Let's Encrypt |
 | `ACME_EMAIL` | No | - | Email for Let's Encrypt (required if TLS enabled) |

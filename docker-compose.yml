@@ -36,8 +36,9 @@ services:
       - SERVER_IPV6=${SERVER_IPV6:-}
       # Optional - Auth
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
-      # Optional - Abuse reporting (the public report endpoint that blocks a subdomain)
+      # Optional - Abuse reporting and review (see README "Reporting Abuse")
       - ABUSE_REPORTING_ENABLED=${ABUSE_REPORTING_ENABLED:-true}
+      - ABUSE_ADMIN_TOKEN=${ABUSE_ADMIN_TOKEN:-}
       - ABUSE_CONTACT=${ABUSE_CONTACT:-}
       # Optional - Ports
       - HTTP_PORT=${HTTP_PORT:-80}
@@ -49,7 +50,7 @@ services:
       - ACME_EMAIL=${ACME_EMAIL:-}
       - ACME_DIRECTORY=${ACME_DIRECTORY:-https://acme-v02.api.letsencrypt.org/directory}
       - CERT_DIR=/app/certs
-      # State that must survive a restart: the subdomain blocklist lives in DATA_DIR/abuse.json
+      # State that must survive a restart: the abuse blocklist lives in DATA_DIR/abuse.json
       - DATA_DIR=/app/data
       - CERT_RENEWAL_DAYS=${CERT_RENEWAL_DAYS:-30}
       - CERT_CHECK_HOURS=${CERT_CHECK_HOURS:-12}
